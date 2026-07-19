@@ -21,7 +21,10 @@ designer = [
 parity-plot = "parity_plot.cli:cli"
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -32,3 +35,7 @@ packages = ["parity_plot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# NiceGUI's headless `user` fixture is async; without a runner pytest reports it
+# as "requested an async fixture with no plugin that handled it".
+asyncio_mode = "auto"
+markers = ["module_under_test: which module's ui.page routes the user fixture serves"]
