@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# generated example data and rendered plots
+data/
+*.html
+!templates/*.html
+*.png
+*.svg
+*.pdf
