@@ -189,6 +189,33 @@ uv run parity-plot plot data.csv --reltol 10pct --band-style shaded
 The statistics box reports the fraction of paired points inside the envelope,
 labelled with the spec it scored against (`within ±max(2, 10%): 98.0%`).
 
+## Interactive designer
+
+```bash
+uv sync --extra designer
+uv run parity-plot design data/example.csv -c parity.toml
+```
+
+Opens a local browser app: edit any setting and the plot updates live, then save
+back to the TOML. Comments in an existing config survive the round trip, and a
+key you have not changed keeps its original spelling (`reltol = "10pct"` is not
+rewritten as `0.1`).
+
+The preview is produced by the same `build_figure` the CLI uses, so what you see
+is exactly what `parity-plot plot -c parity.toml` will render. That equivalence
+is pinned by a test rather than assumed — `tests/designer/test_golden_wysiwyg.py`
+saves from the designer, reloads through the normal config path, renders via the
+CLI, and asserts the figures are identical.
+
+Saving refuses to overwrite a config that changed on disk since it was opened,
+so an edit made in another window is not silently discarded.
+
+| Flag | Meaning |
+| --- | --- |
+| `-c/--config` | TOML to open and save back to |
+| `--port` | Port to serve on; falls back to a free one if taken |
+| `--open-browser` / `--no-open-browser` | Open a browser on start (default: open) |
+
 ## Layout
 
 Both axes always share one range and are pinned to a 1:1 pixel scale, so

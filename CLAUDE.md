@@ -85,6 +85,37 @@ deliberately not an option for the same reason.
 before `_apply_layout` sets the axis type. On a log axis the stored range is in
 *exponents*, so traces need `10**value` to land in data space.
 
+**The designer must never reimplement plotting.** `parity_plot/designer/` calls
+`build_figure` for its preview. `tests/designer/test_golden_wysiwyg.py` asserts
+that a config saved from the designer renders an identical figure through the
+CLI path — if that test fails, the designer is lying about what the CLI will do,
+and the designer is what needs fixing.
+
+Logic lives in `state.py`, `session.py`, and `serialize.py`, all browser-free and
+unit-tested; `app.py` and `panels/` only wire widgets. Anything worth testing
+belongs in the pure modules. `build_app` registers the page and returns state;
+`launch.run` owns `ui.run`, so they cannot double-serve.
+
+`serialize.py` uses tomlkit rather than generating TOML, because a config meant to
+be hand-edited and committed must not lose its comments on save. It skips writing
+a key whose value is unchanged — but **only when the key is literally present**: a
+parsed config fills absent keys with defaults, so without that guard a missing key
+compares equal to the default and is never written at all.
+
+`launch.run` loads the session **before** importing any UI, so bad input fails with
+a plain message instead of after a server is already listening.
+
+`nicegui` is an optional extra. Never import it at `parity_plot` module scope —
+`designer/launch.py` imports it lazily and raises `MissingDependencyError` naming
+`uv sync --extra designer`.
+
+**Testing the UI:** `nicegui.testing.plugin` imports selenium at module scope and
+breaks collection for the whole suite; don't register it. The headless `user`
+fixture also expects a module-level app (`nicegui_main_file`), which `build_app`
+is not. `tests/designer/test_app.py` instead boots `parity-plot design` as a
+subprocess and fetches the page — strip `PYTEST*` from that subprocess's env or
+NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
+
 ## Conventions
 
 - **No numpy or pandas.** Workloads are small enough for stdlib `csv`, `math`,
