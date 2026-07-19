@@ -8,7 +8,7 @@ the default and look like a bug in the plot.
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -89,10 +89,14 @@ class OutputConfig:
 
 @dataclass(frozen=True)
 class ParityConfig:
-    data: DataConfig = DataConfig()
-    plot: PlotConfig = PlotConfig()
-    stats: StatsConfig = StatsConfig()
-    output: OutputConfig = OutputConfig()
+    # default_factory, not a shared instance: a bare `PlotConfig()` default is
+    # one object shared by every ParityConfig ever built. That is safe only
+    # while nothing writes to it, and anything that forces a value past frozen
+    # (tests do) then corrupts the default for the whole process.
+    data: DataConfig = field(default_factory=DataConfig)
+    plot: PlotConfig = field(default_factory=PlotConfig)
+    stats: StatsConfig = field(default_factory=StatsConfig)
+    output: OutputConfig = field(default_factory=OutputConfig)
 
     @classmethod
     def from_toml(cls, path: str | Path) -> ParityConfig:
