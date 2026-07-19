@@ -43,9 +43,14 @@ def config_to_toml(config: ParityConfig, existing: str | None = None) -> str:
                 if field.name in table:
                     del table[field.name]
                 continue
-            if _already_equals(current, name, field.name, value):
+            if field.name in table and _already_equals(current, name, field.name, value):
                 # Leave the existing text alone so "10pct" is not rewritten as
                 # 0.1 -- same value, gratuitous diff.
+                #
+                # The `in table` guard matters: a parsed config fills absent
+                # keys with their defaults, so without it a key missing from
+                # the file compares equal to the default and is never written.
+                # Saving would then silently fail to record that setting.
                 continue
             table[field.name] = _to_toml_value(value)
 

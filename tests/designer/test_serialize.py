@@ -60,6 +60,20 @@ def test_changed_values_are_written():
     assert '"10pct"' not in text
 
 
+def test_a_key_absent_from_the_file_is_written_even_at_its_default():
+    """The skip-if-unchanged optimisation compares against a parsed config,
+    which fills absent keys with defaults. Without a presence check, a missing
+    key compares equal to the default and is never written -- so saving
+    silently fails to record that setting."""
+    existing = "[plot]\n# theme was deleted by someone else\n"
+    config = ParityConfig()  # theme is "dark", which is also the default
+
+    text = config_to_toml(config, existing=existing)
+
+    assert 'theme = "dark"' in text
+    assert "# theme was deleted by someone else" in text
+
+
 def test_none_values_are_removed_not_written_as_null():
     existing = "[plot]\nabstol = 2.0\n"
     config = ParityConfig()  # abstol defaults to None
