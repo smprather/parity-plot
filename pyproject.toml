@@ -12,6 +12,10 @@ dependencies = [
 
 [project.optional-dependencies]
 static = ["kaleido>=0.2.1"]
+designer = [
+    "nicegui>=3.14",
+    "tomlkit>=0.13",
+]
 
 [project.scripts]
 parity-plot = "parity_plot.cli:cli"
