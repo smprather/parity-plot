@@ -11,13 +11,26 @@ from pathlib import Path
 
 from ..config import ParityConfig
 from ..data import ParityData
-from ..tolerance import Tolerance
 from .panels.controls import build_controls
 from .panels.data_panel import build_data_panel
 from .panels.inspector import build_inspector
+from .panels.table import build_table
 from .records import key_from_customdata
 from .session import Session, StaleFileError
 from .state import DesignerState
+
+
+def select_record(state: DesignerState, key: str | None, *refreshers) -> None:
+    """Pin a record and tell every panel to catch up.
+
+    Both the plot and the table route through here rather than each setting
+    `state.selection` themselves, so neither can end up showing a different
+    record from the other.
+    """
+    state.selection = key
+    for refresh in refreshers:
+        if refresh is not None:
+            refresh()
 
 
 def build_app(session: Session, config: ParityConfig, data: ParityData) -> DesignerState:
@@ -45,22 +58,22 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                     ui.button("Save As…", on_click=lambda: ask_where_to_save())
 
             with ui.column().classes("grow"):
-                plot_view = ui.plotly(state.figure()).classes("w-full h-[70vh]")
+                plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
                 error_banner = ui.label("").classes("text-red-400 text-sm")
-                refresh_inspector = build_inspector(
+                refresh_inspector = build_inspector(state, state.tolerance)
+
+                refresh_table = build_table(
                     state,
-                    lambda: Tolerance(
-                        abstol=state.config.plot.abstol,
-                        reltol=state.config.plot.reltol,
-                    ),
+                    on_select=lambda key: select_record(state, key, refresh_inspector),
+                    on_filter_change=lambda: refresh(),
                 )
 
                 def on_point_click(event) -> None:
                     points = (event.args or {}).get("points") or []
                     if not points:
                         return
-                    state.selection = key_from_customdata(points[0].get("customdata"))
-                    refresh_inspector()
+                    key = key_from_customdata(points[0].get("customdata"))
+                    select_record(state, key, refresh_inspector, refresh_table)
 
                 plot_view.on("plotly_click", on_point_click)
 
@@ -69,6 +82,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
             error_banner.text = state.last_error or ""
             status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
             refresh_inspector()
+            refresh_table()
 
         def reload_everything() -> None:
             """After a dataset swap the whole view is stale, selection included."""
