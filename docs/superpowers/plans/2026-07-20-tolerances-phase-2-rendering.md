@@ -205,6 +205,34 @@ deleted fields is not an option.
 
 ---
 
+### Task 5: `serialize.py` writes the tolerance list
+
+Missed in the original plan and surfaced by Task 1: `config_to_toml` iterates dataclass
+fields and writes scalars, but `tolerances` is a tuple of `NamedTolerance` objects that
+must become a `[[plot.tolerances]]` array-of-tables. The parity default means *every* save
+now hits this, which is why four `designer/test_serialize.py` tests and the golden suite
+are xfailed on it.
+
+**Files:** `parity_plot/designer/serialize.py`; un-xfail `tests/designer/test_serialize.py`
+and any golden test parked with `_SERIALIZER_READS_THE_LIST`.
+
+- [ ] **Step 1** — In `config_to_toml`, special-case the `tolerances` field. For each
+`NamedTolerance`, emit a `[[plot.tolerances]]` table via `tomlkit.aot()` / `tomlkit.table()`,
+writing only the fields that differ from the `NamedTolerance` defaults (so a plain entry
+stays terse), and always writing `name`. The parity entry, when it is the default
+unmodified one, may be omitted entirely — `with_parity` re-adds it on load, so a config
+need not carry it unless the user customised it. Round-tripping must still satisfy the
+existing "comment preservation" and "unchanged values keep their spelling" tests.
+
+- [ ] **Step 2** — Un-xfail the serializer and golden tests, rewrite expectations to the
+list shape, and report.
+
+- [ ] **Step 3** — The golden guarantee (`test_golden_wysiwyg`) is the real check here:
+save a multi-tolerance config from the designer, reload through `from_toml`, render through
+the CLI, assert identical. It can only pass once both `plot.py` (Task 2) and this are done.
+
+---
+
 ## Verification (orchestrator)
 
 ```bash
