@@ -7,10 +7,16 @@ instead of landing wherever the palette cycle happens to put them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import plotly.graph_objects as go
 import plotly.io as pio
+
+# Tolerance colours are chosen to sit clearly apart from the three shades that
+# already carry meaning here: `identity` (the y = x line), `marker` (the paired
+# points) and `rug` (unpaired ticks). `green` and `blue` are offered, but as an
+# olive and a true blue rather than the mint and cyan those reserved roles use.
+COLOR_TOKENS = ("red", "yellow", "orange", "green", "blue", "purple", "magenta", "grey")
 
 
 @dataclass(frozen=True)
@@ -30,6 +36,7 @@ class Theme:
     band_fill: str
     box_bg: str
     box_border: str
+    tolerance_colors: dict[str, str] = field(default_factory=dict)
     # Markers are translucent because at n=1000 an opaque cloud hides its own
     # density exactly where a parity plot is most interesting: near the line.
     marker_opacity: float = 0.65
@@ -37,6 +44,30 @@ class Theme:
     @property
     def template_name(self) -> str:
         return f"parity_{self.name}"
+
+    def resolve_color(self, token: str) -> str:
+        """A token, or a hex value passed through untouched."""
+        if token.startswith("#"):
+            return token
+        try:
+            return self.tolerance_colors[token]
+        except KeyError:
+            raise ValueError(
+                f"unknown colour {token!r}; use one of {list(COLOR_TOKENS)} "
+                f"or a hex value like '#8844ff'"
+            ) from None
+
+    def band_fill_for(self, token: str, alpha: float = 0.10) -> str:
+        """The same colour, translucent, for a shaded band."""
+        red, green, blue = _hex_to_rgb(self.resolve_color(token))
+        return f"rgba({red}, {green}, {blue}, {alpha})"
+
+
+def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    text = value.lstrip("#")
+    if len(text) == 3:  # short form, #abc
+        text = "".join(character * 2 for character in text)
+    return tuple(int(text[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
 
 
 DARK = Theme(
@@ -55,6 +86,16 @@ DARK = Theme(
     band_fill="rgba(255, 77, 90, 0.10)",
     box_bg="rgba(23, 27, 33, 0.85)",
     box_border="#3a414a",
+    tolerance_colors={
+        "red": "#ff4d5a",
+        "yellow": "#ffd23f",
+        "orange": "#ff8c42",
+        "green": "#9ccc65",     # olive, not the identity line's mint
+        "blue": "#5b8dee",      # true blue, not the markers' cyan
+        "purple": "#b18cff",
+        "magenta": "#ff6ec7",
+        "grey": "#9aa4b0",
+    },
 )
 
 LIGHT = Theme(
@@ -73,6 +114,16 @@ LIGHT = Theme(
     band_fill="rgba(208, 0, 0, 0.08)",
     box_bg="rgba(255, 255, 255, 0.88)",
     box_border="#c2c8d0",
+    tolerance_colors={
+        "red": "#d00000",
+        "yellow": "#b38600",
+        "orange": "#b35309",
+        "green": "#6a8f00",     # olive, not the identity line's emerald
+        "blue": "#3b5bdb",      # true blue, not the markers' teal
+        "purple": "#7048e8",
+        "magenta": "#c2255c",
+        "grey": "#6b7280",
+    },
 )
 
 THEMES = {DARK.name: DARK, LIGHT.name: LIGHT}
