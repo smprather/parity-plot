@@ -11,7 +11,11 @@ from pathlib import Path
 
 from ..config import ParityConfig
 from ..data import ParityData
+from ..tolerance import Tolerance
 from .panels.controls import build_controls
+from .panels.data_panel import build_data_panel
+from .panels.inspector import build_inspector
+from .records import key_from_customdata
 from .session import Session, StaleFileError
 from .state import DesignerState
 
@@ -32,6 +36,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
 
         with ui.row().classes("w-full no-wrap gap-4"):
             with ui.column().classes("w-80 shrink-0"):
+                build_data_panel(state, lambda: reload_everything())
                 ui.label("Settings").classes("text-base font-medium")
                 build_controls(state, lambda: refresh())
                 ui.separator()
@@ -40,13 +45,34 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                     ui.button("Save As…", on_click=lambda: ask_where_to_save())
 
             with ui.column().classes("grow"):
-                plot_view = ui.plotly(state.figure()).classes("w-full h-[80vh]")
+                plot_view = ui.plotly(state.figure()).classes("w-full h-[70vh]")
                 error_banner = ui.label("").classes("text-red-400 text-sm")
+                refresh_inspector = build_inspector(
+                    state,
+                    lambda: Tolerance(
+                        abstol=state.config.plot.abstol,
+                        reltol=state.config.plot.reltol,
+                    ),
+                )
+
+                def on_point_click(event) -> None:
+                    points = (event.args or {}).get("points") or []
+                    if not points:
+                        return
+                    state.selection = key_from_customdata(points[0].get("customdata"))
+                    refresh_inspector()
+
+                plot_view.on("plotly_click", on_point_click)
 
         def refresh() -> None:
             plot_view.update_figure(state.figure())
             error_banner.text = state.last_error or ""
             status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
+            refresh_inspector()
+
+        def reload_everything() -> None:
+            """After a dataset swap the whole view is stale, selection included."""
+            refresh()
 
         def save(path: Path | None, force: bool = False) -> None:
             try:
