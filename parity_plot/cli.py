@@ -91,10 +91,15 @@ HELP_CONFIG = click.RichHelpConfiguration(
             },
             {"name": "Help", "options": ["--help"]},
         ],
+        "parity-plot design": [
+            {"name": "Input", "options": ["PATHS", "--config"]},
+            {"name": "Server", "options": ["--port", "--open-browser"]},
+            {"name": "Help", "options": ["--help"]},
+        ],
     },
     command_groups={
         "parity-plot": [
-            {"name": "Plotting", "commands": ["plot"]},
+            {"name": "Plotting", "commands": ["plot", "design"]},
             {"name": "Getting started", "commands": ["example", "init"]},
         ]
     },
@@ -381,6 +386,39 @@ def init_config(output: Path, force: bool) -> None:
         )
     output.write_text(EXAMPLE_TOML, encoding="utf-8")
     click.echo(f"Wrote {click.style(str(output), bold=True)}")
+
+
+@cli.command()
+@click.argument(
+    "paths",
+    nargs=-1,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option("-c", "--config", type=click.Path(dir_okay=False, path_type=Path), help="TOML config file to open and save back to.")
+@click.option("--port", type=int, default=8080, show_default=True, help="Port to serve on.  Falls back to a free port if taken.")
+@click.option("--open-browser/--no-open-browser", "open_browser", default=True, help="Open the designer in the default browser.  [default: open]")
+def design(
+    paths: tuple[Path, ...],
+    config: Path | None,
+    port: int,
+    open_browser: bool,
+) -> None:
+    """Open the interactive designer.
+
+    Edit every plot setting against your real data and watch the result
+    update, then save the settings back to a `parity.toml`.
+    """
+    from .designer import launch
+
+    try:
+        launch.run(
+            data_paths=tuple(paths),
+            config_path=config,
+            port=port,
+            open_browser=open_browser,
+        )
+    except (ConfigError, DataError, launch.MissingDependencyError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from None
 
 
 def main() -> int:

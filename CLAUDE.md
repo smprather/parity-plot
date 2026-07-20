@@ -85,6 +85,102 @@ deliberately not an option for the same reason.
 before `_apply_layout` sets the axis type. On a log axis the stored range is in
 *exponents*, so traces need `10**value` to land in data space.
 
+**The designer must never reimplement plotting.** `parity_plot/designer/` calls
+`build_figure` for its preview. `tests/designer/test_golden_wysiwyg.py` asserts
+that a config saved from the designer renders an identical figure through the
+CLI path — if that test fails, the designer is lying about what the CLI will do,
+and the designer is what needs fixing.
+
+Logic lives in `state.py`, `session.py`, and `serialize.py`, all browser-free and
+unit-tested; `app.py` and `panels/` only wire widgets. Anything worth testing
+belongs in the pure modules. `build_app` registers the page and returns state;
+`launch.run` owns `ui.run`, so they cannot double-serve.
+
+`serialize.py` uses tomlkit rather than generating TOML, because a config meant to
+be hand-edited and committed must not lose its comments on save. It skips writing
+a key whose value is unchanged — but **only when the key is literally present**: a
+parsed config fills absent keys with defaults, so without that guard a missing key
+compares equal to the default and is never written at all.
+
+`launch.run` loads the session **before** importing any UI, so bad input fails with
+a plain message instead of after a server is already listening.
+
+`nicegui` is an optional extra. Never import it at `parity_plot` module scope —
+`designer/launch.py` imports it lazily and raises `MissingDependencyError` naming
+`uv sync --extra designer`.
+
+**Phase 2 pure modules:** `datasets.py` reads only a CSV's header and first row —
+loading a large file just to list its columns makes opening one feel broken, and a
+test on a 200k-row file guards that. `records.py` turns a `ParityData` into one row
+per record and is shared by the inspector and (Phase 3) the table, so keep it free
+of formatting and display strings.
+
+`DesignerState.set_data_source` keeps the previously loaded dataset **and config**
+when a load fails, for the same reason `figure()` keeps the last good figure. Build
+the candidate and load from it first; assign only on success — assigning then
+rolling back is not equivalent. It also clears a selection absent from the new data.
+
+**`figure()` deliberately does not clear `last_error` on success.** A failed
+`set_data_source` leaves the old data loaded, so the next redraw succeeds; clearing
+there would blank the error banner before it ever showed. Errors are cleared by
+whatever succeeds next (`update` / `set_data_source`).
+
+Plotly click payloads carry `customdata` in **two shapes**: the paired trace carries
+`(key, diff)`, the rug traces a bare key. `key_from_customdata` normalises both —
+never index into it directly.
+
+`build_inspector` takes the tolerance as a **callable**, since the user can change it
+after the panel is built and the verdict must follow.
+
+**Filters never reach the config.** `FilterSet` lives on `DesignerState`, not on
+`ParityConfig`. A config encoding a temporary view would render differently from
+what the CLI produces, breaking the guarantee `test_golden_wysiwyg.py` protects;
+a test asserts no filter vocabulary appears in a saved TOML.
+
+**A default `FilterSet` must be a no-op.** `figure()` renders `visible_data()`, so
+an unfiltered designer that altered the data at all would fail the golden tests.
+If they ever go red, suspect `filters.py` — not the golden tests.
+
+`outside_tolerance_only` says nothing about unpaired records, which were never
+judged and so cannot be outside a spec; `show_unpaired` governs those separately.
+`selected_record` reads the **full** dataset, not the filtered one, so filtering
+out a pinned record does not blank the inspector on what you clicked.
+
+`table_rows.to_rows` keeps values numeric and rounds them rather than formatting
+to strings: the table exists to sort by error magnitude, and strings sort
+lexically so "9" lands above "100".
+
+**Selection has exactly one owner.** Both the plot click and the table row route
+through `app.select_record`; two writers would drift and leave the views
+highlighting different records.
+
+**Brushing** feeds `plotly_selected` into `FilterSet.x_range` via
+`selection.range_from_selection`, which normalises Plotly's three descriptions of
+a selection (box `range.x`, `lassoPoints.x`, or bare `points`) into one range. A
+dragged box wins over the points inside it — an empty region still means that
+region. An empty selection returns None, which is what lets `plotly_deselect`
+clear the brush; do not add a guard that skips a None range.
+
+`apply_brush` uses `dataclasses.replace` so only `x_range` changes and the other
+switches survive.
+
+**Drag is left as Plotly's default (zoom).** `dragmode="select"` was tried and
+reverted — making drag brush instead of zoom felt flaky in use. The selection
+handlers stay wired and brushing works from the modebar's box-select tool. If
+`dragmode` is reinstated, set it on the figure handed to the widget and **never**
+inside `build_figure`, which is shared with the CLI and compared against it by the
+golden tests.
+
+`selection._numbers` excludes booleans explicitly: `isinstance(True, int)` is True
+in Python, so a naive numeric check reads True as 1.0 and corrupts the range.
+
+**Testing the UI:** `nicegui.testing.plugin` imports selenium at module scope and
+breaks collection for the whole suite; don't register it. The headless `user`
+fixture also expects a module-level app (`nicegui_main_file`), which `build_app`
+is not. `tests/designer/test_app.py` instead boots `parity-plot design` as a
+subprocess and fetches the page — strip `PYTEST*` from that subprocess's env or
+NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
+
 ## Conventions
 
 - **No numpy or pandas.** Workloads are small enough for stdlib `csv`, `math`,

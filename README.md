@@ -189,6 +189,68 @@ uv run parity-plot plot data.csv --reltol 10pct --band-style shaded
 The statistics box reports the fraction of paired points inside the envelope,
 labelled with the spec it scored against (`within ±max(2, 10%): 98.0%`).
 
+## Interactive designer
+
+```bash
+uv sync --extra designer
+uv run parity-plot design data/example.csv -c parity.toml
+```
+
+Opens a local browser app: edit any setting and the plot updates live, then save
+back to the TOML. Comments in an existing config survive the round trip, and a
+key you have not changed keeps its original spelling (`reltol = "10pct"` is not
+rewritten as `0.1`).
+
+The preview is produced by the same `build_figure` the CLI uses, so what you see
+is exactly what `parity-plot plot -c parity.toml` will render. That equivalence
+is pinned by a test rather than assumed — `tests/designer/test_golden_wysiwyg.py`
+saves from the designer, reloads through the normal config path, renders via the
+CLI, and asserts the figures are identical.
+
+Saving refuses to overwrite a config that changed on disk since it was opened,
+so an edit made in another window is not silently discarded.
+
+The **Data** panel opens any CSV and maps its columns: give one path for a wide
+file or two to outer-join, and the designer reads just the header to offer the
+column choices, guessing the mapping from names seen in the wild
+(`reference`/`measured`, `expected`/`actual`, `golden`/`dut`). A mapping that
+fails to load leaves the previous dataset in place rather than emptying the plot.
+
+Click any point — including a rug tick for an unpaired record — to inspect it in
+the **Inspector**: both values, the signed and relative error, and whether it
+passes the tolerance currently set. Change the tolerance and the verdict follows.
+
+The **table** below the plot lists every visible record — reference, measured,
+signed error, error percent, status and verdict — and sorts by any column, so
+"which parts are furthest out of spec" is one click. Selecting a row highlights
+the point, and clicking a point highlights the row; both routes write through one
+selection so they cannot disagree.
+
+Two switches narrow the plot and the table together: **Failures only** keeps the
+paired records outside the current tolerance, and **Include unpaired** governs
+records missing a measurement. The count beside them reads `showing 14 of 1,000`
+whenever anything is hidden — a filtered view that looked unfiltered would invite
+the wrong conclusion about the data.
+
+**Brushing an x-window** is wired but not yet the default gesture: dragging
+zooms, as Plotly normally does. Pick **Box Select** from the plot's toolbar and
+drag, and the plot, table and statistics all narrow to the records inside the
+window, with the axes rescaling to fit. Double-click clears it. Brushing composes
+with the switches rather than overriding them.
+
+Narrowing to a slice usually *lowers* the identity R², which is the point — a
+wide range flatters the fit, and a slice shows how well the two datasets agree
+where you actually care.
+
+Filters are exploration state and are never written to the config. A saved
+`parity.toml` describes the plot, not whatever you were looking at.
+
+| Flag | Meaning |
+| --- | --- |
+| `-c/--config` | TOML to open and save back to |
+| `--port` | Port to serve on; falls back to a free one if taken |
+| `--open-browser` / `--no-open-browser` | Open a browser on start (default: open) |
+
 ## Layout
 
 Both axes always share one range and are pinned to a 1:1 pixel scale, so
