@@ -86,6 +86,10 @@ class DesignerState:
                 raise
             return self._last_figure
 
-        self.last_error = None
+        # Deliberately does NOT clear `last_error`. A failed `set_data_source`
+        # leaves the previous dataset loaded, so the very next `figure()` call
+        # succeeds -- and clearing here would wipe the explanation before the
+        # error banner ever displayed it. Errors are cleared by whatever
+        # succeeds next: `update` or `set_data_source`.
         self._last_figure = figure
         return figure

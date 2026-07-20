@@ -210,6 +210,16 @@ CLI, and asserts the figures are identical.
 Saving refuses to overwrite a config that changed on disk since it was opened,
 so an edit made in another window is not silently discarded.
 
+The **Data** panel opens any CSV and maps its columns: give one path for a wide
+file or two to outer-join, and the designer reads just the header to offer the
+column choices, guessing the mapping from names seen in the wild
+(`reference`/`measured`, `expected`/`actual`, `golden`/`dut`). A mapping that
+fails to load leaves the previous dataset in place rather than emptying the plot.
+
+Click any point — including a rug tick for an unpaired record — to inspect it in
+the **Inspector**: both values, the signed and relative error, and whether it
+passes the tolerance currently set. Change the tolerance and the verdict follows.
+
 | Flag | Meaning |
 | --- | --- |
 | `-c/--config` | TOML to open and save back to |

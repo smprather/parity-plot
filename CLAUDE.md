@@ -109,6 +109,29 @@ a plain message instead of after a server is already listening.
 `designer/launch.py` imports it lazily and raises `MissingDependencyError` naming
 `uv sync --extra designer`.
 
+**Phase 2 pure modules:** `datasets.py` reads only a CSV's header and first row —
+loading a large file just to list its columns makes opening one feel broken, and a
+test on a 200k-row file guards that. `records.py` turns a `ParityData` into one row
+per record and is shared by the inspector and (Phase 3) the table, so keep it free
+of formatting and display strings.
+
+`DesignerState.set_data_source` keeps the previously loaded dataset **and config**
+when a load fails, for the same reason `figure()` keeps the last good figure. Build
+the candidate and load from it first; assign only on success — assigning then
+rolling back is not equivalent. It also clears a selection absent from the new data.
+
+**`figure()` deliberately does not clear `last_error` on success.** A failed
+`set_data_source` leaves the old data loaded, so the next redraw succeeds; clearing
+there would blank the error banner before it ever showed. Errors are cleared by
+whatever succeeds next (`update` / `set_data_source`).
+
+Plotly click payloads carry `customdata` in **two shapes**: the paired trace carries
+`(key, diff)`, the rug traces a bare key. `key_from_customdata` normalises both —
+never index into it directly.
+
+`build_inspector` takes the tolerance as a **callable**, since the user can change it
+after the panel is built and the verdict must follow.
+
 **Testing the UI:** `nicegui.testing.plugin` imports selenium at module scope and
 breaks collection for the whole suite; don't register it. The headless `user`
 fixture also expects a module-level app (`nicegui_main_file`), which `build_app`
