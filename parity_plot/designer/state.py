@@ -11,6 +11,7 @@ from ..config import ConfigError, ParityConfig
 from ..data import DataError, ParityData, load
 from ..plot import build_figure
 from ..tolerance import Tolerance
+from .filters import FilterSet
 from .records import RecordView, find_record, record_views
 
 
@@ -26,6 +27,7 @@ class DesignerState:
     config: ParityConfig
     data: ParityData
     selection: str | None = None
+    filters: FilterSet = field(default_factory=FilterSet)
     last_error: str | None = None
     _last_figure: go.Figure | None = field(default=None, repr=False)
 
@@ -71,6 +73,26 @@ class DesignerState:
             return None
         return find_record(record_views(self.data, tol), self.selection)
 
+    def tolerance(self) -> Tolerance:
+        """The tolerance the current config specifies."""
+        return Tolerance(abstol=self.config.plot.abstol, reltol=self.config.plot.reltol)
+
+    def visible_data(self) -> ParityData:
+        """The dataset after filtering. The plot and the table both read this."""
+        return self.filters.apply(self.data, self.tolerance())
+
+    def visible_records(self) -> list[RecordView]:
+        """One row per visible record, judged against the current tolerance."""
+        return record_views(self.visible_data(), self.tolerance())
+
+    def counts(self) -> tuple[int, int]:
+        """``(showing, total)`` records -- a filtered view that looks unfiltered
+        is a trap, so the UI always states both."""
+        visible = self.visible_data()
+        showing = visible.n_paired + visible.n_unpaired
+        total = self.data.n_paired + self.data.n_unpaired
+        return showing, total
+
     def figure(self) -> go.Figure:
         """Build the preview, keeping the last good one if this build fails.
 
@@ -79,7 +101,7 @@ class DesignerState:
         against.
         """
         try:
-            figure = build_figure(self.data, self.config.plot, self.config.stats)
+            figure = build_figure(self.visible_data(), self.config.plot, self.config.stats)
         except (ConfigError, ValueError) as exc:
             self.last_error = str(exc)
             if self._last_figure is None:
