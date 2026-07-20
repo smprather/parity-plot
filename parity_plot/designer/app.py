@@ -72,9 +72,10 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                     ui.button("Save As…", on_click=lambda: ask_where_to_save())
 
             with ui.column().classes("grow"):
-                initial = state.figure()
-                initial.update_layout(dragmode="select")
-                plot_view = ui.plotly(initial).classes("w-full h-[55vh]")
+                # Drag zooms, which is Plotly's default and what people expect.
+                # Brushing is still available from the modebar's box-select and
+                # lasso tools; the selection handlers below serve both.
+                plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
                 error_banner = ui.label("").classes("text-red-400 text-sm")
                 refresh_inspector = build_inspector(state, state.tolerance)
 
@@ -100,9 +101,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
 
         def refresh() -> None:
-            figure = state.figure()
-            figure.update_layout(dragmode="select")
-            plot_view.update_figure(figure)
+            plot_view.update_figure(state.figure())
             error_banner.text = state.last_error or ""
             status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
             refresh_inspector()

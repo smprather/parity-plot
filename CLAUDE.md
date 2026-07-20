@@ -162,9 +162,14 @@ region. An empty selection returns None, which is what lets `plotly_deselect`
 clear the brush; do not add a guard that skips a None range.
 
 `apply_brush` uses `dataclasses.replace` so only `x_range` changes and the other
-switches survive. `dragmode="select"` is set on the figure handed to the widget,
-**never** inside `build_figure` — that function is shared with the CLI and the
-golden tests compare the two outputs.
+switches survive.
+
+**Drag is left as Plotly's default (zoom).** `dragmode="select"` was tried and
+reverted — making drag brush instead of zoom felt flaky in use. The selection
+handlers stay wired and brushing works from the modebar's box-select tool. If
+`dragmode` is reinstated, set it on the figure handed to the widget and **never**
+inside `build_figure`, which is shared with the CLI and compared against it by the
+golden tests.
 
 `selection._numbers` excludes booleans explicitly: `isinstance(True, int)` is True
 in Python, so a naive numeric check reads True as 1.0 and corrupts the range.
