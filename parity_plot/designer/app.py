@@ -64,9 +64,11 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
 
         with ui.row().classes("w-full no-wrap gap-4"):
             with ui.column().classes("w-80 shrink-0"):
+                # Every panel is a peer top-level expansion -- Data, Tolerances,
+                # then the Appearance/Statistics/Output groups. No "Settings"
+                # wrapper, since the whole column is settings.
                 build_data_panel(state, lambda: reload_everything())
                 build_tolerances_panel(state, lambda: refresh())
-                ui.label("Settings").classes("text-base font-medium")
                 build_controls(state, lambda: refresh())
                 ui.separator()
                 with ui.row():
