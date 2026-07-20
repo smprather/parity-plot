@@ -232,6 +232,15 @@ records missing a measurement. The count beside them reads `showing 14 of 1,000`
 whenever anything is hidden — a filtered view that looked unfiltered would invite
 the wrong conclusion about the data.
 
+**Drag a box on the plot** to brush an x-window: the plot, the table and the
+statistics all narrow to the records inside it, and the axes rescale to fit.
+Double-click to clear. Brushing composes with the switches rather than
+overriding them, so "failures only, between 40 and 90" is two gestures.
+
+Narrowing to a slice usually *lowers* the identity R², which is the point — a
+wide range flatters the fit, and a slice shows how well the two datasets agree
+where you actually care.
+
 Filters are exploration state and are never written to the config. A saved
 `parity.toml` describes the plot, not whatever you were looking at.
 

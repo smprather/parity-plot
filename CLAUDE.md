@@ -154,6 +154,21 @@ lexically so "9" lands above "100".
 through `app.select_record`; two writers would drift and leave the views
 highlighting different records.
 
+**Brushing** feeds `plotly_selected` into `FilterSet.x_range` via
+`selection.range_from_selection`, which normalises Plotly's three descriptions of
+a selection (box `range.x`, `lassoPoints.x`, or bare `points`) into one range. A
+dragged box wins over the points inside it — an empty region still means that
+region. An empty selection returns None, which is what lets `plotly_deselect`
+clear the brush; do not add a guard that skips a None range.
+
+`apply_brush` uses `dataclasses.replace` so only `x_range` changes and the other
+switches survive. `dragmode="select"` is set on the figure handed to the widget,
+**never** inside `build_figure` — that function is shared with the CLI and the
+golden tests compare the two outputs.
+
+`selection._numbers` excludes booleans explicitly: `isinstance(True, int)` is True
+in Python, so a naive numeric check reads True as 1.0 and corrupts the range.
+
 **Testing the UI:** `nicegui.testing.plugin` imports selenium at module scope and
 breaks collection for the whole suite; don't register it. The headless `user`
 fixture also expects a module-level app (`nicegui_main_file`), which `build_app`

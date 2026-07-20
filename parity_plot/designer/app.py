@@ -7,6 +7,7 @@ This module owns layout and event wiring only. Anything worth a test belongs in
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from ..config import ParityConfig
@@ -16,6 +17,7 @@ from .panels.data_panel import build_data_panel
 from .panels.inspector import build_inspector
 from .panels.table import build_table
 from .records import key_from_customdata
+from .selection import range_from_selection
 from .session import Session, StaleFileError
 from .state import DesignerState
 
@@ -28,6 +30,18 @@ def select_record(state: DesignerState, key: str | None, *refreshers) -> None:
     record from the other.
     """
     state.selection = key
+    for refresh in refreshers:
+        if refresh is not None:
+            refresh()
+
+
+def apply_brush(state: DesignerState, args: dict | None, *refreshers) -> None:
+    """Narrow the view to the brushed x-window, or clear it when empty.
+
+    Only `x_range` is replaced; the other switches are carried across, so
+    brushing does not silently undo a "failures only" filter the user set.
+    """
+    state.filters = replace(state.filters, x_range=range_from_selection(args))
     for refresh in refreshers:
         if refresh is not None:
             refresh()
@@ -58,7 +72,9 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                     ui.button("Save As…", on_click=lambda: ask_where_to_save())
 
             with ui.column().classes("grow"):
-                plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
+                initial = state.figure()
+                initial.update_layout(dragmode="select")
+                plot_view = ui.plotly(initial).classes("w-full h-[55vh]")
                 error_banner = ui.label("").classes("text-red-400 text-sm")
                 refresh_inspector = build_inspector(state, state.tolerance)
 
@@ -77,8 +93,16 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
 
                 plot_view.on("plotly_click", on_point_click)
 
+                def on_brush(event) -> None:
+                    apply_brush(state, event.args, refresh)
+
+                plot_view.on("plotly_selected", on_brush)
+                plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
+
         def refresh() -> None:
-            plot_view.update_figure(state.figure())
+            figure = state.figure()
+            figure.update_layout(dragmode="select")
+            plot_view.update_figure(figure)
             error_banner.text = state.last_error or ""
             status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
             refresh_inspector()
