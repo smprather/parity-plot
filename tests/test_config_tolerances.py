@@ -6,11 +6,12 @@ from pathlib import Path
 import pytest
 
 from parity_plot.config import ConfigError, ParityConfig
-from parity_plot.tolerances import NamedTolerance
+from parity_plot.tolerances import PARITY_NAME, NamedTolerance
 
 
 def test_no_tolerances_by_default():
-    assert ParityConfig().plot.tolerances == ()
+    """Even an empty config carries the built-in y = x reference line."""
+    assert [t.name for t in ParityConfig().plot.tolerances] == [PARITY_NAME]
 
 
 def test_a_single_tolerance_round_trips(tmp_path: Path):
@@ -19,7 +20,8 @@ def test_a_single_tolerance_round_trips(tmp_path: Path):
         '[[plot.tolerances]]\nname = "spec"\nreltol = 0.10\n', encoding="utf-8"
     )
     tols = ParityConfig.from_toml(path).plot.tolerances
-    assert tols == (NamedTolerance(name="spec", reltol=0.10),)
+    assert tols == (NamedTolerance(name=PARITY_NAME, builtin=True, kind="info", color="green", label="0% error (y = x)"),
+                    NamedTolerance(name="spec", reltol=0.10))
 
 
 def test_several_tolerances_keep_their_order(tmp_path: Path):
@@ -31,8 +33,8 @@ def test_several_tolerances_keep_their_order(tmp_path: Path):
         encoding="utf-8",
     )
     tols = ParityConfig.from_toml(path).plot.tolerances
-    assert [t.name for t in tols] == ["spec", "tight", "ref"]
-    assert tols[2].kind == "info"
+    assert [t.name for t in tols] == [PARITY_NAME, "spec", "tight", "ref"]
+    assert tols[3].kind == "info"
 
 
 def test_every_attribute_parses(tmp_path: Path):
@@ -44,7 +46,7 @@ def test_every_attribute_parses(tmp_path: Path):
         'color = "purple"\nstyle = "shaded"\n',
         encoding="utf-8",
     )
-    tol = ParityConfig.from_toml(path).plot.tolerances[0]
+    tol = ParityConfig.from_toml(path).plot.tolerances[1]
     assert tol == NamedTolerance(
         name="customer", label="customer limit", abstol=2.0, reltol=0.10,
         kind="pass", color="purple", style="shaded",
@@ -56,7 +58,7 @@ def test_reltol_accepts_the_percent_spelling(tmp_path: Path):
     path.write_text(
         '[[plot.tolerances]]\nname = "spec"\nreltol = "10pct"\n', encoding="utf-8"
     )
-    assert ParityConfig.from_toml(path).plot.tolerances[0].reltol == pytest.approx(0.10)
+    assert ParityConfig.from_toml(path).plot.tolerances[1].reltol == pytest.approx(0.10)
 
 
 def test_duplicate_names_are_rejected(tmp_path: Path):
@@ -105,16 +107,19 @@ def test_the_v0_1_0_scalar_keys_are_a_clear_error(tmp_path: Path, key, value):
 
 def test_merge_replaces_the_whole_list():
     """Tolerances are edited as a set, not merged element-wise -- otherwise
-    deleting one from the designer could not be expressed."""
+    deleting one from the designer could not be expressed. Parity is always
+    re-added by the normalisation, so it survives a replace."""
     cfg = ParityConfig.from_dict(
         {"plot": {"tolerances": [{"name": "a", "reltol": 0.1}]}}
     )
     merged = cfg.merge(plot={"tolerances": (NamedTolerance(name="b", abstol=1.0),)})
-    assert [t.name for t in merged.plot.tolerances] == ["b"]
+    assert [t.name for t in merged.plot.tolerances] == [PARITY_NAME, "b"]
 
 
-def test_an_empty_list_clears_them():
+def test_an_empty_list_clears_the_user_entries_but_keeps_parity():
     cfg = ParityConfig.from_dict(
         {"plot": {"tolerances": [{"name": "a", "reltol": 0.1}]}}
     )
-    assert cfg.merge(plot={"tolerances": ()}).plot.tolerances == ()
+    assert [t.name for t in cfg.merge(plot={"tolerances": ()}).plot.tolerances] == [
+        PARITY_NAME
+    ]

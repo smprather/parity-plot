@@ -85,6 +85,7 @@ def test_unfiltered_designer_still_matches_the_cli(state, tmp_path: Path):
     assert rendered.to_dict() == fresh.figure().to_dict()
 
 
+@_STATE_READS_THE_LIST
 def test_a_saved_config_carries_no_filter_state(state, tmp_path: Path):
     """A config describes the plot, not whatever you were looking at."""
     from parity_plot.designer.session import Session

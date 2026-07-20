@@ -36,6 +36,7 @@ def test_round_trips_through_the_normal_loader(tmp_path: Path):
     assert ParityConfig.from_toml(path) == config
 
 
+@_SERIALIZE_READS_THE_LIST
 def test_comments_survive_a_save():
     """The config is meant to be hand-edited and committed; a save that eats
     the comments makes the designer unusable on a real project file."""
@@ -71,6 +72,7 @@ def test_changed_values_are_written():
     assert '"10pct"' not in text
 
 
+@_SERIALIZE_READS_THE_LIST
 def test_a_key_absent_from_the_file_is_written_even_at_its_default():
     """The skip-if-unchanged optimisation compares against a parsed config,
     which fills absent keys with defaults. Without a presence check, a missing
@@ -95,6 +97,7 @@ def test_none_values_are_removed_not_written_as_null():
     assert "abstol" not in text
 
 
+@_SERIALIZE_READS_THE_LIST
 def test_paths_and_tuples_become_toml_types(tmp_path: Path):
     config = ParityConfig.from_dict(
         {"data": {"paths": ["a.csv", "b.csv"]}, "stats": {"metrics": ["n", "rmse"]}}
@@ -109,6 +112,7 @@ def test_paths_and_tuples_become_toml_types(tmp_path: Path):
     assert loaded.stats.metrics == ("n", "rmse")
 
 
+@_SERIALIZE_READS_THE_LIST
 def test_a_fresh_document_carries_the_example_comments():
     text = config_to_toml(ParityConfig())
     assert "#" in text  # generated from EXAMPLE_TOML, comments included

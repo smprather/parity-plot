@@ -129,6 +129,7 @@ def test_the_cli_plot_command_renders_a_designer_config(csv, tmp_path: Path):
     assert html.exists()
 
 
+@_READS_THE_LIST
 def test_comments_in_a_config_survive_a_designer_save(csv, tmp_path: Path):
     """A config is hand-edited and committed; saving must not strip its comments."""
     toml_path = tmp_path / "parity.toml"

@@ -25,11 +25,13 @@ def test_round_trip_of_the_shipped_example(tmp_path: Path):
     assert cfg.data.x == "reference"
     assert cfg.plot.theme == "dark"
     tols = cfg.plot.tolerances
-    assert len(tols) == 1
-    assert tols[0].name == "spec"
-    assert tols[0].reltol == pytest.approx(0.10)
-    assert tols[0].abstol is None  # commented out in the shipped example
-    assert tols[0].style == "lines"  # the default
+    # The built-in y = x line is guaranteed first; the shipped example adds "spec".
+    assert len(tols) == 2
+    assert tols[0].name == "parity"
+    assert tols[1].name == "spec"
+    assert tols[1].reltol == pytest.approx(0.10)
+    assert tols[1].abstol is None  # commented out in the shipped example
+    assert tols[1].style == "lines"  # the default
     assert cfg.stats.metrics == ("n", "r2", "rmse", "mae", "bias")
     assert cfg.output.width == 900
 

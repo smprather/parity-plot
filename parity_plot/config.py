@@ -17,7 +17,9 @@ from .tolerances import (
     NamedTolerance,
     ToleranceError,
     default_name,
+    parity,
     require_unique_names,
+    with_parity,
 )
 
 DEFAULT_NA_VALUES: tuple[str, ...] = (
@@ -67,10 +69,11 @@ class PlotConfig:
     theme: str = "dark"
     log: bool = False
     equal_axes: bool = True
-    identity_line: bool = True
     # A plot may carry several specifications at once. Order is meaningful: it
-    # drives legend order and the order names appear in a failure list.
-    tolerances: tuple[NamedTolerance, ...] = ()
+    # drives legend order and the order names appear in a failure list. Parity
+    # (the y = x line) is guaranteed first; disabling it replaces the old
+    # identity_line = false.
+    tolerances: tuple[NamedTolerance, ...] = field(default_factory=lambda: (parity(),))
     nulls: str = "rug"
     legend: str = "right"
 
@@ -169,6 +172,7 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
                 f'  name = "tolerance1"\n'
                 f"  abstol = 2.0        # and/or reltol\n"
                 f'  kind = "pass"       # pass | info\n'
+                f"  enabled = false     # replaces identity_line for the parity entry\n"
             )
     known = {f.name for f in fields(cls)}
     unknown = set(raw) - known
@@ -193,7 +197,7 @@ _CHOICES = {
     "legend": LEGEND_POSITIONS,
 }
 
-RETIRED_PLOT_KEYS = ("abstol", "reltol", "band_style")
+RETIRED_PLOT_KEYS = ("abstol", "reltol", "band_style", "identity_line")
 
 
 def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
@@ -232,7 +236,7 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         if size <= 0:
             raise ConfigError(f"{where}: must be positive, got {size}")
         return size
-    if key in {"log", "equal_axes", "identity_line", "show"}:
+    if key in {"log", "equal_axes", "show"}:
         if not isinstance(value, bool):
             raise ConfigError(f"{where}: expected true or false, got {value!r}")
         return value
@@ -277,6 +281,11 @@ def _coerce_tolerances(value: Any, where: str) -> tuple[NamedTolerance, ...]:
                 fields["reltol"] = parse_reltol(fields["reltol"])
             except ValueError as exc:
                 raise ConfigError(f"{where}[{index}]: {exc}") from None
+        # A builtin entry is forced to "info"; the dataclass default is "pass",
+        # so a TOML table that only sets ``builtin = true`` needs kind injected
+        # rather than failing the post-init check.
+        if fields.get("builtin") and "kind" not in fields:
+            fields["kind"] = "info"
         if "name" not in fields:
             fields["name"] = default_name([t.name for t in built])
         try:
@@ -288,7 +297,7 @@ def _coerce_tolerances(value: Any, where: str) -> tuple[NamedTolerance, ...]:
         require_unique_names(built)
     except ToleranceError as exc:
         raise ConfigError(f"{where}: {exc}") from None
-    return tuple(built)
+    return with_parity(tuple(built))
 
 
 EXAMPLE_TOML = """\
@@ -312,20 +321,27 @@ title = "Parity Plot"
 theme = "dark"          # dark | light
 log = false
 equal_axes = true
-identity_line = true
 nulls = "rug"           # rug | drop
 legend = "right"        # right | bottom | none
 
 # A plot may carry several specifications at once. Each is one
 # [[plot.tolerances]] table; order drives legend order and the order
 # names appear in a failure list.
-#   name    identifier (no whitespace); appears in the failure list
-#   abstol  absolute tolerance, in the data's own units (lines parallel to y = x)
-#   reltol  relative tolerance, a ratio or "10pct" for percent (wedge through origin)
-#   kind    "pass" (graded) | "info" (drawn for reference, never judged)
-#   color   a token (red, yellow, ...) or a hex value; defaulted by kind
-#   style   "lines" | "shaded"
-#   label   legend text; defaults to the spec ("±10%", "±max(2, 10%)")
+#   name           identifier (no whitespace); appears in the failure list
+#   abstol         absolute tolerance, in the data's own units (lines parallel to y = x)
+#   reltol         relative tolerance, a ratio or "10pct" for percent (wedge through origin)
+#   kind           "pass" (graded) | "info" (drawn for reference, never judged)
+#   color          a token (red, yellow, ...) or a hex value; defaulted by kind
+#   style          "lines" | "shaded"
+#   label          legend text; defaults to the spec ("±10%", "±max(2, 10%)")
+#   enabled        false hides the entry without deleting it
+#   show_in_legend false keeps the entry drawn but out of the legend
+#   builtin        true for the built-in parity line (no bounds; forced "info")
+# The built-in y = x line is added automatically; to disable it:
+#   [[plot.tolerances]]
+#   name = "parity"
+#   builtin = true
+#   enabled = false
 [[plot.tolerances]]
 name = "spec"
 reltol = 0.10           # a ratio; write "10pct" if you prefer percent

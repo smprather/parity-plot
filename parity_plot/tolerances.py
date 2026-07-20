@@ -24,6 +24,8 @@ KINDS = ("pass", "info")
 STYLES = ("lines", "shaded")
 AUTO_LABEL = "auto"
 
+PARITY_NAME = "parity"
+
 # Pass/fail limits are a warning; informational bands are not.
 DEFAULT_COLORS = {"pass": "red", "info": "yellow"}
 
@@ -43,6 +45,9 @@ class NamedTolerance:
     color: str | None = None
     style: str = "lines"
     label: str | None = None
+    enabled: bool = True
+    show_in_legend: bool = True
+    builtin: bool = False
 
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():
@@ -52,10 +57,22 @@ class NamedTolerance:
                 f"tolerance name {self.name!r} may not contain whitespace; it is an "
                 f"identifier and appears in comma-separated failure lists"
             )
-        if self.abstol is None and self.reltol is None:
-            raise ToleranceError(
-                f"tolerance {self.name!r} needs abstol or reltol (or both)"
-            )
+        if self.builtin:
+            # The parity line is a zero tolerance: requiring a bound would be
+            # absurd, and it is a reference rather than a criterion.
+            if self.kind != "info":
+                raise ToleranceError(
+                    f"builtin tolerance {self.name!r} must be kind 'info', got {self.kind!r}"
+                )
+        else:
+            if self.name == PARITY_NAME:
+                raise ToleranceError(
+                    f"{PARITY_NAME!r} is a reserved name for the built-in y = x line"
+                )
+            if self.abstol is None and self.reltol is None:
+                raise ToleranceError(
+                    f"tolerance {self.name!r} needs abstol or reltol (or both)"
+                )
         for field_name in ("abstol", "reltol"):
             value = getattr(self, field_name)
             if value is not None and value <= 0:
@@ -140,3 +157,39 @@ def failures(
 def verdict_text(failed: Sequence[str]) -> str:
     """How a verdict reads in the table and the hover."""
     return ", ".join(failed) if failed else "pass"
+
+
+def parity() -> NamedTolerance:
+    """The built-in y = x reference line.
+
+    It is a tolerance of zero: `Tolerance().half_width()` is zero everywhere, so
+    its envelope collapses onto the diagonal and it renders through the same
+    path as every other entry.
+    """
+    return NamedTolerance(
+        name=PARITY_NAME,
+        builtin=True,
+        kind="info",
+        color="green",
+        label="0% error (y = x)",
+    )
+
+
+def with_parity(tolerances: Sequence[NamedTolerance]) -> tuple[NamedTolerance, ...]:
+    """Guarantee exactly one parity entry, first, preserving any customisation."""
+    existing = next((t for t in tolerances if t.name == PARITY_NAME), None)
+    rest = [t for t in tolerances if t.name != PARITY_NAME]
+    return (existing or parity(), *rest)
+
+
+def draw_order(tolerances: Sequence[NamedTolerance]) -> tuple[NamedTolerance, ...]:
+    """Enabled entries in paint order: parity last, so nothing buries it.
+
+    List position drives the legend and the UI; this is deliberately separate,
+    because a shaded band later in the list would otherwise cover the reference.
+    """
+    live = [t for t in tolerances if t.enabled]
+    return (
+        *[t for t in live if t.name != PARITY_NAME],
+        *[t for t in live if t.name == PARITY_NAME],
+    )
