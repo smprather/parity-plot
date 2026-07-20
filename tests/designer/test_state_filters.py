@@ -7,13 +7,23 @@ from parity_plot.config import ParityConfig
 from parity_plot.data import from_sequences
 from parity_plot.designer.filters import FilterSet
 from parity_plot.designer.state import DesignerState
+from parity_plot.tolerances import NamedTolerance
 
-# Phase 1 moved abstol/reltol/band_style off PlotConfig. DesignerState.tolerance()
-# still reads plot.abstol/reltol; teaching it the list is Phase 2/3 work.
-# These tests are paused, not weakened.
-_STATE_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer state reads the tolerance list in Phase 2", strict=False
-)
+SPEC_5PCT = [NamedTolerance(name="spec", reltol=0.05)]
+
+
+def with_spec(state: DesignerState, reltol: float) -> DesignerState:
+    """Replace the config's pass/fail tolerance list with one +/-reltol spec.
+
+    Goes through ``merge`` so the built-in parity entry is preserved (merge
+    re-adds it via ``with_parity``); ``replace`` would drop it."""
+    if reltol:
+        state.config = state.config.merge(
+            plot={"tolerances": [NamedTolerance(name="spec", reltol=reltol)]}
+        )
+    else:
+        state.config = state.config.merge(plot={"tolerances": []})
+    return state
 
 
 @pytest.fixture
@@ -26,34 +36,30 @@ def state():
     return DesignerState(config=ParityConfig(), data=data)
 
 
-@_STATE_READS_THE_LIST
 def test_by_default_everything_is_visible(state):
     assert not state.filters.is_active
     assert state.visible_data().keys == state.data.keys
     assert state.counts() == (5, 5)
 
 
-@_STATE_READS_THE_LIST
-def test_tolerance_comes_from_the_config(state):
-    assert state.tolerance().reltol is None
+def test_tolerances_come_from_the_config(state):
+    # The default config carries only the built-in parity entry (informational).
+    assert [t.name for t in state.tolerances()] == ["parity"]
 
-    state.update("plot", reltol=0.05)
-    assert state.tolerance().reltol == pytest.approx(0.05)
+    with_spec(state, reltol=0.05)
+    # merge re-adds the parity entry first via with_parity.
+    assert [t.name for t in state.tolerances()] == ["parity", "spec"]
+    assert state.tolerances()[-1].reltol == pytest.approx(0.05)
 
-    state.update("plot", abstol=2.0)
-    assert state.tolerance().abstol == pytest.approx(2.0)
 
-
-@_STATE_READS_THE_LIST
 def test_filtering_narrows_the_visible_data(state):
-    state.update("plot", reltol=0.05)
+    with_spec(state, reltol=0.05)
     state.filters = FilterSet(outside_tolerance_only=True, show_unpaired=False)
 
     assert state.visible_data().keys == ["a", "c"]
     assert state.counts() == (2, 5)
 
 
-@_STATE_READS_THE_LIST
 def test_the_figure_shows_the_filtered_view(state):
     """A filtered table beside an unfiltered plot would be two answers to one
     question."""
@@ -64,9 +70,8 @@ def test_the_figure_shows_the_filtered_view(state):
     assert before != after
 
 
-@_STATE_READS_THE_LIST
 def test_the_statistics_follow_the_filter(state):
-    state.update("plot", reltol=0.05)
+    with_spec(state, reltol=0.05)
     unfiltered = state.figure()
 
     state.filters = FilterSet(outside_tolerance_only=True, show_unpaired=False)
@@ -76,14 +81,13 @@ def test_the_statistics_follow_the_filter(state):
     assert "2 paired" in filtered.layout.title.subtitle.text
 
 
-@_STATE_READS_THE_LIST
-def test_visible_records_are_judged_against_the_current_tolerance(state):
-    state.update("plot", reltol=0.05)
-    verdicts = {v.key: v.within for v in state.visible_records()}
+def test_visible_records_are_judged_against_the_current_tolerances(state):
+    with_spec(state, reltol=0.05)
+    verdicts = {v.key: v.failed for v in state.visible_records()}
 
-    assert verdicts["a"] is False
-    assert verdicts["b"] is True
-    assert verdicts["d"] is None  # unpaired, never judged
+    assert verdicts["a"] == ("spec",)   # 10% off
+    assert verdicts["b"] == ()          # 1% off, judged and passed
+    assert verdicts["d"] is None        # unpaired, never judged
 
 
 def test_filters_do_not_touch_the_config(state):
@@ -93,7 +97,6 @@ def test_filters_do_not_touch_the_config(state):
     assert state.config == before
 
 
-@_STATE_READS_THE_LIST
 def test_the_underlying_dataset_is_never_modified(state):
     original = list(state.data.keys)
     state.filters = FilterSet(show_paired=False)

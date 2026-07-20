@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from ..data import ParityData
-from ..tolerance import Tolerance
+from ..tolerances import NamedTolerance, failures, pass_fail, verdict_text
 
 PAIRED = "paired"
 MISSING_X = "missing x"
@@ -27,12 +27,31 @@ class RecordView:
     error: float | None       # y - x, undefined unless both are present
     rel_error: float | None   # error / x, undefined at x = 0
     status: str
-    within: bool | None       # None when unpaired or no tolerance was given
+    # Names of every pass/fail tolerance this record breaks, in declared order.
+    # None when the record was never judged -- unpaired, or no pass/fail
+    # criteria exist. An empty tuple means judged and passed. The two are
+    # different facts and the table shows them differently (blank vs "pass").
+    failed: tuple[str, ...] | None = None
+
+    @property
+    def verdict(self) -> str:
+        """How the verdict reads in the table and the inspector.
+
+        Blank when the record was never judged; otherwise the failing tolerance
+        names joined by ", ", or "pass" when there are none.
+        """
+        if self.failed is None:
+            return ""
+        return verdict_text(self.failed)
 
 
-def record_views(data: ParityData, tol: Tolerance | None = None) -> list[RecordView]:
+def record_views(
+    data: ParityData,
+    tolerances: Sequence[NamedTolerance] = (),
+) -> list[RecordView]:
     """Every record: paired first, then those missing y, then missing x."""
     views: list[RecordView] = []
+    criteria = pass_fail(tolerances)
 
     for key, x, y in zip(data.keys, data.x, data.y):
         error = y - x
@@ -44,7 +63,9 @@ def record_views(data: ParityData, tol: Tolerance | None = None) -> list[RecordV
                 error=error,
                 rel_error=(error / x) if x else None,
                 status=PAIRED,
-                within=tol.contains(x, y) if tol else None,
+                # None when there is nothing to judge against; an empty tuple
+                # would read as "judged and passed", which is a different fact.
+                failed=failures(tolerances, x, y) if criteria else None,
             )
         )
 
@@ -64,8 +85,8 @@ def find_record(views: Sequence[RecordView], key: str) -> RecordView | None:
 def key_from_customdata(customdata: Any) -> str | None:
     """Pull a record key out of a Plotly click payload.
 
-    The paired trace carries ``(key, diff)`` while the rug traces carry a bare
-    key, so a click handler sees both shapes and must not assume either.
+    The paired trace carries ``(key, diff, verdict)`` while the rug traces carry
+    a bare key, so a click handler sees both shapes and must not assume either.
     """
     if customdata is None:
         return None

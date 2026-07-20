@@ -8,13 +8,6 @@ from parity_plot.config import ParityConfig
 from parity_plot.data import from_sequences
 from parity_plot.designer.state import DesignerState
 
-# Phase 1 moved abstol/reltol/band_style off PlotConfig. DesignerState.tolerance()
-# still reads plot.abstol/reltol; teaching it the list is Phase 2/3 work.
-# These tests are paused, not weakened.
-_STATE_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer state reads the tolerance list in Phase 2", strict=False
-)
-
 
 @pytest.fixture
 def state() -> DesignerState:
@@ -22,7 +15,6 @@ def state() -> DesignerState:
     return DesignerState(config=ParityConfig(), data=data)
 
 
-@_STATE_READS_THE_LIST
 def test_figure_comes_from_the_cli_code_path(state):
     """The preview must be the CLI's own figure, or the two can drift."""
     from parity_plot.plot import build_figure
@@ -44,14 +36,13 @@ def test_update_reports_failure_and_keeps_the_old_value(state):
     assert "neon" in state.last_error
 
 
-@_STATE_READS_THE_LIST
 def test_an_invalid_update_never_blanks_the_plot(state):
     good = state.figure().to_dict()
     state.update("plot", theme="neon")
     assert state.figure().to_dict() == good
 
 
-def break_band_style(config: ParityConfig) -> ParityConfig:
+def break_legend(config: ParityConfig) -> ParityConfig:
     """Force a value past validation that `build_figure` will still reject.
 
     `replace` first, then mutate the *copy*: a frozen dataclass instance used as
@@ -59,32 +50,28 @@ def break_band_style(config: ParityConfig) -> ParityConfig:
     `config.plot` directly corrupts that shared default for the whole process
     and silently breaks unrelated tests later in the run.
     """
-    broken = replace(config.plot, reltol=0.1)
-    object.__setattr__(broken, "band_style", "dotted")
+    broken = replace(config.plot, legend="nonsense")
     return replace(config, plot=broken)
 
 
-@_STATE_READS_THE_LIST
 def test_a_figure_that_fails_to_build_falls_back_to_the_last_good_one(state):
     good = state.figure().to_dict()
-    state.config = break_band_style(state.config)
+    state.config = break_legend(state.config)
 
     assert state.figure().to_dict() == good
     assert state.last_error is not None
 
 
-@_STATE_READS_THE_LIST
 def test_the_first_figure_cannot_fall_back_and_raises(state):
-    state.config = break_band_style(state.config)
+    state.config = break_legend(state.config)
     with pytest.raises(ValueError):
         state.figure()
 
 
-@_STATE_READS_THE_LIST
 def test_forcing_a_broken_config_does_not_leak_into_other_configs():
     """Guards the trap the helper above exists to avoid."""
-    break_band_style(ParityConfig())
-    assert ParityConfig().plot.band_style == "lines"
+    break_legend(ParityConfig())
+    assert ParityConfig().plot.legend == "right"
 
 
 def test_none_values_are_ignored_by_update(state):

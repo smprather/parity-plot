@@ -41,7 +41,7 @@ def to_rows(views: Sequence[RecordView]) -> list[dict[str, Any]]:
             "error": _round(view.error),
             "rel_error": _round(None if view.rel_error is None else view.rel_error * 100),
             "status": view.status,
-            "verdict": _verdict(view.within),
+            "verdict": view.verdict,
         }
         for view in views
     ]
@@ -52,14 +52,3 @@ def _round(value: float | None) -> float | None:
     if value is None:
         return None
     return float(f"{value:.{_DIGITS}g}")
-
-
-def _verdict(within: bool | None) -> str:
-    """Blank when the record was never judged.
-
-    `within` is None for unpaired records and when no tolerance is set; printing
-    a verdict there would claim a result that was never assessed.
-    """
-    if within is None:
-        return ""
-    return "within" if within else "OUT"

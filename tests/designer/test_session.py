@@ -8,14 +8,6 @@ import pytest
 from parity_plot.config import ParityConfig
 from parity_plot.designer.session import Session, StaleFileError
 
-# Phase 1 made the built-in y = x line the first tolerance entry, so the default
-# config now carries a NamedTolerance. The designer's serializer has not been
-# taught to write the list yet (Phase 2/3), so any test that calls session.save
-# trips on it. Paused, not weakened.
-_SERIALIZER_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer serializer reads the tolerance list in Phase 2", strict=False
-)
-
 WIDE = """\
 id,reference,measured
 A1,10.0,11.0
@@ -70,7 +62,6 @@ def test_dirty_only_once_the_config_changes(csv):
     assert session.is_dirty(config.merge(plot={"theme": "light"}))
 
 
-@_SERIALIZER_READS_THE_LIST
 def test_save_writes_and_clears_dirty(csv, tmp_path: Path):
     session, config, _ = Session.start((csv,), None)
     edited = config.merge(plot={"theme": "light"})
@@ -89,7 +80,6 @@ def test_save_without_a_path_needs_one_from_somewhere(csv):
         session.save(config)
 
 
-@_SERIALIZER_READS_THE_LIST
 def test_save_reuses_the_loaded_path(csv, tmp_path: Path):
     cfg_path = tmp_path / "parity.toml"
     cfg_path.write_text('[plot]\ntheme = "dark"\n', encoding="utf-8")
@@ -111,7 +101,6 @@ def test_stale_when_the_file_changed_underneath(csv, tmp_path: Path):
     assert session.is_stale()
 
 
-@_SERIALIZER_READS_THE_LIST
 def test_saving_over_a_changed_file_refuses_until_forced(csv, tmp_path: Path):
     """Silently clobbering an edit made in another window loses work."""
     cfg_path = tmp_path / "parity.toml"

@@ -11,13 +11,6 @@ from parity_plot.designer.app import apply_brush
 from parity_plot.designer.filters import FilterSet
 from parity_plot.designer.state import DesignerState
 
-# Phase 1 moved abstol/reltol/band_style off PlotConfig. DesignerState.tolerance()
-# still reads plot.abstol/reltol; teaching it the list is Phase 2/3 work.
-# These tests are paused, not weakened.
-_STATE_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer state reads the tolerance list in Phase 2", strict=False
-)
-
 WIDE = (
     "id,reference,measured\n"
     "A1,10.0,11.0\n"
@@ -35,7 +28,6 @@ def state(tmp_path: Path) -> DesignerState:
     return DesignerState(config=config, data=load(config.data))
 
 
-@_STATE_READS_THE_LIST
 def test_brushing_sets_the_x_range_and_narrows_the_view(state):
     apply_brush(state, {"range": {"x": [40.0, 100.0]}})
 
@@ -57,7 +49,6 @@ def test_a_none_refresher_is_skipped(state):
     assert ran == [1]
 
 
-@_STATE_READS_THE_LIST
 def test_an_empty_selection_clears_the_brush(state):
     """Double-clicking to deselect must restore the full view, not freeze it."""
     apply_brush(state, {"range": {"x": [40.0, 100.0]}})

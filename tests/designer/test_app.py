@@ -13,24 +13,9 @@ from pathlib import Path
 import pytest
 
 from parity_plot.config import ParityConfig
-from parity_plot.data import from_sequences
 from parity_plot.designer.app import build_app
 from parity_plot.designer.session import Session
-
-# Phase 1 moved abstol/reltol/band_style off PlotConfig. The designer's state
-# and controls panel still read the three scalars; teaching them the list is
-# Phase 2/3 work. These tests are paused, not weakened.
-_DESIGNER_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer reads the tolerance list in Phase 2", strict=False
-)
-# The server test boots the real designer, whose controls panel reads
-# plot.abstol and returns HTTP 500. Unlike the others it cannot be xfailed
-# because the failing page leaves the subprocess alive and the test hangs
-# rather than raising -- so it is skipped until Phase 2 teaches controls.py.
-_SKIP_UNTIL_CONTROLS_READ_THE_LIST = pytest.mark.skip(
-    reason="designer controls read the tolerance list in Phase 2; "
-    "the 500 response leaves the server subprocess hanging"
-)
+from parity_plot.tolerances import NamedTolerance
 
 
 @pytest.fixture
@@ -47,7 +32,6 @@ def test_build_app_returns_state_wired_to_the_session(session_and_data):
     assert state.data is data
 
 
-@_DESIGNER_READS_THE_LIST
 def test_editing_through_state_changes_the_figure(session_and_data):
     session, config, data = session_and_data
     state = build_app(session, config, data)
@@ -59,18 +43,19 @@ def test_editing_through_state_changes_the_figure(session_and_data):
     assert before != after
 
 
-@_DESIGNER_READS_THE_LIST
 def test_saving_writes_what_is_on_screen(session_and_data, tmp_path: Path):
     session, config, data = session_and_data
     state = build_app(session, config, data)
-    state.update("plot", theme="light", abstol=2.0)
+    spec = NamedTolerance(name="spec", abstol=2.0)
+    state.config = state.config.merge(plot={"tolerances": [spec]})
 
     out = tmp_path / "saved.toml"
     session.save(state.config, out)
 
     reloaded = ParityConfig.from_toml(out)
-    assert reloaded.plot.theme == "light"
-    assert reloaded.plot.abstol == 2.0
+    assert reloaded.plot.theme == "dark"
+    specs = [t for t in reloaded.plot.tolerances if t.name == "spec"]
+    assert specs and specs[0].abstol == pytest.approx(2.0)
 
 
 def test_build_app_registers_a_page_without_serving(session_and_data):
@@ -89,7 +74,6 @@ def test_build_app_registers_a_page_without_serving(session_and_data):
     assert "/" in after or "/" in before  # the page route exists
 
 
-@_SKIP_UNTIL_CONTROLS_READ_THE_LIST
 def test_the_server_actually_serves_the_page(tmp_path: Path):
     """End-to-end: boot the real CLI command and talk to it over HTTP.
 

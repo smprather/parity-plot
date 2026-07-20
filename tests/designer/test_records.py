@@ -5,12 +5,14 @@ import pytest
 
 from parity_plot.data import from_sequences
 from parity_plot.designer.records import (
-    RecordView,
     find_record,
     key_from_customdata,
     record_views,
 )
-from parity_plot.tolerance import Tolerance
+from parity_plot.tolerances import NamedTolerance
+
+PASS_TOL = (NamedTolerance(name="spec", reltol=0.05),)
+INFO_TOL = (NamedTolerance(name="ref", reltol=0.05, kind="info"),)
 
 
 @pytest.fixture
@@ -42,24 +44,37 @@ def test_unpaired_records_have_no_error_to_report(data):
     assert missing_y.error is None
     assert missing_y.rel_error is None
     assert missing_y.status == "missing y"
-    assert missing_y.within is None
+    assert missing_y.failed is None
 
     missing_x = find_record(record_views(data), "c")
     assert missing_x.x is None
     assert missing_x.y == 33.0
     assert missing_x.status == "missing x"
+    assert missing_x.failed is None
 
 
 def test_tolerance_marks_records_in_and_out(data):
-    views = record_views(data, Tolerance(reltol=0.05))  # +/-5%
+    views = record_views(data, PASS_TOL)  # +/-5%
 
-    assert find_record(views, "a").within is False  # 10% off
-    assert find_record(views, "d").within is True  # 1.25% off
+    assert find_record(views, "a").failed == ("spec",)  # 10% off
+    assert find_record(views, "d").failed == ()  # 1.25% off, passed
 
 
-def test_without_a_tolerance_nothing_is_judged(data):
+def test_without_a_pass_fail_tolerance_nothing_is_judged(data):
     for view in record_views(data):
-        assert view.within is None
+        assert view.failed is None
+    # An informational tolerance is a reference, not a criterion, so it does
+    # not produce a verdict either.
+    for view in record_views(data, INFO_TOL):
+        assert view.failed is None
+
+
+def test_verdict_property_reads_the_failed_list(data):
+    views = record_views(data, PASS_TOL)
+    assert find_record(views, "a").verdict == "spec"
+    assert find_record(views, "d").verdict == "pass"
+    # Unpaired and unjudged records render blank, not "pass".
+    assert find_record(views, "b").verdict == ""
 
 
 def test_relative_error_is_undefined_at_zero():
@@ -77,13 +92,14 @@ def test_find_record_returns_none_for_an_unknown_key(data):
 @pytest.mark.parametrize(
     "customdata, expected",
     [
-        (["a1", 0.5], "a1"),          # paired trace: (key, diff)
-        (("a1", 0.5), "a1"),
-        ("a1", "a1"),                  # rug trace: bare key
+        (["a1", 0.5, "pass"], "a1"),       # paired trace: (key, diff, verdict)
+        (("a1", 0.5, "spec"), "a1"),
+        ("a1", "a1"),                       # rug trace: bare key
         ([], None),
         (None, None),
     ],
 )
 def test_key_from_customdata_handles_both_trace_shapes(customdata, expected):
-    """The paired trace carries (key, diff); the rug traces carry a bare key."""
+    """The paired trace carries (key, diff, verdict); the rug traces carry a
+    bare key."""
     assert key_from_customdata(customdata) == expected

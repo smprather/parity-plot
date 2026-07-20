@@ -1,8 +1,6 @@
 # tests/designer/test_inspector.py
 from __future__ import annotations
 
-import pytest
-
 from parity_plot.designer.inspector_helpers import describe  # see note below
 from parity_plot.designer.records import RecordView
 
@@ -33,13 +31,22 @@ def test_an_unpaired_record_says_what_is_missing():
     assert "missing y" in fields["Status"]
 
 
-def test_tolerance_verdict_appears_only_when_judged():
-    inside = RecordView("A1", 10.0, 10.2, 0.2, 0.02, "paired", True)
-    outside = RecordView("A1", 10.0, 15.0, 5.0, 0.5, "paired", False)
-    unjudged = RecordView("A1", 10.0, 10.2, 0.2, 0.02, "paired", None)
+def test_a_passed_record_says_pass():
+    inside = RecordView("A1", 10.0, 10.2, 0.2, 0.02, "paired", ())
+    assert labelled(inside)["Verdict"] == "pass"
 
-    assert labelled(inside)["Tolerance"] == "within"
-    assert labelled(outside)["Tolerance"] == "OUT"
+
+def test_a_failed_record_lists_each_broken_criterion():
+    outside = RecordView("A1", 10.0, 15.0, 5.0, 0.5, "paired", ("spec", "tight"))
+    fields = labelled(outside)
+    assert fields["spec"] == "fail"
+    assert fields["tight"] == "fail"
+    assert "Verdict" not in fields
+
+
+def test_an_unjudged_record_shows_no_verdict():
+    unjudged = RecordView("A1", 10.0, 10.2, 0.2, 0.02, "paired", None)
+    assert "Verdict" not in labelled(unjudged)
     assert "Tolerance" not in labelled(unjudged)
 
 

@@ -10,8 +10,8 @@ from parity_plot.designer.table_rows import COLUMNS, to_rows
 @pytest.fixture
 def views():
     return [
-        RecordView("a", 10.0, 11.0, 1.0, 0.1, "paired", False),
-        RecordView("b", 100.0, 101.0, 1.0, 0.01, "paired", True),
+        RecordView("a", 10.0, 11.0, 1.0, 0.1, "paired", ("spec",)),
+        RecordView("b", 100.0, 101.0, 1.0, 0.01, "paired", ()),
         RecordView("d", 70.0, None, None, None, "missing y", None),
     ]
 
@@ -59,9 +59,9 @@ def test_missing_values_are_none_not_zero(views):
 
 def test_verdict_reads_as_words(views):
     rows = {r["key"]: r for r in to_rows(views)}
-    assert rows["a"]["verdict"] == "OUT"
-    assert rows["b"]["verdict"] == "within"
-    assert rows["d"]["verdict"] == ""  # never judged, so no verdict claimed
+    assert rows["a"]["verdict"] == "spec"        # failed the "spec" tolerance
+    assert rows["b"]["verdict"] == "pass"        # judged and passed
+    assert rows["d"]["verdict"] == ""            # never judged, so no verdict claimed
 
 
 def test_status_is_carried_through(views):

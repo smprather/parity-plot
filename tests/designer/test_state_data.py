@@ -6,19 +6,14 @@ from pathlib import Path
 import pytest
 
 from parity_plot.config import ParityConfig
-from parity_plot.data import from_sequences, load
+from parity_plot.data import load
 from parity_plot.designer.state import DesignerState
-from parity_plot.tolerance import Tolerance
-
-# Phase 1 moved abstol/reltol/band_style off PlotConfig. DesignerState.tolerance()
-# still reads plot.abstol/reltol; teaching it the list is Phase 2/3 work.
-# These tests are paused, not weakened.
-_STATE_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer state reads the tolerance list in Phase 2", strict=False
-)
+from parity_plot.tolerances import NamedTolerance
 
 WIDE = "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\nA3,30.0,\n"
 OTHER = "name,golden,dut\nB1,5.0,5.5\nB2,6.0,6.6\n"
+
+WIDE_TOL = (NamedTolerance(name="spec", reltol=0.05),)
 
 
 @pytest.fixture
@@ -72,7 +67,6 @@ def test_a_missing_file_is_reported_not_raised(state, tmp_path):
     assert "not found" in state.last_error
 
 
-@_STATE_READS_THE_LIST
 def test_the_figure_follows_the_new_dataset(state, second):
     before = state.figure().to_dict()
     state.set_data_source(paths=(second,), key="name", x="golden", y="dut")
@@ -86,10 +80,11 @@ def test_selected_record_returns_the_pinned_record(state):
     assert view.x == 10.0 and view.y == 11.0
 
 
-def test_selected_record_judges_against_the_given_tolerance(state):
+def test_selected_record_judges_against_the_given_tolerances(state):
     state.selection = "A1"  # 10% off
-    assert state.selected_record(Tolerance(reltol=0.05)).within is False
-    assert state.selected_record(Tolerance(reltol=0.20)).within is True
+    assert state.selected_record(WIDE_TOL).failed == ("spec",)
+    loose = (NamedTolerance(name="loose", reltol=0.20),)
+    assert state.selected_record(loose).failed == ()
 
 
 def test_selected_record_is_none_when_nothing_is_pinned(state):

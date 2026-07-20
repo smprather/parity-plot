@@ -13,19 +13,7 @@ from parity_plot.designer.filters import FilterSet
 from parity_plot.designer.panels.table import summary_text
 from parity_plot.designer.state import DesignerState
 from parity_plot.designer.table_rows import to_rows
-
-# Phase 1 moved abstol/reltol/band_style off PlotConfig. DesignerState.tolerance()
-# still reads plot.abstol/reltol; teaching it the list is Phase 2/3 work.
-# These tests are paused, not weakened.
-_STATE_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer state reads the tolerance list in Phase 2", strict=False
-)
-# Phase 1 also made the default config carry a NamedTolerance (the parity line),
-# so any test that saves through the designer's serializer trips on it until
-# Phase 2 teaches serialize.py the list.
-_SERIALIZER_READS_THE_LIST = pytest.mark.xfail(
-    reason="designer serializer reads the tolerance list in Phase 2", strict=False
-)
+from parity_plot.tolerances import NamedTolerance
 
 WIDE = "".join(
     f"A{i},{float(i)},{float(i) * 1.02}\n" for i in range(1, 101)
@@ -40,7 +28,17 @@ def state(tmp_path: Path) -> DesignerState:
     return DesignerState(config=config, data=load(config.data))
 
 
-@_STATE_READS_THE_LIST
+def with_spec(state: DesignerState, reltol: float) -> DesignerState:
+    """Replace the config's pass/fail tolerance list with one +/-reltol spec.
+
+    Goes through ``merge`` so the built-in parity entry is preserved (merge
+    re-adds it via ``with_parity``); ``replace`` would drop it."""
+    state.config = state.config.merge(
+        plot={"tolerances": [NamedTolerance(name="spec", reltol=reltol)]}
+    )
+    return state
+
+
 def test_a_dragged_window_narrows_plot_table_and_stats_together(state):
     apply_brush(state, {"range": {"x": [40.0, 60.0]}})
 
@@ -55,7 +53,6 @@ def test_a_dragged_window_narrows_plot_table_and_stats_together(state):
     assert summary_text(*state.counts()) == "showing 21 of 100"
 
 
-@_STATE_READS_THE_LIST
 def test_the_axis_range_follows_the_brush(state):
     before = state.figure().layout.xaxis.range
     apply_brush(state, {"range": {"x": [40.0, 60.0]}})
@@ -65,7 +62,6 @@ def test_the_axis_range_follows_the_brush(state):
     assert after[1] < before[1]
 
 
-@_STATE_READS_THE_LIST
 def test_deselecting_restores_the_full_view(state):
     apply_brush(state, {"range": {"x": [40.0, 60.0]}})
     assert state.counts() == (21, 100)
@@ -77,10 +73,9 @@ def test_deselecting_restores_the_full_view(state):
     assert state.visible_data().keys == state.data.keys
 
 
-@_STATE_READS_THE_LIST
 def test_brushing_composes_with_the_failure_filter(state):
     """Two filters at once must intersect, not override each other."""
-    state.update("plot", reltol=0.01)  # the ramp is 2% high, so all fail
+    with_spec(state, reltol=0.01)  # the ramp is 2% high, so all fail
     state.filters = FilterSet(outside_tolerance_only=True)
     assert state.counts() == (100, 100)
 
@@ -90,7 +85,6 @@ def test_brushing_composes_with_the_failure_filter(state):
     assert state.counts() == (21, 100)
 
 
-@_STATE_READS_THE_LIST
 def test_rebrushing_replaces_rather_than_intersects(state):
     apply_brush(state, {"range": {"x": [10.0, 20.0]}})
     apply_brush(state, {"range": {"x": [70.0, 80.0]}})
@@ -99,7 +93,6 @@ def test_rebrushing_replaces_rather_than_intersects(state):
     assert all(70.0 <= x <= 80.0 for x in state.visible_data().x)
 
 
-@_STATE_READS_THE_LIST
 def test_brushing_an_empty_region_shows_nothing_rather_than_everything(state):
     """A window with no data in it means no data -- not a cleared filter."""
     apply_brush(state, {"range": {"x": [500.0, 600.0]}})
@@ -109,7 +102,6 @@ def test_brushing_an_empty_region_shows_nothing_rather_than_everything(state):
     assert state.figure() is not None  # still renders, just empty
 
 
-@_SERIALIZER_READS_THE_LIST
 def test_brushing_never_reaches_the_saved_config(state, tmp_path: Path):
     from parity_plot.designer.session import Session
 

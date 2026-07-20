@@ -77,7 +77,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 # lasso tools; the selection handlers below serve both.
                 plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
                 error_banner = ui.label("").classes("text-red-400 text-sm")
-                refresh_inspector = build_inspector(state, state.tolerance)
+                refresh_inspector = build_inspector(state, state.tolerances)
 
                 refresh_table = build_table(
                     state,
