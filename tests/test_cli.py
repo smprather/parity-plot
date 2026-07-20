@@ -10,16 +10,6 @@ from click.testing import CliRunner
 from parity_plot.cli import cli
 
 
-# Phase 1 of the tolerances rework moved abstol/reltol/band_style off
-# PlotConfig. cli.py still passes the three scalars through `merge`, which
-# either trips the retired-key guard (when a flag sets one) or builds a
-# PlotConfig whose attributes plot.py then cannot find. Teaching cli.py the
-# new shape is Phase 2/3 work; these tests are paused, not weakened.
-_CLI_READS_THE_LIST = pytest.mark.xfail(
-    reason="cli reads the tolerance list in Phase 2", strict=False
-)
-
-
 @pytest.fixture
 def run(tmp_path: Path):
     runner = CliRunner()
@@ -54,7 +44,6 @@ def test_example_is_reproducible_for_a_seed(run, tmp_path):
     assert (a / "example.csv").read_text() == (b / "example.csv").read_text()
 
 
-@_CLI_READS_THE_LIST
 def test_example_plots_by_default(run, tmp_path):
     """Running `example` with no flags should show you something."""
     out = tmp_path / "parity.html"
@@ -66,7 +55,7 @@ def test_example_plots_by_default(run, tmp_path):
     assert "plot" in result.output
 
 
-@pytest.mark.parametrize("command", ["plot", pytest.param("example", marks=_CLI_READS_THE_LIST)])
+@pytest.mark.parametrize("command", ["plot", "example"])
 def test_browser_opens_by_default(run, wide_csv, tmp_path, no_real_browser, command):
     """The whole point of `example`: run it and see a plot, no extra flag."""
     out = tmp_path / "p.html"
@@ -81,7 +70,7 @@ def test_browser_opens_by_default(run, wide_csv, tmp_path, no_real_browser, comm
     assert no_real_browser == [out.resolve().as_uri()]
 
 
-@pytest.mark.parametrize("command", ["plot", pytest.param("example", marks=_CLI_READS_THE_LIST)])
+@pytest.mark.parametrize("command", ["plot", "example"])
 def test_no_open_browser_suppresses_the_launch(run, wide_csv, tmp_path, no_real_browser, command):
     out = tmp_path / "p.html"
     if command == "plot":
@@ -113,7 +102,7 @@ def test_example_can_skip_the_plot(run, tmp_path):
     assert not out.exists()
 
 
-@pytest.mark.parametrize("command", ["plot", pytest.param("example", marks=_CLI_READS_THE_LIST)])
+@pytest.mark.parametrize("command", ["plot", "example"])
 def test_output_suffix_is_never_ignored(run, wide_csv, tmp_path, command):
     """`-o plot.svg` must not write HTML into a .svg file."""
     out = tmp_path / "p.svg"
@@ -160,7 +149,6 @@ def _tolerance_labels(html: Path) -> set[str]:
     return set(found)
 
 
-@_CLI_READS_THE_LIST
 def test_example_draws_a_10_percent_wedge_by_default(run, tmp_path):
     out = tmp_path / "p.html"
     assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
@@ -168,7 +156,6 @@ def test_example_draws_a_10_percent_wedge_by_default(run, tmp_path):
     assert _tolerance_labels(out) == {"\u00b110%"}
 
 
-@_CLI_READS_THE_LIST
 def test_example_tolerance_can_be_overridden_and_switched_off(run, tmp_path):
     out = tmp_path / "p.html"
     base = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
@@ -194,7 +181,6 @@ def test_example_abstol_alone_gives_parallel_limits(run, tmp_path):
     assert _tolerance_labels(out) == set()
 
 
-@_CLI_READS_THE_LIST
 def test_example_both_tolerances_give_a_funnel(run, tmp_path):
     out = tmp_path / "p.html"
     assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
