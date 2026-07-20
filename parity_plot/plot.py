@@ -418,15 +418,16 @@ class ExportError(RuntimeError):
 def _export_hint(fmt: str, exc: Exception) -> str:
     """Turn an export failure into the remedy that actually applies.
 
-    Kaleido and its headless browser are separate installs, and each failure
-    reports itself in terms of the other, so the naive message sends people to
-    reinstall something they already have.
+    Kaleido is a required dependency, so it is always present; what goes missing
+    is the headless browser it renders into. Kaleido's own error reports itself
+    in terms of the other, which would otherwise send people to reinstall
+    something they already have.
     """
     detail = str(exc).lower()
     if isinstance(exc, ImportError) or "kaleido is not installed" in detail:
         return (
-            f"writing {fmt} needs the kaleido engine, which is an optional "
-            f"extra. Install it with:  uv sync --extra static"
+            f"writing {fmt} needs the kaleido engine, which should have been "
+            f"installed with parity-plot. Try:  uv sync"
         )
     if "chrome" in detail:
         return (

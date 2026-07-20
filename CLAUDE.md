@@ -8,7 +8,7 @@ Managed by [uv](https://docs.astral.sh/uv/) — no `pip`, no `requirements.txt`.
 
 ```bash
 uv sync                          # runtime + dev deps
-uv sync --extra static           # adds kaleido for png/svg/pdf export
+uv sync --extra designer         # adds nicegui + tomlkit for the designer
 uv run pytest                    # full suite
 uv run pytest tests/test_data.py::test_wide_sorts_records_into_paired_and_unpaired
 uv run parity-plot example       # regenerate data/ sample CSVs, plot, open browser
@@ -21,10 +21,12 @@ uv run parity-plot plot data/example.csv --no-open-browser -o out.html
 `webbrowser.open`; without it the suite would spawn a window per CLI test. Use
 that fixture's list to assert on open behaviour rather than patching locally.
 
-Static image export additionally needs a headless Chrome (`uv run
-plotly_get_chrome`); kaleido and the browser are separate installs and each
-failure reports itself in terms of the other. `plot.py::_export_hint` exists to
-untangle that — keep it accurate if the export path changes.
+Static image export needs a headless Chrome (`uv run plotly_get_chrome`).
+kaleido itself is a required dependency, so the browser is the only piece that
+actually goes missing — but kaleido's own error reports itself in terms of the
+other, which would send people to reinstall what they already have.
+`plot.py::_export_hint` untangles that; keep it accurate if the export path
+changes.
 
 **Python floor is `>=3.14`**, matching the sibling `time-plot` project. Nothing in
 the code needs 3.14 specifically — `tomllib` only wants 3.11 — so the floor is a

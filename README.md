@@ -16,11 +16,11 @@ the other.
 
 ```bash
 uv sync                    # runtime + dev
-uv sync --extra static     # adds kaleido, for png/svg/pdf export
+uv sync --extra designer   # adds the interactive designer
 ```
 
-Static export also needs a headless Chrome for kaleido to render into:
-`uv run plotly_get_chrome`. HTML output needs none of that.
+png/svg/pdf export additionally needs a headless Chrome for kaleido to render
+into: `uv run plotly_get_chrome`. HTML output needs none of that.
 
 ## Quick start
 
