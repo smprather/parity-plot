@@ -32,17 +32,18 @@ def test_either_bound_alone_is_enough(kwargs):
     assert NamedTolerance(name="t1", **kwargs)
 
 
-@pytest.mark.parametrize("name", ["has space", "tab\there", "line\nbreak", " leading", "trailing "])
-def test_names_may_not_contain_whitespace(name):
-    """The name is an identifier: it appears in configs, CLI flags and the
-    table's comma-separated failure list, where a space would be ambiguous."""
-    with pytest.raises(ToleranceError, match="whitespace"):
-        NamedTolerance(name=name, abstol=1.0)
+@pytest.mark.parametrize("name", ["upper spec", "customer limit", "±3σ", "spec (2026)"])
+def test_names_are_freeform(name):
+    """A name is display-facing as much as an identifier, so spaces and
+    punctuation are allowed -- only emptiness is rejected."""
+    assert NamedTolerance(name=name, abstol=1.0).name == name
 
 
 def test_names_may_not_be_empty():
     with pytest.raises(ToleranceError, match="name"):
         NamedTolerance(name="", abstol=1.0)
+    with pytest.raises(ToleranceError, match="name"):
+        NamedTolerance(name="   ", abstol=1.0)
 
 
 @pytest.mark.parametrize("kwargs", [{"abstol": 0}, {"abstol": -1}, {"reltol": 0}, {"reltol": -0.5}])

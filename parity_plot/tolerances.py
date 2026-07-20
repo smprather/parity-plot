@@ -52,11 +52,10 @@ class NamedTolerance:
     def __post_init__(self) -> None:
         if not self.name or not self.name.strip():
             raise ToleranceError("a tolerance needs a name")
-        if any(character.isspace() for character in self.name):
-            raise ToleranceError(
-                f"tolerance name {self.name!r} may not contain whitespace; it is an "
-                f"identifier and appears in comma-separated failure lists"
-            )
+        # Names are freeform: spaces and punctuation are fine. A comma is the
+        # only awkward character -- it separates entries in the table's failure
+        # list and in a --tol spec -- but it is not forbidden, just avoided in
+        # the auto-generated names.
         if self.builtin:
             # The parity line is a zero tolerance: requiring a bound would be
             # absurd, and it is a reference rather than a criterion.

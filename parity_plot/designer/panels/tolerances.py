@@ -90,7 +90,6 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                 ui.label(f"Edit {tol.name}").classes("text-base font-medium")
 
                 name_in = ui.input("Name", value=tol.name).classes("w-full")
-                name_in.props(f'hint="No spaces{" · locked" if locked else ""}"')
                 if locked:
                     name_in.props("readonly")
 
@@ -99,6 +98,10 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                     {"auto": "Auto label", "manual": "Manual label"},
                     value="auto" if auto else "manual",
                 ).props("dense")
+                # In auto mode the derived legend text is shown read-only, so the
+                # user sees what "auto" will produce; in manual mode they type it.
+                auto_preview = ui.label("").classes("text-sm opacity-70 italic")
+                auto_preview.bind_visibility_from(label_mode, "value", value="auto")
                 label_in = ui.input(
                     "Legend label",
                     value="" if auto else tol.label,
@@ -107,16 +110,17 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
 
                 with ui.row().classes("w-full gap-2 no-wrap items-center"):
                     abstol_in = ui.number("abstol", value=tol.abstol, format="%.4g").classes("grow")
-                    # reltol is entered as a percentage by default -- a % checkbox
-                    # rather than the `10pct` text spelling. Unchecking it reads
-                    # the field as a bare ratio, and the field converts on toggle
-                    # so the underlying value never changes just from flipping it.
-                    pct_in = ui.checkbox("%", value=True).props("dense").tooltip(
-                        "Enter reltol as a percentage"
-                    )
+                    # Left to right: the reltol value, then the % checkbox, then a
+                    # "%" label. Checked (default) the field is a percentage;
+                    # unchecked it is a bare ratio. Toggling converts in place so
+                    # the underlying value never changes just from flipping it.
                     reltol_in = ui.number(
                         "reltol", value=_reltol_display(tol, percent=True), format="%.4g"
                     ).classes("grow")
+                    pct_in = ui.checkbox(value=True).props("dense").tooltip(
+                        "Enter reltol as a percentage"
+                    )
+                    ui.label("%").classes("text-sm")
 
                     def _convert(e) -> None:
                         if reltol_in.value is None:
@@ -130,9 +134,22 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                     reltol_in.props("readonly")
                     pct_in.props("disable")
 
-                kind_sel = ui.select(list(KINDS), value=tol.kind, label="Kind").classes("w-full")
+                kind_sel = ui.select(
+                    {"pass": "pass-fail", "info": "info"}, value=tol.kind, label="Kind",
+                ).classes("w-full")
                 if locked:
                     kind_sel.props("readonly").tooltip("The parity line is informational")
+
+                def _refresh_auto_preview() -> None:
+                    """Show what an auto label would read, from the fields as they
+                    stand -- so editing a bound updates the preview live."""
+                    reltol = _reltol_from_field(reltol_in.value, pct_in.value)
+                    abstol = float(abstol_in.value) if abstol_in.value not in (None, "") else None
+                    auto_preview.text = _auto_label_preview(abstol, reltol)
+
+                for widget in (abstol_in, reltol_in, pct_in):
+                    widget.on_value_change(lambda _: _refresh_auto_preview())
+                _refresh_auto_preview()
 
                 with ui.row().classes("w-full gap-2 no-wrap"):
                     color_sel = ui.select(
@@ -170,6 +187,19 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
             dialog.open()
 
         render()
+
+
+def _auto_label_preview(abstol: float | None, reltol: float | None) -> str:
+    """The legend text an auto label would produce for these bounds.
+
+    Mirrors what the plot will draw, by asking the real Tolerance for its label;
+    falls back to a hint when neither bound is set yet.
+    """
+    from ...tolerance import Tolerance
+
+    if abstol is None and reltol is None:
+        return "(set a bound to see the auto label)"
+    return Tolerance(abstol=abstol, reltol=reltol).label()
 
 
 def _reltol_display(tol: NamedTolerance, percent: bool) -> float | None:
