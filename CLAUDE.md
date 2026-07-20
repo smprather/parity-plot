@@ -66,20 +66,31 @@ silently stop starting at the same value no matter what range you set.
 `constrain="domain"` shrinks the plot area instead. All three are asserted in
 `tests/test_plot.py`.
 
-**Tolerances carry units and must not be conflated.** `abstol` is in the data's
-own units (lines parallel to `y = x`); `reltol` is a dimensionless **ratio**
-(a wedge through the origin) — `0.1` is a tenth, and percent must be written
-explicitly as `10pct`, parsed by `tolerance.parse_reltol` which both the CLI
-param type and the TOML coercion call. A bare `10` means ten times the reading,
-never 10%. With both, the half-width is `max(abstol, reltol·|x|)` —
-the *looser* spec governs, so the envelope is parallel near the origin and
-flares past the crossover at `abstol/reltol`. `tolerance.py` owns all of this;
-`Tolerance.vertices()` deliberately emits a point at the crossover and at the
-origin so the kinks are exact rather than sampled. On a log axis the straight
-segments become curves, so `log_envelope()` samples densely instead.
+**A plot carries a *list* of named tolerances**, `PlotConfig.tolerances`. Two
+layers: `tolerance.Tolerance` (singular) owns all the geometry — `half_width`,
+`contains`, `label`, `envelope`, `log_envelope`, the `max(abstol, reltol·|x|)`
+rule; `tolerances.NamedTolerance` wraps one with a name, kind, colour, style and
+label. **Never reimplement the geometry** — `NamedTolerance.tolerance` delegates.
 
-**Colour carries meaning here:** green is the zero-error identity line, red is
-the tolerance limit, both solid. Don't swap them for palette reasons.
+- `abstol` is in the data's own units (lines parallel to `y = x`); `reltol` is a
+  dimensionless **ratio** (a wedge through the origin). `0.1` is a tenth, percent
+  is `10pct`, a bare `10` is ten times the reading. `tolerance.parse_reltol` is
+  the one parser, used by the CLI, the TOML coercion and the designer.
+- `name` is a stable identifier, `label` is display text (may auto-follow the
+  spec) — nothing keys off a label, so it is free to change.
+- `kind="info"` tolerances are drawn but never judged; only `pass` entries can
+  be failed. `failures()` / `verdict_text()` produce the per-record verdict.
+- The **parity line is the first, built-in entry** (`tolerances.parity()`): a
+  zero-width tolerance whose envelope collapses onto `y = x`. `builtin=True`
+  relaxes the "needs a bound" rule for it alone. `with_parity()` guarantees it
+  leads the list preserving customisation; `draw_order()` paints it **last** so
+  no shaded band buries it. It replaced the old `_add_identity` and
+  `identity_line` flag entirely.
+
+**Colour is a per-theme token**, resolved by `Theme.resolve_color`. Tokens are
+curated to sit apart from the three reserved shades — `identity` (green markers
+the y=x line), `marker` (blue points), `rug` (amber ticks). Hex passes through.
+Default: red for pass/fail, yellow for info.
 
 **Legend position is per-plot** (`PlotConfig.legend`: `right` (default) /
 `bottom` / `none`), and each position carries its own margins in

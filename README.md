@@ -33,7 +33,7 @@ commands open the result by default; pass `--no-open-browser` to suppress that,
 or `--no-plot` to skip rendering entirely.
 
 ```bash
-uv run parity-plot plot data/example.csv --theme light --tolerance 0.1
+uv run parity-plot plot data/example.csv --theme light --reltol 10pct
 uv run parity-plot plot data/example.csv --no-open-browser -o quiet.html
 ```
 
@@ -45,7 +45,7 @@ The generator is adjustable, so you can watch the plot respond:
 uv run parity-plot example --noise 0.25 --bias 0.10    # sloppy and skewed
 uv run parity-plot example --noise 0.01 --outliers 0   # tight and clean
 uv run parity-plot example --missing-x 100 --missing-y 100   # lots of unpaired records
-uv run parity-plot example --x-min 1 --x-max 1e5 --plot --tolerance 0.1
+uv run parity-plot example --x-min 1 --x-max 1e5 --plot
 ```
 
 | Flag | Meaning | Default |
@@ -59,7 +59,7 @@ uv run parity-plot example --x-min 1 --x-max 1e5 --plot --tolerance 0.1
 | `--outliers` | Fraction thrown far off the line | 0.01 |
 | `--missing-y` / `--missing-x` / `--both-null` | Unpaired record counts | 1.5% / 1.2% / 0.2% of `-n` |
 
-Fractions rather than percentages, matching `--tolerance`. The null counts
+Fractions rather than percentages. The null counts
 scale with `-n` so a small `-n` still works; pass explicit counts to override.
 
 ## Unpaired records
@@ -124,7 +124,8 @@ from parity_plot import load_wide, compute_stats, build_figure, save
 from parity_plot.config import PlotConfig, OutputConfig
 
 data = load_wide("data/example.csv", "reference", "measured", "id")
-stats = compute_stats(data, tolerance=[0.1])
+from parity_plot.tolerances import NamedTolerance
+stats = compute_stats(data, [NamedTolerance(name="spec", reltol=0.1)])
 save(build_figure(data, PlotConfig(theme="light")), OutputConfig(path="out.html"))
 ```
 
@@ -142,11 +143,16 @@ key = "id"
 
 [plot]
 theme = "dark"                 # dark | light
-reltol = 0.10                  # a ratio; "10pct" also accepted
-# abstol = 2.0                 # absolute tolerance, in the data's units
-band_style = "lines"           # lines | shaded
 nulls = "rug"                  # rug | drop
 legend = "right"               # right | bottom | none
+
+[[plot.tolerances]]            # a list; repeat the block for more
+name = "spec"
+reltol = 0.10                  # a ratio; "10pct" also accepted
+# abstol = 2.0                 # and/or an absolute bound
+kind = "pass"                  # pass | info
+color = "red"
+style = "lines"                # lines | shaded
 
 [output]
 path = "parity.html"
@@ -160,39 +166,46 @@ uv run parity-plot plot -c parity.toml --theme light   # flag overrides the file
 
 ## Tolerances
 
-Tolerances carry units, and the two kinds behave differently on purpose:
+A plot carries a **list** of named tolerances — a customer limit, a tighter
+internal target, a reference band nobody is graded against. Each has:
 
-| Flag | Units | Shape |
-| --- | --- | --- |
-| `--abstol` | the data's own units | lines **parallel** to `y = x`, a fixed offset |
-| `--reltol` | dimensionless ratio | a **wedge** through the origin, widening with magnitude |
+| Attribute | Meaning |
+| --- | --- |
+| `name` | stable identifier, freeform |
+| `abstol` | absolute tolerance, in the data's units — lines **parallel** to `y = x` |
+| `reltol` | relative tolerance, a ratio (`0.1`) or `10pct` — a **wedge** through the origin |
+| `kind` | `pass` (a criterion) or `info` (drawn for reference, never judged) |
+| `color` | a token (`red`, `blue`, `green`, …) or a hex value |
+| `style` | `lines` or `shaded` |
+| `label` | legend text; `auto` derives it from the spec |
 
-`--reltol` is a true ratio: `0.1` means a tenth. Percent must be stated, never
-assumed — `10pct` (or `10%`) also means a tenth, while a bare `10` means ten
-times the reading. Guessing the unit is the mistake a tolerance spec exists to
-prevent.
+At least one of `abstol`/`reltol` is required. Given both, the permitted
+deviation is the **looser** of the two — `max(abstol, reltol·|x|)` — so the
+envelope runs parallel near the origin and flares into a funnel past the
+crossover, drawn as real geometry rather than sampled.
 
-Given both, the permitted deviation at any point is the **looser** of the two:
+The **parity line** (`y = x`) is itself the first, built-in tolerance: a
+zero-width `info` entry named `parity`, drawn green, that cannot be deleted.
 
-```
-half-width(x) = max(abstol, reltol · |x|)
-```
-
-so the envelope runs parallel near the origin, where the absolute floor
-dominates, then flares into a funnel past the crossover at
-`|x| = abstol / reltol`. That kink is drawn as real geometry, not
-approximated by sampling.
+Each pass/fail tolerance judges every paired point. A point's verdict — `pass`,
+or the names of the limits it failed — appears in the hover, the record table,
+and the inspector. The statistics box reports the pass rate per criterion
+(`within spec: 85.5%`); info tolerances are omitted.
 
 ```bash
-uv run parity-plot plot data.csv --abstol 2                    # parallel limits
-uv run parity-plot plot data.csv --reltol 0.1                  # wedge
-uv run parity-plot plot data.csv --reltol 10pct                # the same thing
-uv run parity-plot plot data.csv --abstol 2 --reltol 10pct     # funnel
-uv run parity-plot plot data.csv --reltol 10pct --band-style shaded
+# repeatable --tol, each a key=value spec
+uv run parity-plot plot data.csv \
+    --tol 'name=spec,reltol=10pct' \
+    --tol 'name=tight,abstol=2,kind=info,color=blue,style=shaded'
+
+# --abstol / --reltol stay as shorthand for a single tolerance
+uv run parity-plot plot data.csv --abstol 2 --reltol 10pct
 ```
 
-The statistics box reports the fraction of paired points inside the envelope,
-labelled with the spec it scored against (`within ±max(2, 10%): 98.0%`).
+`--reltol` is a true ratio: `0.1` is a tenth, `10pct` says the same in percent,
+and a bare `10` means ten times the reading — the unit is stated, never guessed.
+The whole list also round-trips through `parity.toml` as `[[plot.tolerances]]`
+tables, and is editable live in the designer.
 
 ## Interactive designer
 
@@ -260,7 +273,7 @@ Filters are exploration state and are never written to the config. A saved
 
 Both axes always share one range and are pinned to a 1:1 pixel scale, so
 `y = x` runs at a true 45°. It is drawn as a **solid green** line — exact
-agreement — while tolerance limits are **solid red**. Unpaired records appear
+agreement. Unpaired records appear
 as rug ticks straddling the zero line.
 
 The legend sits on the right by default; `--legend bottom` or `--legend none`
