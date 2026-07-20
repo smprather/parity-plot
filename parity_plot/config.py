@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from .tolerance import parse_reltol
+from .tolerances import (
+    NamedTolerance,
+    ToleranceError,
+    default_name,
+    require_unique_names,
+)
 
 DEFAULT_NA_VALUES: tuple[str, ...] = (
     "",
@@ -62,13 +68,9 @@ class PlotConfig:
     log: bool = False
     equal_axes: bool = True
     identity_line: bool = True
-    # Tolerances carry units. `abstol` is in the data's own units and draws
-    # lines parallel to y = x; `reltol` is a dimensionless ratio and draws a
-    # wedge through the origin. Given both, the envelope is the looser of the
-    # two at each point, which flares from parallel into a funnel.
-    abstol: float | None = None
-    reltol: float | None = None
-    band_style: str = "lines"
+    # A plot may carry several specifications at once. Order is meaningful: it
+    # drives legend order and the order names appear in a failure list.
+    tolerances: tuple[NamedTolerance, ...] = ()
     nulls: str = "rug"
     legend: str = "right"
 
@@ -157,6 +159,17 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
     ``base`` supplies the starting values when applying a partial override;
     without it the dataclass defaults are used.
     """
+    if cls is PlotConfig:
+        retired = [key for key in RETIRED_PLOT_KEYS if key in raw]
+        if retired:
+            raise ConfigError(
+                f"{source}: {', '.join(retired)} moved into a tolerance list in 0.2.0. "
+                f"Replace with:\n"
+                f"  [[plot.tolerances]]\n"
+                f'  name = "tolerance1"\n'
+                f"  abstol = 2.0        # and/or reltol\n"
+                f'  kind = "pass"       # pass | info\n'
+            )
     known = {f.name for f in fields(cls)}
     unknown = set(raw) - known
     if unknown:
@@ -171,15 +184,16 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
 _TUPLE_OF_PATH = {"paths"}
 _TUPLE_OF_STR = {"na_values", "metrics"}
 _PATH = {"path"}
-_POSITIVE_FLOAT = {"abstol"}
+_POSITIVE_FLOAT: set[str] = set()
 _RELTOL = {"reltol"}
 _CHOICES = {
     "theme": THEMES,
     "nulls": NULL_MODES,
     "format": OUTPUT_FORMATS,
     "legend": LEGEND_POSITIONS,
-    "band_style": BAND_STYLES,
 }
+
+RETIRED_PLOT_KEYS = ("abstol", "reltol", "band_style")
 
 
 def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
@@ -205,6 +219,8 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         return number
     if key in _PATH:
         return Path(value)
+    if key == "tolerances":
+        return _coerce_tolerances(value, where)
     if key in _CHOICES:
         if value not in _CHOICES[key]:
             raise ConfigError(
@@ -229,6 +245,52 @@ def _as_sequence(value: Any, where: str) -> list[Any]:
     return list(value)
 
 
+def _coerce_tolerances(value: Any, where: str) -> tuple[NamedTolerance, ...]:
+    """Build the tolerance list from TOML tables or ready-made objects.
+
+    The designer hands over NamedTolerance instances directly; TOML hands over
+    dicts. Both arrive here so validation happens in exactly one place.
+    """
+    if isinstance(value, NamedTolerance):
+        value = [value]
+    if isinstance(value, str) or not hasattr(value, "__iter__"):
+        raise ConfigError(f"{where}: expected a list of tolerance tables")
+
+    built: list[NamedTolerance] = []
+    known = set(NamedTolerance.__dataclass_fields__)
+    for index, entry in enumerate(value, start=1):
+        if isinstance(entry, NamedTolerance):
+            built.append(entry)
+            continue
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{where}[{index}]: expected a table, got {entry!r}")
+
+        unknown = set(entry) - known
+        if unknown:
+            raise ConfigError(
+                f"{where}[{index}]: unknown key(s) {sorted(unknown)}; "
+                f"valid keys are {sorted(known)}"
+            )
+        fields = dict(entry)
+        if "reltol" in fields and fields["reltol"] is not None:
+            try:
+                fields["reltol"] = parse_reltol(fields["reltol"])
+            except ValueError as exc:
+                raise ConfigError(f"{where}[{index}]: {exc}") from None
+        if "name" not in fields:
+            fields["name"] = default_name([t.name for t in built])
+        try:
+            built.append(NamedTolerance(**fields))
+        except ToleranceError as exc:
+            raise ConfigError(f"{where}[{index}]: {exc}") from None
+
+    try:
+        require_unique_names(built)
+    except ToleranceError as exc:
+        raise ConfigError(f"{where}: {exc}") from None
+    return tuple(built)
+
+
 EXAMPLE_TOML = """\
 # parity-plot configuration
 # Every key here can also be overridden by the matching CLI flag.
@@ -251,15 +313,22 @@ theme = "dark"          # dark | light
 log = false
 equal_axes = true
 identity_line = true
-# Tolerances carry units. Give either, or both for a funnel.
-# abstol is in the data's own units and draws lines parallel to y = x.
-# reltol_pct is a percentage and draws a wedge through the origin.
-# With both, the envelope is the looser of the two at each point.
-# abstol = 2.0
-reltol = 0.10           # a ratio; write "10pct" if you prefer percent
-band_style = "lines"    # lines | shaded
 nulls = "rug"           # rug | drop
 legend = "right"        # right | bottom | none
+
+# A plot may carry several specifications at once. Each is one
+# [[plot.tolerances]] table; order drives legend order and the order
+# names appear in a failure list.
+#   name    identifier (no whitespace); appears in the failure list
+#   abstol  absolute tolerance, in the data's own units (lines parallel to y = x)
+#   reltol  relative tolerance, a ratio or "10pct" for percent (wedge through origin)
+#   kind    "pass" (graded) | "info" (drawn for reference, never judged)
+#   color   a token (red, yellow, ...) or a hex value; defaulted by kind
+#   style   "lines" | "shaded"
+#   label   legend text; defaults to the spec ("±10%", "±max(2, 10%)")
+[[plot.tolerances]]
+name = "spec"
+reltol = 0.10           # a ratio; write "10pct" if you prefer percent
 
 [stats]
 show = true

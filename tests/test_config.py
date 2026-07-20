@@ -24,9 +24,12 @@ def test_round_trip_of_the_shipped_example(tmp_path: Path):
     assert cfg.data.paths == (Path("data/example.csv"),)
     assert cfg.data.x == "reference"
     assert cfg.plot.theme == "dark"
-    assert cfg.plot.reltol == 0.10
-    assert cfg.plot.abstol is None  # commented out in the shipped example
-    assert cfg.plot.band_style == "lines"
+    tols = cfg.plot.tolerances
+    assert len(tols) == 1
+    assert tols[0].name == "spec"
+    assert tols[0].reltol == pytest.approx(0.10)
+    assert tols[0].abstol is None  # commented out in the shipped example
+    assert tols[0].style == "lines"  # the default
     assert cfg.stats.metrics == ("n", "r2", "rmse", "mae", "bias")
     assert cfg.output.width == 900
 
@@ -56,14 +59,14 @@ def test_invalid_choices_are_rejected():
 def test_invalid_scalars_are_rejected():
     with pytest.raises(ConfigError, match="positive"):
         ParityConfig.from_dict({"output": {"width": 0}})
-    with pytest.raises(ConfigError, match="must be positive"):
+    # The retired v0.1.0 scalar tolerance keys are rejected with a teaching
+    # message pointing at [[plot.tolerances]] (see test_config_tolerances.py).
+    with pytest.raises(ConfigError, match="moved into a tolerance list"):
         ParityConfig.from_dict({"plot": {"abstol": -0.2}})
-    with pytest.raises(ConfigError, match="must be positive"):
+    with pytest.raises(ConfigError, match="moved into a tolerance list"):
         ParityConfig.from_dict({"plot": {"reltol": 0}})
     with pytest.raises(ConfigError, match="true or false"):
         ParityConfig.from_dict({"plot": {"log": "yes"}})
-    with pytest.raises(ConfigError, match="not one of"):
-        ParityConfig.from_dict({"plot": {"band_style": "dotted"}})
 
 
 def test_overrides_beat_the_file_but_none_is_ignored():

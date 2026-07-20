@@ -1,0 +1,103 @@
+tests/designer/test_app.py::test_editing_through_state_changes_the_figure - designer reads the tolerance list in Phase 2
+tests/designer/test_app.py::test_saving_writes_what_is_on_screen - designer reads the tolerance list in Phase 2
+tests/designer/test_brush_integration.py::test_a_dragged_window_narrows_plot_table_and_stats_together - designer state reads the tolerance list in Phase 2
+tests/designer/test_brush_integration.py::test_brushing_an_empty_region_shows_nothing_rather_than_everything - designer state reads the tolerance list in Phase 2
+tests/designer/test_brush_integration.py::test_brushing_composes_with_the_failure_filter - designer state reads the tolerance list in Phase 2
+tests/designer/test_brush_integration.py::test_deselecting_restores_the_full_view - designer state reads the tolerance list in Phase 2
+tests/designer/test_brush_integration.py::test_rebrushing_replaces_rather_than_intersects - designer state reads the tolerance list in Phase 2
+tests/designer/test_brush_integration.py::test_the_axis_range_follows_the_brush - designer state reads the tolerance list in Phase 2
+tests/designer/test_brush_wiring.py::test_an_empty_selection_clears_the_brush - designer state reads the tolerance list in Phase 2
+tests/designer/test_brush_wiring.py::test_brushing_sets_the_x_range_and_narrows_the_view - designer state reads the tolerance list in Phase 2
+tests/designer/test_controls.py::test_every_plot_setting_has_a_control - designer controls read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_a_saved_config_reloads_into_an_identical_designer - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits0] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits1] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits2] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits3] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits4] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits5] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits6] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits7] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_designer_preview_equals_what_the_cli_renders[edits8] - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_stats_settings_also_survive_the_round_trip - designer and cli read the tolerance list in Phase 2
+tests/designer/test_golden_wysiwyg.py::test_the_cli_plot_command_renders_a_designer_config - designer and cli read the tolerance list in Phase 2
+tests/designer/test_phase2_integration.py::test_a_bad_mapping_leaves_everything_as_it_was - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase2_integration.py::test_a_failed_load_error_survives_the_next_redraw - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase2_integration.py::test_the_figure_and_the_inspector_agree_about_the_data - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase3_integration.py::test_a_filtered_out_record_is_still_inspectable - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase3_integration.py::test_brushing_an_x_window_narrows_both - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase3_integration.py::test_clearing_the_filters_restores_everything - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase3_integration.py::test_filter_to_failures_then_sort_by_error - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase3_integration.py::test_selecting_from_the_table_and_the_plot_agree - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase3_integration.py::test_the_plot_shows_exactly_what_the_table_lists - designer state reads the tolerance list in Phase 2
+tests/designer/test_phase3_integration.py::test_unfiltered_designer_still_matches_the_cli - designer state reads the tolerance list in Phase 2
+tests/designer/test_serialize.py::test_changed_values_are_written - designer serializer reads the tolerance list in Phase 2
+tests/designer/test_serialize.py::test_none_values_are_removed_not_written_as_null - designer serializer reads the tolerance list in Phase 2
+tests/designer/test_serialize.py::test_round_trips_through_the_normal_loader - designer serializer reads the tolerance list in Phase 2
+tests/designer/test_serialize.py::test_untouched_values_keep_their_original_spelling - designer serializer reads the tolerance list in Phase 2
+tests/designer/test_state_data.py::test_the_figure_follows_the_new_dataset - designer state reads the tolerance list in Phase 2
+tests/designer/test_state_filters.py::test_by_default_everything_is_visible - designer state reads the tolerance list in Phase 2
+tests/designer/test_state_filters.py::test_filtering_narrows_the_visible_data - designer state reads the tolerance list in Phase 2
+tests/designer/test_state_filters.py::test_the_figure_shows_the_filtered_view - designer state reads the tolerance list in Phase 2
+tests/designer/test_state_filters.py::test_the_statistics_follow_the_filter - designer state reads the tolerance list in Phase 2
+tests/designer/test_state_filters.py::test_the_underlying_dataset_is_never_modified - designer state reads the tolerance list in Phase 2
+tests/designer/test_state_filters.py::test_tolerance_comes_from_the_config - designer state reads the tolerance list in Phase 2
+tests/designer/test_state_filters.py::test_visible_records_are_judged_against_the_current_tolerance - designer state reads the tolerance list in Phase 2
+tests/designer/test_state.py::test_a_figure_that_fails_to_build_falls_back_to_the_last_good_one - designer state reads the tolerance list in Phase 2
+tests/designer/test_state.py::test_an_invalid_update_never_blanks_the_plot - designer state reads the tolerance list in Phase 2
+tests/designer/test_state.py::test_figure_comes_from_the_cli_code_path - designer state reads the tolerance list in Phase 2
+tests/designer/test_state.py::test_forcing_a_broken_config_does_not_leak_into_other_configs - designer state reads the tolerance list in Phase 2
+tests/designer/test_state.py::test_the_first_figure_cannot_fall_back_and_raises - designer state reads the tolerance list in Phase 2
+tests/test_cli.py::test_browser_opens_by_default[example] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_browser_opens_by_default[plot] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_config_supplies_input_and_flags_override_it - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_abstol_alone_gives_parallel_limits - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_both_tolerances_give_a_funnel - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_draws_a_10_percent_wedge_by_default - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_plots_by_default - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_tolerance_can_be_overridden_and_switched_off - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_no_open_browser_suppresses_the_launch[example] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_no_open_browser_suppresses_the_launch[plot] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_output_suffix_is_never_ignored[example] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_output_suffix_is_never_ignored[plot] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_plot_infers_the_format_from_the_output_suffix - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_plot_joins_two_files - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_plot_renders_from_a_wide_file - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_plot_still_draws_no_limits_unless_asked - cli reads the tolerance list in Phase 2
+tests/test_plot.py::test_absolute_tolerance_draws_lines_parallel_to_the_identity - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_axes_are_locked_to_45_degrees - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_axes_keep_their_range_when_the_drawing_area_is_not_square - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_axis_range_covers_unpaired_values - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_both_themes_build_and_apply_their_template[dark] - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_both_themes_build_and_apply_their_template[light] - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_constrain_is_dropped_with_equal_axes_off - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_drop_mode_omits_the_rugs_but_still_counts_them - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_each_legend_position_reserves_its_own_margin[bottom] - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_each_legend_position_reserves_its_own_margin[none] - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_each_legend_position_reserves_its_own_margin[right] - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_empty_data_still_builds - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_equal_axes_can_be_switched_off - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_funnel_puts_a_vertex_exactly_at_the_crossover - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_funnel_takes_whichever_tolerance_is_looser - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_identity_line_can_be_switched_off - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_identity_line_is_solid - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_identity_line_spans_the_full_range - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_legend_can_be_hidden - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_legend_can_move_to_the_bottom - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_legend_sits_on_the_right_by_default - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_log_mode_drops_non_positive_values_and_warns - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_log_mode_places_the_identity_line_in_data_space - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_no_tolerance_draws_no_limits - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_public_api_accepts_sequences_and_paths - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_relative_tolerance_draws_a_wedge_through_the_origin - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_rug_ticks_avoid_zero_on_a_log_axis - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_rug_ticks_fall_back_to_the_floor_when_zero_is_off_plot - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_rug_ticks_sit_on_zero_when_zero_is_in_range - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_rug_traces_carry_every_unpaired_record - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_save_writes_html_and_creates_parent_dirs - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_shaded_band_style_fills_between_the_limits - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_stats_box_is_optional - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_subtitle_reports_every_null_category - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_tolerance_limits_are_lines_not_shading_by_default - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_unknown_band_style_is_rejected - plot reads the tolerance list in Phase 2
+tests/test_plot.py::test_unknown_legend_position_is_rejected - plot reads the tolerance list in Phase 2

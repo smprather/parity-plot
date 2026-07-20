@@ -8,6 +8,28 @@
 
 **Tech Stack:** Python ≥3.14, Plotly 6.9, pytest 9.
 
+## Addendum — the parity entry (decided mid-phase, implemented as Task 4)
+
+The `y = x` line becomes the first entry in the tolerance list rather than a separate
+feature. A zero tolerance *is* the identity line — `Tolerance(abstol=0).half_width()` is
+zero everywhere, so its envelope collapses onto the diagonal — which means `_add_identity`
+can be deleted and parity renders through the same path as everything else.
+
+| Decision | Choice |
+| --- | --- |
+| Modelling | `builtin: bool = False`. Parity sets it True: bounds optional, `kind` forced to `info`, undeletable and partly locked in the UI |
+| Validation | The "at least one positive bound" rule applies only when `not builtin`, so a zero-width *user* tolerance stays rejected |
+| Z-order | List position governs legend order and the UI; parity is **drawn last** so no shaded band can bury the reference |
+| `show_in_legend` | Defaults on for parity, matching how it renders today |
+
+Two further attributes join every tolerance:
+
+- `enabled: bool = True` — a checkbox column in the list. This **replaces**
+  `PlotConfig.identity_line`, which retires alongside the other scalars.
+- `show_in_legend: bool = True` — keeps the legend readable once several tolerances exist.
+
+`identity_line` therefore joins `abstol`/`reltol`/`band_style` in the retired-key error.
+
 ## Global Constraints
 
 - **Never reimplement tolerance geometry.** `NamedTolerance.tolerance` returns a `Tolerance`; `half_width`, `contains`, `label`, `envelope`, `log_envelope` and the `max(abstol, reltol·|x|)` rule all stay in `tolerance.py`.
@@ -824,5 +846,277 @@ rather than deleting them, and report which ones you marked.
 
 Run: `.venv/bin/python -m pytest -q`
 Expected: green, with the Phase 2 renderers xfailed. Report the xfail count.
+
+- [ ] **Step 6: Stop. Do not commit.**
+
+---
+
+### Task 4: The parity entry, `enabled`, and `show_in_legend`
+
+Layers the addendum onto Tasks 1 and 3. Adds three attributes, makes the parity entry a
+guaranteed first element, and retires `PlotConfig.identity_line`.
+
+**Files:**
+- Modify: `parity_plot/tolerances.py` (add fields, branch validation, add `PARITY`/`with_parity`)
+- Modify: `parity_plot/config.py` (retire `identity_line`; guarantee parity leads the list)
+- Test: `tests/test_parity_entry.py`
+
+**Interfaces produced:**
+- `NamedTolerance.builtin: bool = False` · `.enabled: bool = True` · `.show_in_legend: bool = True`
+- `tolerances.PARITY_NAME = "parity"` · `tolerances.parity() -> NamedTolerance`
+- `tolerances.with_parity(tolerances) -> tuple[NamedTolerance, ...]` — parity first, exactly once
+- `tolerances.draw_order(tolerances) -> tuple[NamedTolerance, ...]` — enabled only, parity last
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+# tests/test_parity_entry.py
+from __future__ import annotations
+
+from dataclasses import replace
+
+import pytest
+
+from parity_plot.config import ConfigError, ParityConfig
+from parity_plot.tolerances import (
+    PARITY_NAME,
+    NamedTolerance,
+    ToleranceError,
+    draw_order,
+    failures,
+    parity,
+    with_parity,
+)
+
+
+def test_parity_needs_no_bounds():
+    """A zero tolerance is the identity line; requiring a bound would be absurd."""
+    entry = parity()
+    assert entry.name == PARITY_NAME
+    assert entry.builtin
+    assert entry.abstol is None and entry.reltol is None
+
+
+def test_a_normal_tolerance_still_needs_a_bound():
+    """Relaxing the rule for parity must not relax it for everyone."""
+    with pytest.raises(ToleranceError, match="abstol or reltol"):
+        NamedTolerance(name="oops")
+
+
+def test_parity_is_informational_and_never_judged():
+    assert parity().kind == "info"
+    assert not parity().is_pass_fail
+    assert failures([parity()], 1.0, 999.0) == ()
+
+
+def test_parity_is_green_by_default():
+    assert parity().color_token == "green"
+
+
+def test_parity_shows_in_the_legend_by_default():
+    assert parity().show_in_legend
+
+
+def test_tolerances_are_enabled_by_default():
+    assert parity().enabled
+    assert NamedTolerance(name="t1", abstol=1.0).enabled
+
+
+def test_with_parity_prepends_it_when_absent():
+    tols = (NamedTolerance(name="spec", reltol=0.1),)
+    assert [t.name for t in with_parity(tols)] == [PARITY_NAME, "spec"]
+
+
+def test_with_parity_does_not_duplicate_an_existing_one():
+    tols = (parity(), NamedTolerance(name="spec", reltol=0.1))
+    assert [t.name for t in with_parity(tols)] == [PARITY_NAME, "spec"]
+
+
+def test_with_parity_moves_a_stray_parity_entry_to_the_front():
+    tols = (NamedTolerance(name="spec", reltol=0.1), parity())
+    assert [t.name for t in with_parity(tols)] == [PARITY_NAME, "spec"]
+
+
+def test_with_parity_preserves_a_customised_parity_entry():
+    """Disabling it, or recolouring it, must survive the normalisation."""
+    custom = replace(parity(), enabled=False, color="grey")
+    result = with_parity((NamedTolerance(name="spec", reltol=0.1), custom))
+    assert result[0].enabled is False
+    assert result[0].color_token == "grey"
+
+
+def test_draw_order_puts_parity_last_so_nothing_buries_it():
+    """List position drives the legend; z-order is separate."""
+    tols = with_parity((
+        NamedTolerance(name="spec", reltol=0.1, style="shaded"),
+        NamedTolerance(name="tight", abstol=1.0),
+    ))
+    assert [t.name for t in tols] == [PARITY_NAME, "spec", "tight"]
+    assert [t.name for t in draw_order(tols)] == ["spec", "tight", PARITY_NAME]
+
+
+def test_draw_order_omits_disabled_entries():
+    tols = (
+        replace(parity(), enabled=False),
+        NamedTolerance(name="spec", reltol=0.1),
+        NamedTolerance(name="off", abstol=1.0, enabled=False),
+    )
+    assert [t.name for t in draw_order(tols)] == ["spec"]
+
+
+def test_a_user_tolerance_may_not_claim_the_parity_name():
+    with pytest.raises(ToleranceError, match="reserved"):
+        NamedTolerance(name=PARITY_NAME, abstol=1.0)
+
+
+def test_a_builtin_entry_is_forced_informational():
+    with pytest.raises(ToleranceError, match="info"):
+        NamedTolerance(name=PARITY_NAME, builtin=True, kind="pass")
+
+
+def test_config_gains_parity_automatically(tmp_path):
+    """Even a config that never mentions it gets the reference line."""
+    path = tmp_path / "p.toml"
+    path.write_text('[[plot.tolerances]]\nname = "spec"\nreltol = 0.1\n', encoding="utf-8")
+    tols = ParityConfig.from_toml(path).plot.tolerances
+    assert [t.name for t in tols] == [PARITY_NAME, "spec"]
+
+
+def test_an_empty_config_still_has_parity():
+    assert [t.name for t in ParityConfig().plot.tolerances] == [PARITY_NAME]
+
+
+def test_parity_can_be_disabled_from_config(tmp_path):
+    """This is what replaces the old identity_line = false."""
+    path = tmp_path / "p.toml"
+    path.write_text(
+        '[[plot.tolerances]]\nname = "parity"\nbuiltin = true\nenabled = false\n',
+        encoding="utf-8",
+    )
+    tols = ParityConfig.from_toml(path).plot.tolerances
+    assert tols[0].name == PARITY_NAME
+    assert tols[0].enabled is False
+
+
+def test_identity_line_is_a_retired_key(tmp_path):
+    path = tmp_path / "p.toml"
+    path.write_text("[plot]\nidentity_line = false\n", encoding="utf-8")
+    with pytest.raises(ConfigError) as exc:
+        ParityConfig.from_toml(path)
+    assert "identity_line" in str(exc.value)
+    assert "enabled" in str(exc.value)
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `.venv/bin/python -m pytest tests/test_parity_entry.py -v`
+Expected: FAIL — `ImportError: cannot import name 'PARITY_NAME'`
+
+- [ ] **Step 3: Extend `parity_plot/tolerances.py`**
+
+Add the three fields to `NamedTolerance`, after `label`:
+
+```python
+    enabled: bool = True
+    show_in_legend: bool = True
+    builtin: bool = False
+```
+
+Add near the constants:
+
+```python
+PARITY_NAME = "parity"
+```
+
+Rework `__post_init__`'s bound checks so the requirement is conditional, and add the two
+new rules. Replace the "at least one bound" block with:
+
+```python
+        if self.builtin:
+            # The parity line is a zero tolerance: requiring a bound would be
+            # absurd, and it is a reference rather than a criterion.
+            if self.kind != "info":
+                raise ToleranceError(
+                    f"builtin tolerance {self.name!r} must be kind 'info', got {self.kind!r}"
+                )
+        else:
+            if self.name == PARITY_NAME:
+                raise ToleranceError(
+                    f"{PARITY_NAME!r} is a reserved name for the built-in y = x line"
+                )
+            if self.abstol is None and self.reltol is None:
+                raise ToleranceError(
+                    f"tolerance {self.name!r} needs abstol or reltol (or both)"
+                )
+```
+
+Keep the positive-value loop as it is — it only fires on values that were supplied.
+
+Add at module level:
+
+```python
+def parity() -> NamedTolerance:
+    """The built-in y = x reference line.
+
+    It is a tolerance of zero: `Tolerance().half_width()` is zero everywhere, so
+    its envelope collapses onto the diagonal and it renders through the same
+    path as every other entry.
+    """
+    return NamedTolerance(
+        name=PARITY_NAME,
+        builtin=True,
+        kind="info",
+        color="green",
+        label="0% error (y = x)",
+    )
+
+
+def with_parity(tolerances: Sequence[NamedTolerance]) -> tuple[NamedTolerance, ...]:
+    """Guarantee exactly one parity entry, first, preserving any customisation."""
+    existing = next((t for t in tolerances if t.name == PARITY_NAME), None)
+    rest = [t for t in tolerances if t.name != PARITY_NAME]
+    return (existing or parity(), *rest)
+
+
+def draw_order(tolerances: Sequence[NamedTolerance]) -> tuple[NamedTolerance, ...]:
+    """Enabled entries in paint order: parity last, so nothing buries it.
+
+    List position drives the legend and the UI; this is deliberately separate,
+    because a shaded band later in the list would otherwise cover the reference.
+    """
+    live = [t for t in tolerances if t.enabled]
+    return (
+        *[t for t in live if t.name != PARITY_NAME],
+        *[t for t in live if t.name == PARITY_NAME],
+    )
+```
+
+- [ ] **Step 4: Extend `parity_plot/config.py`**
+
+Add `"identity_line"` to `RETIRED_PLOT_KEYS`, and extend that error's guidance:
+
+```python
+                f"  enabled = false     # replaces identity_line for the parity entry\n"
+```
+
+At the end of `_coerce_tolerances`, before returning, normalise:
+
+```python
+    return with_parity(tuple(built))
+```
+
+importing `with_parity` alongside the others. Also make `PlotConfig.tolerances` default to
+the parity entry rather than an empty tuple:
+
+```python
+    tolerances: tuple[NamedTolerance, ...] = field(default_factory=lambda: (parity(),))
+```
+
+- [ ] **Step 5: Run and reconcile**
+
+Run: `.venv/bin/python -m pytest tests/test_parity_entry.py -v` → all pass.
+Then `.venv/bin/python -m pytest -q`. Task 3's config tests asserting an empty default or
+an exact tolerance tuple now see the parity entry — update those expectations, and report
+which you changed.
 
 - [ ] **Step 6: Stop. Do not commit.**
