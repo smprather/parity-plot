@@ -132,6 +132,28 @@ never index into it directly.
 `build_inspector` takes the tolerance as a **callable**, since the user can change it
 after the panel is built and the verdict must follow.
 
+**Filters never reach the config.** `FilterSet` lives on `DesignerState`, not on
+`ParityConfig`. A config encoding a temporary view would render differently from
+what the CLI produces, breaking the guarantee `test_golden_wysiwyg.py` protects;
+a test asserts no filter vocabulary appears in a saved TOML.
+
+**A default `FilterSet` must be a no-op.** `figure()` renders `visible_data()`, so
+an unfiltered designer that altered the data at all would fail the golden tests.
+If they ever go red, suspect `filters.py` — not the golden tests.
+
+`outside_tolerance_only` says nothing about unpaired records, which were never
+judged and so cannot be outside a spec; `show_unpaired` governs those separately.
+`selected_record` reads the **full** dataset, not the filtered one, so filtering
+out a pinned record does not blank the inspector on what you clicked.
+
+`table_rows.to_rows` keeps values numeric and rounds them rather than formatting
+to strings: the table exists to sort by error magnitude, and strings sort
+lexically so "9" lands above "100".
+
+**Selection has exactly one owner.** Both the plot click and the table row route
+through `app.select_record`; two writers would drift and leave the views
+highlighting different records.
+
 **Testing the UI:** `nicegui.testing.plugin` imports selenium at module scope and
 breaks collection for the whole suite; don't register it. The headless `user`
 fixture also expects a module-level app (`nicegui_main_file`), which `build_app`

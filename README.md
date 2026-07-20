@@ -220,6 +220,21 @@ Click any point — including a rug tick for an unpaired record — to inspect i
 the **Inspector**: both values, the signed and relative error, and whether it
 passes the tolerance currently set. Change the tolerance and the verdict follows.
 
+The **table** below the plot lists every visible record — reference, measured,
+signed error, error percent, status and verdict — and sorts by any column, so
+"which parts are furthest out of spec" is one click. Selecting a row highlights
+the point, and clicking a point highlights the row; both routes write through one
+selection so they cannot disagree.
+
+Two switches narrow the plot and the table together: **Failures only** keeps the
+paired records outside the current tolerance, and **Include unpaired** governs
+records missing a measurement. The count beside them reads `showing 14 of 1,000`
+whenever anything is hidden — a filtered view that looked unfiltered would invite
+the wrong conclusion about the data.
+
+Filters are exploration state and are never written to the config. A saved
+`parity.toml` describes the plot, not whatever you were looking at.
+
 | Flag | Meaning |
 | --- | --- |
 | `-c/--config` | TOML to open and save back to |
