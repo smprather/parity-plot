@@ -2,7 +2,12 @@ __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
+.ruff_cache/
 *.egg-info/
+
+# build artifacts
+dist/
+build/
 
 # generated example data and rendered plots
 data/
