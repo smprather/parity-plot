@@ -5,12 +5,18 @@ import math
 import pytest
 
 from parity_plot.data import ParityData, Unpaired
-from parity_plot.tolerance import Tolerance
+from parity_plot.tolerances import NamedTolerance
 from parity_plot.stats import compute, format_lines, summarize_nulls
 
 
 def make(x, y, **kwargs):
     return ParityData(keys=[str(i) for i in range(len(x))], x=list(x), y=list(y), **kwargs)
+
+
+def tol(**kwargs):
+    """A pass/fail NamedTolerance named ``t`` by default."""
+    kwargs.setdefault("name", "t")
+    return NamedTolerance(**kwargs)
 
 
 def test_perfect_agreement():
@@ -54,38 +60,37 @@ def test_pearson_is_none_when_a_series_is_constant():
 
 
 def test_fewer_than_two_points_yields_counts_only():
-    stats = compute(make([1.0], [1.0]), Tolerance(reltol=0.10))
+    stats = compute(make([1.0], [1.0]), (tol(reltol=0.10),))
     assert stats.n_paired == 1
     assert stats.rmse is None and stats.r2 is None
-    assert stats.within is None
-    assert stats.tolerance_label == "±10%"
+    assert stats.within == {}
 
 
 def test_relative_tolerance_fraction():
     # relative errors: 0%, 5%, 20%  ->  two of three inside +/-10%
-    stats = compute(make([100.0] * 3, [100.0, 105.0, 120.0]), Tolerance(reltol=0.10))
-    assert stats.within == pytest.approx(2 / 3)
+    stats = compute(make([100.0] * 3, [100.0, 105.0, 120.0]), (tol(reltol=0.10),))
+    assert stats.within["t"] == pytest.approx(2 / 3)
 
 
 def test_absolute_tolerance_fraction():
     """abstol is in the data's units, so it does not scale with magnitude."""
-    stats = compute(make([1.0, 100.0], [2.5, 101.5]), Tolerance(abstol=2.0))
-    assert stats.within == pytest.approx(1.0)  # errors of 1.5 both inside +/-2
+    stats = compute(make([1.0, 100.0], [2.5, 101.5]), (tol(abstol=2.0),))
+    assert stats.within["t"] == pytest.approx(1.0)  # errors of 1.5 both inside +/-2
 
-    stats = compute(make([1.0, 100.0], [4.0, 101.0]), Tolerance(abstol=2.0))
-    assert stats.within == pytest.approx(0.5)  # 3.0 is out, 1.0 is in
+    stats = compute(make([1.0, 100.0], [4.0, 101.0]), (tol(abstol=2.0),))
+    assert stats.within["t"] == pytest.approx(0.5)  # 3.0 is out, 1.0 is in
 
 
 def test_funnel_scores_against_whichever_spec_is_looser():
     """Below the crossover the absolute floor governs; above it the relative."""
-    tol = Tolerance(abstol=2.0, reltol=0.10)  # crossover at |x| = 20
+    t = tol(abstol=2.0, reltol=0.10)  # crossover at |x| = 20
 
     # x=1: relative allows 0.1, absolute allows 2.0 -> the looser (2.0) wins.
-    assert compute(make([1.0, 1.0], [2.5, 2.5]), tol).within == pytest.approx(1.0)
+    assert compute(make([1.0, 1.0], [2.5, 2.5]), (t,)).within["t"] == pytest.approx(1.0)
     # x=100: absolute allows 2.0, relative allows 10.0 -> relative wins.
-    assert compute(make([100.0, 100.0], [105.0, 105.0]), tol).within == pytest.approx(1.0)
+    assert compute(make([100.0, 100.0], [105.0, 105.0]), (t,)).within["t"] == pytest.approx(1.0)
     # x=100 with an error of 12 exceeds both.
-    assert compute(make([100.0, 100.0], [112.0, 112.0]), tol).within == pytest.approx(0.0)
+    assert compute(make([100.0, 100.0], [112.0, 112.0]), (t,)).within["t"] == pytest.approx(0.0)
 
 
 def test_counts_carry_the_unpaired_records():
@@ -124,17 +129,46 @@ def test_unpaired_records_do_not_affect_the_metrics():
 
 
 def test_format_lines_skips_unknown_metrics_and_renders_tolerances():
-    stats = compute(make([10.0, 20.0], [11.0, 19.0]), Tolerance(reltol=0.10))
+    stats = compute(make([10.0, 20.0], [11.0, 19.0]), (tol(reltol=0.10),))
     lines = format_lines(stats, ("n", "rmse", "not_a_metric"))
     assert lines[0] == "n: 2"
     assert any(line.startswith("RMSE:") for line in lines)
     assert not any("not_a_metric" in line for line in lines)
-    assert any("within ±10%" in line for line in lines)
+    assert any("within t: " in line for line in lines)
 
 
 def test_no_tolerance_means_no_tolerance_line():
     lines = format_lines(compute(make([10.0, 20.0], [11.0, 19.0])), ("n",))
     assert not any("within" in line for line in lines)
+
+
+def test_within_is_keyed_by_tolerance_name():
+    """Each pass/fail entry gets its own line, keyed by name not label."""
+    t10 = tol(name="tight", reltol=0.10)
+    t20 = tol(name="loose", reltol=0.20)
+    # errors of 15%: outside 10%, inside 20%
+    stats = compute(make([100.0, 100.0], [115.0, 115.0]), (t10, t20))
+    assert stats.within["tight"] == pytest.approx(0.0)
+    assert stats.within["loose"] == pytest.approx(1.0)
+
+
+def test_info_tolerances_are_not_judged():
+    """An informational entry is a reference, not a criterion -- reporting a
+    'within' share for one would imply it was a pass/fail threshold."""
+    info = tol(name="band", reltol=0.10, kind="info")
+    pass_ = tol(name="crit", reltol=0.10)
+    stats = compute(make([100.0, 100.0], [105.0, 120.0]), (info, pass_))
+    assert "band" not in stats.within
+    assert "crit" in stats.within
+
+
+def test_format_lines_emits_one_row_per_criterion():
+    t10 = tol(name="tight", reltol=0.10)
+    t20 = tol(name="loose", reltol=0.20)
+    stats = compute(make([100.0, 100.0], [115.0, 115.0]), (t10, t20))
+    lines = format_lines(stats, ("n",))
+    within_lines = [ln for ln in lines if ln.startswith("within ")]
+    assert within_lines == ["within tight: 0.0%", "within loose: 100.0%"]
 
 
 def test_summarize_nulls_mentions_only_what_is_present():

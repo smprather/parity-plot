@@ -4,6 +4,10 @@ The defining property of a parity plot is that ``y = x`` runs at a true 45
 degrees. That requires two things together: a single range shared by both axes,
 and ``scaleanchor`` locking their pixel scales. Either one alone lets the
 identity line drift off the diagonal, so both are asserted in the tests.
+
+The identity line is the built-in ``parity`` tolerance -- a zero-width entry
+whose envelope collapses onto ``y = x`` -- so it renders through the same path
+as every other tolerance.
 """
 
 from __future__ import annotations
@@ -12,6 +16,7 @@ import math
 import warnings
 from dataclasses import replace
 from pathlib import Path
+from typing import Sequence
 
 import plotly.graph_objects as go
 
@@ -19,7 +24,12 @@ from . import stats as stats_mod
 from . import themes
 from .config import OutputConfig, PlotConfig, StatsConfig
 from .data import ParityData, Unpaired
-from .tolerance import Tolerance
+from .tolerances import (
+    NamedTolerance,
+    draw_order,
+    failures,
+    verdict_text,
+)
 
 # Above this many points, WebGL rendering keeps the figure interactive.
 _WEBGL_THRESHOLD = 5_000
@@ -55,16 +65,12 @@ def build_figure(
     if plot.log:
         data = _drop_non_positive(data)
 
-    tol = Tolerance(abstol=plot.abstol, reltol=plot.reltol)
-    summary = stats_mod.compute(data, tol)
+    summary = stats_mod.compute(data, plot.tolerances)
     lo, hi = _axis_range(data, log=plot.log)
 
     fig = go.Figure()
-    if tol:
-        _add_tolerance(fig, tol, lo, hi, plot.log, plot.band_style, theme)
-    if plot.identity_line:
-        _add_identity(fig, lo, hi, plot.log, theme)
-    _add_paired(fig, data, theme)
+    _add_tolerances(fig, plot.tolerances, lo, hi, plot.log, theme)
+    _add_paired(fig, data, plot.tolerances, theme)
     if plot.nulls == "rug":
         _add_rugs(fig, data, lo, hi, plot.log, theme)
 
@@ -141,57 +147,62 @@ def _rug_baseline(lo: float, hi: float, log: bool) -> float:
     return 10**lo if log else lo
 
 
-def _line_endpoints(lo: float, hi: float, log: bool) -> list[float]:
-    """Endpoints in data space; on a log axis the range is in exponents."""
-    return [10**lo, 10**hi] if log else [lo, hi]
-
-
-def _add_identity(
-    fig: go.Figure, lo: float, hi: float, log: bool, theme: themes.Theme
-) -> None:
-    """The zero-error reference: solid, so it reads as exact agreement."""
-    ends = _line_endpoints(lo, hi, log)
-    fig.add_trace(
-        go.Scatter(
-            x=ends,
-            y=ends,
-            mode="lines",
-            name="0% error (y = x)",
-            line=dict(color=theme.identity, width=2),
-            hoverinfo="skip",
-        )
-    )
-
-
-def _add_tolerance(
+def _add_tolerances(
     fig: go.Figure,
-    tol: Tolerance,
+    tolerances: Sequence[NamedTolerance],
     lo: float,
     hi: float,
     log: bool,
-    band_style: str,
     theme: themes.Theme,
 ) -> None:
-    """Draw the tolerance envelope as a pair of limit lines.
+    """Draw every enabled tolerance, parity last so nothing buries it."""
+    for tol in draw_order(tolerances):
+        _add_one_tolerance(fig, tol, lo, hi, log, theme)
+
+
+def _add_one_tolerance(
+    fig: go.Figure,
+    tol: NamedTolerance,
+    lo: float,
+    hi: float,
+    log: bool,
+    theme: themes.Theme,
+) -> None:
+    """Draw one tolerance envelope, or a single line when it is zero-width.
 
     Straight segments in linear space curve on a log axis, so the log case is
-    sampled densely rather than drawn vertex to vertex.
+    sampled densely rather than drawn vertex to vertex. The parity entry is a
+    zero-width tolerance whose envelope collapses onto ``y = x``; drawing both
+    edges would stack two identical traces and double its legend entry, so that
+    case renders a single line instead.
     """
-    if band_style not in ("lines", "shaded"):
-        raise ValueError(
-            f"unknown band style {band_style!r}; expected 'lines' or 'shaded'"
-        )
-
+    geometry = tol.tolerance
     if log:
-        xs, upper, lower = tol.log_envelope(lo, hi)
+        xs, upper, lower = geometry.log_envelope(lo, hi)
     else:
-        xs, upper, lower = tol.envelope(lo, hi)
+        xs, upper, lower = geometry.envelope(lo, hi)
     if not xs:
         return
 
-    label = tol.label()
-    shaded = band_style == "shaded"
-    line = dict(color=theme.tolerance, width=1.6)
+    colour = theme.resolve_color(tol.color_token)
+    shaded = tol.style == "shaded"
+    line = dict(color=colour, width=2 if tol.builtin else 1.6)
+
+    # A zero-width tolerance (the parity line) has upper == lower, so drawing
+    # both would stack two identical traces and double the legend entry.
+    if upper == lower:
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=upper,
+                mode="lines",
+                name=tol.display_label,
+                line=line,
+                showlegend=tol.show_in_legend,
+                hoverinfo="skip",
+            )
+        )
+        return
 
     # The lower limit is drawn first so the shaded variant can fill up to it.
     fig.add_trace(
@@ -199,10 +210,10 @@ def _add_tolerance(
             x=xs,
             y=lower,
             mode="lines",
-            name=label,
-            legendgroup="tolerance",
+            name=tol.display_label,
+            legendgroup=tol.name,
             line=dict(width=0) if shaded else line,
-            showlegend=not shaded,
+            showlegend=tol.show_in_legend and not shaded,
             hoverinfo="skip",
         )
     )
@@ -211,27 +222,33 @@ def _add_tolerance(
             x=xs,
             y=upper,
             mode="lines",
-            name=label,
-            legendgroup="tolerance",
+            name=tol.display_label,
+            legendgroup=tol.name,
             line=dict(width=0) if shaded else line,
             fill="tonexty" if shaded else None,
-            fillcolor=theme.band_fill if shaded else None,
-            showlegend=shaded,
+            fillcolor=theme.band_fill_for(tol.color_token) if shaded else None,
+            showlegend=tol.show_in_legend and shaded,
             hoverinfo="skip",
         )
     )
 
 
-def _add_paired(fig: go.Figure, data: ParityData, theme: themes.Theme) -> None:
+def _add_paired(
+    fig: go.Figure,
+    data: ParityData,
+    tolerances: Sequence[NamedTolerance],
+    theme: themes.Theme,
+) -> None:
     scatter = go.Scattergl if data.n_paired > _WEBGL_THRESHOLD else go.Scatter
     diffs = [yi - xi for xi, yi in zip(data.x, data.y)]
+    verdicts = [verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)]
     fig.add_trace(
         scatter(
             x=data.x,
             y=data.y,
             mode="markers",
             name=f"paired (n={data.n_paired:,})",
-            customdata=list(zip(data.keys, diffs)),
+            customdata=list(zip(data.keys, diffs, verdicts)),
             marker=dict(
                 color=theme.marker,
                 opacity=theme.marker_opacity,
@@ -242,7 +259,8 @@ def _add_paired(fig: go.Figure, data: ParityData, theme: themes.Theme) -> None:
                 "<b>%{customdata[0]}</b><br>"
                 f"{data.x_label}: %{{x:.4g}}<br>"
                 f"{data.y_label}: %{{y:.4g}}<br>"
-                "difference: %{customdata[1]:+.4g}<extra></extra>"
+                "difference: %{customdata[1]:+.4g}<br>"
+                "%{customdata[2]}<extra></extra>"
             ),
         )
     )

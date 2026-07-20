@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 from .data import ParityData
-from .tolerance import Tolerance
+from .tolerances import NamedTolerance, pass_fail
 
 METRIC_LABELS = {
     "n": "n",
@@ -37,17 +37,20 @@ class Stats:
     mae: float | None = None
     bias: float | None = None
     max_abs_err: float | None = None
-    # Fraction of paired points inside the tolerance envelope, with the spec
-    # that was scored against ("+/-max(2, 10%)") kept alongside for labelling.
-    within: float | None = None
-    tolerance_label: str = ""
+    # Fraction of paired points inside each pass/fail tolerance envelope,
+    # keyed by tolerance name. Informational entries are references, not
+    # criteria -- reporting a "within" share for one would imply it was a
+    # pass/fail threshold, so they are deliberately absent.
+    within: dict[str, float] = field(default_factory=dict)
 
     @property
     def n(self) -> int:
         return self.n_paired
 
 
-def compute(data: ParityData, tolerance: Tolerance | None = None) -> Stats:
+def compute(
+    data: ParityData, tolerances: Sequence[NamedTolerance] = ()
+) -> Stats:
     """Summarise how well the two datasets agree.
 
     ``r2`` is measured about the identity line, not about a least-squares fit.
@@ -62,10 +65,8 @@ def compute(data: ParityData, tolerance: Tolerance | None = None) -> Stats:
         "n_missing_y": len(data.missing_y),
         "n_dropped": data.n_dropped,
     }
-    tolerance = tolerance or Tolerance()
-    label = tolerance.label()
     if len(x) < 2:
-        return Stats(**counts, tolerance_label=label)
+        return Stats(**counts)
 
     residuals = [yi - xi for xi, yi in zip(x, y)]
     n = len(residuals)
@@ -81,8 +82,9 @@ def compute(data: ParityData, tolerance: Tolerance | None = None) -> Stats:
         mae=sum(abs(r) for r in residuals) / n,
         bias=sum(residuals) / n,
         max_abs_err=max(abs(r) for r in residuals),
-        within=_within(x, y, tolerance) if tolerance else None,
-        tolerance_label=label,
+        within={
+            tol.name: _within(x, y, tol) for tol in pass_fail(tolerances)
+        },
     )
 
 
@@ -97,7 +99,7 @@ def _pearson(x: Sequence[float], y: Sequence[float]) -> float | None:
     return sum(a * b for a, b in zip(dx, dy)) / denom
 
 
-def _within(x: Sequence[float], y: Sequence[float], tol: Tolerance) -> float:
+def _within(x: Sequence[float], y: Sequence[float], tol: NamedTolerance) -> float:
     """Fraction of paired points inside the tolerance envelope."""
     return sum(1 for xi, yi in zip(x, y) if tol.contains(xi, yi)) / len(x)
 
@@ -110,9 +112,8 @@ def format_lines(stats: Stats, metrics: Sequence[str]) -> list[str]:
             continue
         value = getattr(stats, name)
         lines.append(f"{METRIC_LABELS[name]}: {_fmt(value)}")
-    if stats.tolerance_label:
-        share = "n/a" if stats.within is None else f"{stats.within:.1%}"
-        lines.append(f"within {stats.tolerance_label}: {share}")
+    for name, share in stats.within.items():
+        lines.append(f"within {name}: {share:.1%}")
     return lines
 
 
