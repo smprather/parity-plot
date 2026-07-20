@@ -42,7 +42,7 @@ def test_an_invalid_update_never_blanks_the_plot(state):
     assert state.figure().to_dict() == good
 
 
-def break_band_style(config: ParityConfig) -> ParityConfig:
+def break_legend(config: ParityConfig) -> ParityConfig:
     """Force a value past validation that `build_figure` will still reject.
 
     `replace` first, then mutate the *copy*: a frozen dataclass instance used as
@@ -50,29 +50,28 @@ def break_band_style(config: ParityConfig) -> ParityConfig:
     `config.plot` directly corrupts that shared default for the whole process
     and silently breaks unrelated tests later in the run.
     """
-    broken = replace(config.plot, reltol=0.1)
-    object.__setattr__(broken, "band_style", "dotted")
+    broken = replace(config.plot, legend="nonsense")
     return replace(config, plot=broken)
 
 
 def test_a_figure_that_fails_to_build_falls_back_to_the_last_good_one(state):
     good = state.figure().to_dict()
-    state.config = break_band_style(state.config)
+    state.config = break_legend(state.config)
 
     assert state.figure().to_dict() == good
     assert state.last_error is not None
 
 
 def test_the_first_figure_cannot_fall_back_and_raises(state):
-    state.config = break_band_style(state.config)
+    state.config = break_legend(state.config)
     with pytest.raises(ValueError):
         state.figure()
 
 
 def test_forcing_a_broken_config_does_not_leak_into_other_configs():
     """Guards the trap the helper above exists to avoid."""
-    break_band_style(ParityConfig())
-    assert ParityConfig().plot.band_style == "lines"
+    break_legend(ParityConfig())
+    assert ParityConfig().plot.legend == "right"
 
 
 def test_none_values_are_ignored_by_update(state):

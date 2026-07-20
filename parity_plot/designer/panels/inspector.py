@@ -3,20 +3,21 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Sequence
 
-from ...tolerance import Tolerance
+from ...tolerances import NamedTolerance
 from ..inspector_helpers import describe
 from ..state import DesignerState
 
 
 def build_inspector(
-    state: DesignerState, tol_getter: Callable[[], Tolerance | None]
+    state: DesignerState,
+    tol_getter: Callable[[], Sequence[NamedTolerance]],
 ) -> Callable[[], None]:
     """Render the panel and return a function that refreshes it.
 
-    The tolerance is fetched through a callable rather than passed by value,
-    because the user can change it after this panel is built and the verdict
+    The tolerances are fetched through a callable rather than passed by value,
+    because the user can change them after this panel is built and the verdict
     must follow.
     """
     from nicegui import ui

@@ -13,6 +13,7 @@ from parity_plot.designer.filters import FilterSet
 from parity_plot.designer.panels.table import summary_text
 from parity_plot.designer.state import DesignerState
 from parity_plot.designer.table_rows import to_rows
+from parity_plot.tolerances import NamedTolerance
 
 WIDE = "".join(
     f"A{i},{float(i)},{float(i) * 1.02}\n" for i in range(1, 101)
@@ -25,6 +26,17 @@ def state(tmp_path: Path) -> DesignerState:
     csv.write_text("id,reference,measured\n" + WIDE, encoding="utf-8")
     config = ParityConfig().merge(data={"paths": (csv,)})
     return DesignerState(config=config, data=load(config.data))
+
+
+def with_spec(state: DesignerState, reltol: float) -> DesignerState:
+    """Replace the config's pass/fail tolerance list with one +/-reltol spec.
+
+    Goes through ``merge`` so the built-in parity entry is preserved (merge
+    re-adds it via ``with_parity``); ``replace`` would drop it."""
+    state.config = state.config.merge(
+        plot={"tolerances": [NamedTolerance(name="spec", reltol=reltol)]}
+    )
+    return state
 
 
 def test_a_dragged_window_narrows_plot_table_and_stats_together(state):
@@ -63,7 +75,7 @@ def test_deselecting_restores_the_full_view(state):
 
 def test_brushing_composes_with_the_failure_filter(state):
     """Two filters at once must intersect, not override each other."""
-    state.update("plot", reltol=0.01)  # the ramp is 2% high, so all fail
+    with_spec(state, reltol=0.01)  # the ramp is 2% high, so all fail
     state.filters = FilterSet(outside_tolerance_only=True)
     assert state.counts() == (100, 100)
 

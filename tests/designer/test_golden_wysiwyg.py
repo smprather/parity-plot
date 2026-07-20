@@ -11,6 +11,7 @@ from parity_plot.data import load
 from parity_plot.designer.session import Session
 from parity_plot.designer.state import DesignerState
 from parity_plot.plot import build_figure
+from parity_plot.tolerances import PARITY_NAME, NamedTolerance
 
 WIDE = """\
 id,reference,measured
@@ -30,34 +31,64 @@ def csv(tmp_path: Path) -> Path:
     return path
 
 
+def _state_with(csv: Path, plot: dict) -> DesignerState:
+    """Build a designer state on `csv` with the given plot overrides.
+
+    The designer's `update` routes through `ParityConfig.merge`, which rejects
+    the retired scalar tolerance keys -- editing the list is Phase 3 UI work.
+    These tests exercise save/reload/render equality, not the editing path, so
+    they build the config directly through `from_dict`.
+    """
+    session, config, data = Session.start((csv,), None)
+    config = ParityConfig.from_dict(
+        {"data": {"paths": [str(csv)]}, "plot": plot}
+    )
+    state = DesignerState(config=config, data=data)
+    return state
+
+
 @pytest.mark.parametrize(
-    "edits",
+    "plot",
     [
         {"theme": "light"},
-        {"abstol": 2.0},
-        {"reltol": 0.1},
-        {"abstol": 2.0, "reltol": 0.1, "band_style": "shaded"},
+        {"tolerances": [{"name": "spec", "abstol": 2.0}]},
+        {"tolerances": [{"name": "spec", "reltol": 0.1}]},
+        {
+            "tolerances": [
+                {"name": "spec", "abstol": 2.0, "reltol": 0.1, "style": "shaded"},
+            ]
+        },
         {"legend": "bottom", "nulls": "drop"},
-        {"log": True, "identity_line": False},
+        {
+            "tolerances": [
+                {"name": "parity", "builtin": True, "enabled": False},
+                {"name": "spec", "reltol": 0.1},
+            ]
+        },
         {"title": "Lab run 7", "x_label": "golden", "y_label": "DUT"},
         {"equal_axes": False},
-        {"reltol": 0.25, "band_style": "lines", "legend": "none"},
+        {
+            "tolerances": [
+                {"name": "loose", "reltol": 0.25, "style": "lines"},
+                {"name": "tight", "reltol": 0.05},
+            ],
+            "legend": "none",
+        },
     ],
 )
-def test_designer_preview_equals_what_the_cli_renders(csv, tmp_path: Path, edits):
+def test_designer_preview_equals_what_the_cli_renders(csv, tmp_path: Path, plot):
     """Edit in the designer, save, reload through the CLI path, compare figures.
 
     If this fails, a config built in the designer renders differently from the
     designer's own preview -- which makes every saved config untrustworthy.
     """
-    session, config, data = Session.start((csv,), None)
-    state = DesignerState(config=config, data=data)
-    assert state.update("plot", **edits), state.last_error
+    state = _state_with(csv, plot)
+    assert state.last_error is None, state.last_error
 
     preview = state.figure()
 
     out = tmp_path / "parity.toml"
-    session.save(state.config, out)
+    Session().save(state.config, out)
     from_disk = ParityConfig.from_toml(out)
     rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
 
@@ -81,12 +112,17 @@ def test_stats_settings_also_survive_the_round_trip(csv, tmp_path: Path):
 
 
 def test_a_saved_config_reloads_into_an_identical_designer(csv, tmp_path: Path):
-    session, config, data = Session.start((csv,), None)
-    state = DesignerState(config=config, data=data)
-    state.update("plot", theme="light", abstol=3.0, legend="bottom")
+    state = _state_with(
+        csv,
+        {
+            "theme": "light",
+            "legend": "bottom",
+            "tolerances": [{"name": "spec", "abstol": 3.0}],
+        },
+    )
 
     out = tmp_path / "parity.toml"
-    session.save(state.config, out)
+    Session().save(state.config, out)
 
     reopened_session, reopened_config, reopened_data = Session.start((), out)
     reopened = DesignerState(config=reopened_config, data=reopened_data)
@@ -101,12 +137,12 @@ def test_the_cli_plot_command_renders_a_designer_config(csv, tmp_path: Path):
 
     from parity_plot.cli import cli
 
-    session, config, data = Session.start((csv,), None)
-    state = DesignerState(config=config, data=data)
-    state.update("plot", theme="light", reltol=0.1)
+    state = _state_with(
+        csv, {"theme": "light", "tolerances": [{"name": "spec", "reltol": 0.1}]}
+    )
 
     toml_path = tmp_path / "parity.toml"
-    session.save(state.config, toml_path)
+    Session().save(state.config, toml_path)
 
     html = tmp_path / "out.html"
     result = CliRunner().invoke(
@@ -125,6 +161,9 @@ def test_comments_in_a_config_survive_a_designer_save(csv, tmp_path: Path):
         "[plot]\n"
         "# dark reads better on the bench projector\n"
         'theme = "dark"\n'
+        "[[plot.tolerances]]\n"
+        'name = "spec"\n'
+        "reltol = 0.10\n"
         f'\n[data]\npaths = ["{csv.as_posix()}"]\n',
         encoding="utf-8",
     )
@@ -138,3 +177,36 @@ def test_comments_in_a_config_survive_a_designer_save(csv, tmp_path: Path):
     assert "# lab tolerance policy, agreed 2026-03" in saved
     assert "# dark reads better on the bench projector" in saved
     assert 'theme = "light"' in saved
+
+
+def test_a_multi_tolerance_config_round_trips_identically(csv, tmp_path: Path):
+    """Several tolerances plus a customised parity entry: the serializer must
+    write them all, and reloading must produce the same figure the designer
+    previewed. This is the case the plan calls out -- if it fails, the
+    serializer is emitting something `from_toml` reads back differently."""
+    disabled_parity = NamedTolerance(
+        name=PARITY_NAME, builtin=True, kind="info", enabled=False
+    )
+    state = _state_with(
+        csv,
+        {
+            "theme": "light",
+            "log": True,
+            "tolerances": [
+                disabled_parity,
+                {"name": "loose", "reltol": 0.25, "style": "shaded"},
+                {"name": "tight", "abstol": 1.0, "reltol": 0.05},
+            ],
+        },
+    )
+    assert state.last_error is None, state.last_error
+
+    preview = state.figure()
+
+    out = tmp_path / "parity.toml"
+    Session().save(state.config, out)
+    from_disk = ParityConfig.from_toml(out)
+    rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
+
+    assert from_disk.plot.tolerances == state.config.plot.tolerances
+    assert rendered.to_dict() == preview.to_dict()

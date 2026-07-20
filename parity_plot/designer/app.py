@@ -16,6 +16,7 @@ from .panels.controls import build_controls
 from .panels.data_panel import build_data_panel
 from .panels.inspector import build_inspector
 from .panels.table import build_table
+from .panels.tolerances import build_tolerances_panel
 from .records import key_from_customdata
 from .selection import range_from_selection
 from .session import Session, StaleFileError
@@ -63,8 +64,11 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
 
         with ui.row().classes("w-full no-wrap gap-4"):
             with ui.column().classes("w-80 shrink-0"):
+                # Every panel is a peer top-level expansion -- Data, Tolerances,
+                # then the Appearance/Statistics/Output groups. No "Settings"
+                # wrapper, since the whole column is settings.
                 build_data_panel(state, lambda: reload_everything())
-                ui.label("Settings").classes("text-base font-medium")
+                build_tolerances_panel(state, lambda: refresh())
                 build_controls(state, lambda: refresh())
                 ui.separator()
                 with ui.row():
@@ -77,7 +81,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 # lasso tools; the selection handlers below serve both.
                 plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
                 error_banner = ui.label("").classes("text-red-400 text-sm")
-                refresh_inspector = build_inspector(state, state.tolerance)
+                refresh_inspector = build_inspector(state, state.tolerances)
 
                 refresh_table = build_table(
                     state,

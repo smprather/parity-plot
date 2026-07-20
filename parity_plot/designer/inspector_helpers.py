@@ -20,8 +20,16 @@ def describe(view: RecordView | None) -> list[tuple[str, str]]:
     if view.rel_error is not None:
         fields.append(("Relative error", _signed(view.rel_error * 100, suffix="%")))
     fields.append(("Status", view.status))
-    if view.within is not None:
-        fields.append(("Tolerance", "within" if view.within else "OUT"))
+    if view.failed is not None:
+        # One row per pass/fail criterion failed, or a single "pass" when none.
+        # `failed` is None for unpaired records and when no pass/fail criteria
+        # exist; printing a verdict there would claim a result that was never
+        # assessed.
+        if view.failed:
+            for name in view.failed:
+                fields.append((name, "fail"))
+        else:
+            fields.append(("Verdict", "pass"))
     return fields
 
 

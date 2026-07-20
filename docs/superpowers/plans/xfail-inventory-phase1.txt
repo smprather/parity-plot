@@ -1,0 +1,7 @@
+tests/test_cli.py::test_browser_opens_by_default[example] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_both_tolerances_give_a_funnel - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_draws_a_10_percent_wedge_by_default - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_plots_by_default - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_example_tolerance_can_be_overridden_and_switched_off - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_no_open_browser_suppresses_the_launch[example] - cli reads the tolerance list in Phase 2
+tests/test_cli.py::test_output_suffix_is_never_ignored[example] - cli reads the tolerance list in Phase 2

@@ -20,6 +20,7 @@ from .config import (
 )
 from .data import DataError, load
 from .plot import ExportError, build_figure, save
+from .tol_spec import TolSpecError, build_tolerances
 from .tolerance import parse_reltol
 
 HELP_CONFIG = click.RichHelpConfiguration(
@@ -42,6 +43,7 @@ HELP_CONFIG = click.RichHelpConfiguration(
                     "--x-label",
                     "--y-label",
                     "--log",
+                    "--tol",
                     "--abstol",
                     "--reltol",
                     "--band-style",
@@ -81,6 +83,7 @@ HELP_CONFIG = click.RichHelpConfiguration(
                     "--theme",
                     "--abstol",
                     "--reltol",
+                    "--tol",
                     "--no-tolerance",
                     "--band-style",
                     "--legend",
@@ -164,6 +167,7 @@ def cli() -> None:
 @click.option("--x-label", help="X axis label.  [default: column name]")
 @click.option("--y-label", help="Y axis label.  [default: column name]")
 @click.option("--log/--no-log", default=None, help="Use logarithmic axes.")
+@click.option("--tol", "tol", multiple=True, help="A tolerance spec as `key=value,key=value` (repeatable). Keys: name, label, abstol, reltol, kind, color, style.")
 @click.option("--abstol", type=float, help="Absolute tolerance in the data's own units.  Draws lines parallel to y = x.")
 @click.option("--reltol", type=RELTOL, help="Relative tolerance as a ratio, or a percentage with a `pct` suffix (`0.1` = `10pct`).  Draws a wedge through the origin.")
 @click.option("--band-style", type=click.Choice(BAND_STYLES), help="Draw the tolerance limits as lines or as a shaded band.  [default: lines]")
@@ -186,6 +190,7 @@ def plot(
     x_label: str | None,
     y_label: str | None,
     log: bool | None,
+    tol: tuple[str, ...],
     abstol: float | None,
     reltol: float | None,
     band_style: str | None,
@@ -207,6 +212,10 @@ def plot(
         cfg = ParityConfig.from_toml(config) if config else ParityConfig()
 
         fmt = _infer_format(output, fmt)
+        try:
+            tolerances = build_tolerances(tol, abstol, reltol, band_style)
+        except TolSpecError as exc:
+            raise click.ClickException(str(exc)) from None
         cfg = cfg.merge(
             data={
                 "paths": tuple(paths) or None,
@@ -220,9 +229,7 @@ def plot(
                 "x_label": x_label,
                 "y_label": y_label,
                 "log": log,
-                "abstol": abstol,
-                "reltol": reltol,
-                "band_style": band_style,
+                "tolerances": tolerances or None,
                 "nulls": nulls,
                 "legend": legend,
             },
@@ -268,6 +275,7 @@ def plot(
 @click.option("--theme", type=click.Choice(THEMES), help="Colour theme for the plot.  [default: dark]")
 @click.option("--abstol", type=float, help="Absolute tolerance in the data's own units.  Draws lines parallel to y = x.")
 @click.option("--reltol", type=RELTOL, default=0.10, show_default=True, help="Relative tolerance as a ratio, or a percentage with a `pct` suffix (`0.1` = `10pct`).  Draws a wedge through the origin.")
+@click.option("--tol", "tol", multiple=True, help="A tolerance spec as `key=value,key=value` (repeatable). Keys: name, label, abstol, reltol, kind, color, style.")
 @click.option("--no-tolerance", is_flag=True, help="Draw no tolerance limits at all.")
 @click.option("--band-style", type=click.Choice(BAND_STYLES), help="Draw the tolerance limits as lines or as a shaded band.  [default: lines]")
 @click.option("--legend", type=click.Choice(LEGEND_POSITIONS), help="Where to put the legend.  [default: right]")
@@ -292,6 +300,7 @@ def example(
     theme: str | None,
     abstol: float | None,
     reltol: float | None,
+    tol: tuple[str, ...],
     no_tolerance: bool,
     band_style: str | None,
     legend: str | None,
@@ -347,13 +356,18 @@ def example(
         return
 
     try:
+        if no_tolerance:
+            tolerances: tuple = ()
+        else:
+            try:
+                tolerances = build_tolerances(tol, abstol, reltol, band_style)
+            except TolSpecError as exc:
+                raise click.ClickException(str(exc)) from None
         cfg = ParityConfig().merge(
             data={"paths": (written["wide"],)},
             plot={
                 "theme": theme,
-                "abstol": None if no_tolerance else abstol,
-                "reltol": None if no_tolerance else reltol,
-                "band_style": band_style,
+                "tolerances": tolerances or None,
                 "legend": legend,
             },
             output={

@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Sequence
 
 import plotly.graph_objects as go
 
 from ..config import ConfigError, ParityConfig
 from ..data import DataError, ParityData, load
 from ..plot import build_figure
-from ..tolerance import Tolerance
+from ..tolerances import NamedTolerance
 from .filters import FilterSet
 from .records import RecordView, find_record, record_views
 
@@ -67,23 +67,25 @@ class DesignerState:
             self.selection = None
         return True
 
-    def selected_record(self, tol: Tolerance | None = None) -> RecordView | None:
-        """The pinned record, judged against ``tol`` if one is given."""
+    def selected_record(
+        self, tolerances: Sequence[NamedTolerance] = ()
+    ) -> RecordView | None:
+        """The pinned record, judged against ``tolerances`` if any are given."""
         if self.selection is None:
             return None
-        return find_record(record_views(self.data, tol), self.selection)
+        return find_record(record_views(self.data, tolerances), self.selection)
 
-    def tolerance(self) -> Tolerance:
-        """The tolerance the current config specifies."""
-        return Tolerance(abstol=self.config.plot.abstol, reltol=self.config.plot.reltol)
+    def tolerances(self) -> tuple[NamedTolerance, ...]:
+        """The tolerance list the current config specifies."""
+        return self.config.plot.tolerances
 
     def visible_data(self) -> ParityData:
         """The dataset after filtering. The plot and the table both read this."""
-        return self.filters.apply(self.data, self.tolerance())
+        return self.filters.apply(self.data, self.tolerances())
 
     def visible_records(self) -> list[RecordView]:
-        """One row per visible record, judged against the current tolerance."""
-        return record_views(self.visible_data(), self.tolerance())
+        """One row per visible record, judged against the current tolerances."""
+        return record_views(self.visible_data(), self.tolerances())
 
     def counts(self) -> tuple[int, int]:
         """``(showing, total)`` records -- a filtered view that looks unfiltered

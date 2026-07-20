@@ -12,10 +12,12 @@ from parity_plot.designer.datasets import peek, suggest_mapping
 from parity_plot.designer.inspector_helpers import describe
 from parity_plot.designer.records import key_from_customdata
 from parity_plot.designer.state import DesignerState
-from parity_plot.tolerance import Tolerance
+from parity_plot.tolerances import NamedTolerance
 
 FIRST = "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n"
 SECOND = "part,golden,dut\nB1,5.0,5.5\nB2,6.0,9.0\nB3,7.0,\n"
+
+SPEC_10PCT = (NamedTolerance(name="spec", reltol=0.1),)
 
 
 @pytest.fixture
@@ -45,25 +47,25 @@ def test_clicking_a_point_then_reading_its_record(state, tmp_path: Path):
 
     # What a Plotly click on the paired trace delivers.
     state.selection = key_from_customdata(["B2", 3.0])
-    view = state.selected_record(Tolerance(reltol=0.1))
+    view = state.selected_record(SPEC_10PCT)
 
     assert view.key == "B2"
     assert view.error == pytest.approx(3.0)
-    assert view.within is False  # 50% off a 10% tolerance
+    assert view.failed == ("spec",)  # 50% off a 10% tolerance
 
 
 def test_clicking_a_rug_tick_resolves_to_the_unpaired_record(state, tmp_path: Path):
-    """Rug traces carry a bare key, not a (key, diff) pair."""
+    """Rug traces carry a bare key, not a (key, diff, verdict) triple."""
     second = tmp_path / "second.csv"
     second.write_text(SECOND, encoding="utf-8")
     state.set_data_source(paths=(second,), **suggest_mapping(peek(second)))
 
     state.selection = key_from_customdata("B3")
-    view = state.selected_record(Tolerance(reltol=0.1))
+    view = state.selected_record(SPEC_10PCT)
 
     assert view.key == "B3"
     assert view.status == "missing y"
-    assert view.within is None  # never judged, not judged as failing
+    assert view.failed is None  # never judged, not judged as failing
     assert dict(describe(view))["Measured"] == "missing"
 
 

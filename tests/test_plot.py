@@ -6,6 +6,21 @@ from parity_plot import parity_plot
 from parity_plot.config import OutputConfig, PlotConfig, StatsConfig
 from parity_plot.data import ParityData, Unpaired, from_sequences
 from parity_plot.plot import build_figure, save
+from parity_plot.tolerances import NamedTolerance, parity, with_parity
+
+
+def _tol(**kwargs):
+    """Shorthand for a tolerance list with the parity entry plus one spec.
+
+    Real configs always carry the built-in ``y = x`` reference, so the
+    rendering tests do too -- ``with_parity`` prepends it. The spec entry is
+    named ``t1``.
+    """
+    return with_parity((NamedTolerance(name="t1", **kwargs),))
+
+
+# Phase 2 taught plot.py to render the tolerance list. These tests now assert
+# the list shape directly; the xfail marker is retired.
 
 
 @pytest.fixture
@@ -111,19 +126,26 @@ def test_drop_mode_omits_the_rugs_but_still_counts_them(data):
     assert "1 missing x" in fig.layout.title.subtitle.text
 
 
-def test_identity_line_spans_the_full_range(data):
-    fig = build_figure(data, PlotConfig(identity_line=True))
+def test_parity_line_spans_the_full_range(data):
+    """The parity entry is a zero-width tolerance, so its envelope is y = x."""
+    fig = build_figure(data, PlotConfig())
     line = trace_named(fig, "0% error")
-    assert list(line.x) == list(line.y) == list(fig.layout.xaxis.range)
+    lo, hi = fig.layout.xaxis.range
+    assert list(line.x) == pytest.approx(list(line.y))
+    assert line.x[0] == pytest.approx(lo)
+    assert line.x[-1] == pytest.approx(hi)
 
 
-def test_identity_line_can_be_switched_off(data):
-    fig = build_figure(data, PlotConfig(identity_line=False))
+def test_parity_line_can_be_switched_off(data):
+    """Disabling the parity entry replaces the old identity_line = false."""
+    from dataclasses import replace
+    from parity_plot.tolerances import parity
+    fig = build_figure(data, PlotConfig(tolerances=(replace(parity(), enabled=False),)))
     assert trace_named(fig, "0% error") is None
 
 
 def test_relative_tolerance_draws_a_wedge_through_the_origin(data):
-    fig = build_figure(data, PlotConfig(reltol=0.10))
+    fig = build_figure(data, PlotConfig(tolerances=_tol(reltol=0.10)))
     limits = [t for t in fig.data if t.name == "±10%"]
     assert len(limits) == 2  # an upper and a lower limit line
 
@@ -134,7 +156,7 @@ def test_relative_tolerance_draws_a_wedge_through_the_origin(data):
 
 def test_absolute_tolerance_draws_lines_parallel_to_the_identity(data):
     """abstol is a fixed offset in data units, so the gap never changes."""
-    fig = build_figure(data, PlotConfig(abstol=2.0))
+    fig = build_figure(data, PlotConfig(tolerances=_tol(abstol=2.0)))
     lower, upper = [t for t in fig.data if t.name == "±2"]
 
     assert list(upper.y) == pytest.approx([x + 2.0 for x in upper.x])
@@ -144,7 +166,7 @@ def test_absolute_tolerance_draws_lines_parallel_to_the_identity(data):
 
 
 def test_funnel_takes_whichever_tolerance_is_looser(data):
-    fig = build_figure(data, PlotConfig(abstol=2.0, reltol=0.10))
+    fig = build_figure(data, PlotConfig(tolerances=_tol(abstol=2.0, reltol=0.10)))
     lower, upper = [t for t in fig.data if t.name == "±max(2, 10%)"]
 
     for x, y in zip(upper.x, upper.y):
@@ -156,29 +178,30 @@ def test_funnel_takes_whichever_tolerance_is_looser(data):
 def test_funnel_puts_a_vertex_exactly_at_the_crossover():
     """The kink is real geometry; a coarse sample would round it off."""
     data = from_sequences(x=[0.0, 100.0], y=[0.0, 100.0])
-    fig = build_figure(data, PlotConfig(abstol=2.0, reltol=0.10))
+    fig = build_figure(data, PlotConfig(tolerances=_tol(abstol=2.0, reltol=0.10)))
     upper = [t for t in fig.data if t.name == "±max(2, 10%)"][1]
 
     assert 20.0 in [pytest.approx(v) for v in upper.x]  # crossover at 2 / 0.10
 
 
 def test_tolerance_limits_are_lines_not_shading_by_default(data):
-    fig = build_figure(data, PlotConfig(reltol=0.10))
+    fig = build_figure(data, PlotConfig(tolerances=_tol(reltol=0.10)))
     lower, upper = [t for t in fig.data if t.name == "±10%"]
     assert upper.fill is None
     assert lower.line.width > 0
 
 
 def test_shaded_band_style_fills_between_the_limits(data):
-    fig = build_figure(data, PlotConfig(reltol=0.10, band_style="shaded"))
+    fig = build_figure(data, PlotConfig(tolerances=_tol(reltol=0.10, style="shaded")))
     lower, upper = [t for t in fig.data if t.name == "±10%"]
     assert upper.fill == "tonexty"
     assert upper.fillcolor is not None
 
 
 def test_unknown_band_style_is_rejected(data):
-    with pytest.raises(ValueError, match="unknown band style"):
-        build_figure(data, PlotConfig(reltol=0.10, band_style="dotted"))
+    """A bad style is rejected when the tolerance is built, not at draw time."""
+    with pytest.raises(ValueError, match="is not one of"):
+        build_figure(data, PlotConfig(tolerances=_tol(reltol=0.10, style="dotted")))
 
 
 def test_no_tolerance_draws_no_limits(data):
@@ -257,7 +280,7 @@ def test_log_mode_places_the_identity_line_in_data_space():
     line = trace_named(fig, "0% error")
     lo, hi = fig.layout.xaxis.range
     assert line.x[0] == pytest.approx(10**lo)
-    assert line.x[1] == pytest.approx(10**hi)
+    assert line.x[-1] == pytest.approx(10**hi)
 
 
 def test_stats_box_is_optional(data):

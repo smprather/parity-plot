@@ -6,7 +6,6 @@ from dataclasses import fields
 import pytest
 
 from parity_plot.config import (
-    BAND_STYLES,
     LEGEND_POSITIONS,
     NULL_MODES,
     OUTPUT_FORMATS,
@@ -24,8 +23,13 @@ def specs_for(section: str) -> dict[str, ControlSpec]:
 
 def test_every_plot_setting_has_a_control():
     """A setting with no control is a setting the designer silently cannot
-    reach, which makes the saved config differ from what was on screen."""
-    assert specs_for("plot").keys() == {f.name for f in fields(PlotConfig)}
+    reach, which makes the saved config differ from what was on screen.
+
+    `tolerances` is the exception: the list UI is Phase 3, so for now the
+    designer cannot edit it from the controls panel (a saved config still
+    carries whatever the CLI or TOML set)."""
+    plot_fields = {f.name for f in fields(PlotConfig)} - {"tolerances"}
+    assert specs_for("plot").keys() == plot_fields
 
 
 def test_every_stats_and_output_setting_has_a_control():
@@ -44,7 +48,6 @@ def test_data_settings_are_not_editable_in_phase_1():
         ("plot", "theme", THEMES),
         ("plot", "legend", LEGEND_POSITIONS),
         ("plot", "nulls", NULL_MODES),
-        ("plot", "band_style", BAND_STYLES),
         ("output", "format", OUTPUT_FORMATS),
     ],
 )
@@ -54,16 +57,8 @@ def test_choice_controls_offer_exactly_the_valid_values(section, key, expected):
     assert spec.choices == tuple(expected)
 
 
-def test_relative_tolerance_is_a_text_control_not_a_percent_spinner():
-    """`--reltol` takes a ratio or an explicit `10pct`; a percent-only spinner
-    would reintroduce exactly the unit ambiguity that spelling prevents."""
-    spec = specs_for("plot")["reltol"]
-    assert spec.kind == "text"
-    assert "pct" in spec.help
-
-
 def test_booleans_are_switches():
-    for key in ("log", "equal_axes", "identity_line"):
+    for key in ("log", "equal_axes"):
         assert specs_for("plot")[key].kind == "switch"
     assert specs_for("stats")["show"].kind == "switch"
 
@@ -72,3 +67,10 @@ def test_every_spec_has_a_human_label():
     for spec in CONTROL_SPECS:
         assert spec.label and not spec.label.endswith("_")
         assert spec.help
+
+
+def test_no_retired_spec_remains():
+    """abstol/reltol/band_style/identity_line moved into the tolerance list;
+    pointing a control at a deleted field would make the designer 500."""
+    retired = {"abstol", "reltol", "band_style", "identity_line"}
+    assert not {s.key for s in CONTROL_SPECS} & retired

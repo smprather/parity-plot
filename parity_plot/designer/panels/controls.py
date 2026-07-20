@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ...config import (
-    BAND_STYLES,
     LEGEND_POSITIONS,
     NULL_MODES,
     OUTPUT_FORMATS,
@@ -44,22 +43,6 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
     ControlSpec("plot", "nulls", "Unpaired records", "choice", "Rug ticks, or hidden.", NULL_MODES),
     ControlSpec("plot", "log", "Log axes", "switch", "Logarithmic x and y."),
     ControlSpec("plot", "equal_axes", "Lock 45°", "switch", "Share one range and a 1:1 pixel scale."),
-    ControlSpec("plot", "identity_line", "Show y = x", "switch", "Draw the zero-error line."),
-    # --- Tolerances -------------------------------------------------------
-    ControlSpec(
-        "plot", "abstol", "Absolute tolerance", "number",
-        "In the data's own units. Draws lines parallel to y = x.",
-        group="Tolerances",
-    ),
-    ControlSpec(
-        "plot", "reltol", "Relative tolerance", "text",
-        "A ratio (0.1), or a percentage written out (10pct).",
-        group="Tolerances",
-    ),
-    ControlSpec(
-        "plot", "band_style", "Limit style", "choice",
-        "Lines, or a shaded band.", BAND_STYLES, group="Tolerances",
-    ),
     # --- Statistics -------------------------------------------------------
     ControlSpec("stats", "show", "Show statistics", "switch", "Display the metrics box.", group="Statistics"),
     ControlSpec("stats", "metrics", "Metrics", "text", "Comma-separated: n, r2, rmse, mae, bias.", group="Statistics"),
@@ -70,7 +53,7 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
     ControlSpec("output", "height", "Height", "number", "Figure height in pixels.", group="Output"),
 )
 
-GROUPS = ("Appearance", "Tolerances", "Statistics", "Output")
+GROUPS = ("Appearance", "Statistics", "Output")
 
 
 def build_controls(state: DesignerState, on_change: Callable[[], None]) -> None:
