@@ -139,6 +139,10 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                         list(COLOR_TOKENS), value=_color_value(tol), label="Colour",
                     ).classes("grow")
                     style_sel = ui.select(list(STYLES), value=tol.style, label="Draw as").classes("grow")
+                if locked:
+                    # Parity is a single zero-width line; lines-vs-shaded has
+                    # nothing to fill between, so the choice is meaningless.
+                    style_sel.props("readonly").tooltip("The parity line is always a line")
 
                 legend_sw = ui.switch("Show in legend", value=tol.show_in_legend)
 
@@ -202,10 +206,11 @@ def _from_editor(
     from ...tolerances import ToleranceError
 
     if locked:
+        # Name, bounds, kind and style are fixed for the parity line; only
+        # colour, legend visibility and the label are the user's to change.
         return replace(
             original,
             color=color or None,
-            style=style,
             show_in_legend=bool(in_legend),
             label=None if label_mode == "auto" else (label.strip() or None),
         )
