@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from typing import Callable
 
-from ...tolerance import parse_reltol
 from ...tolerances import (
     KINDS,
     PARITY_NAME,
@@ -106,13 +105,30 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                 ).classes("w-full")
                 label_in.bind_visibility_from(label_mode, "value", value="manual")
 
-                with ui.row().classes("w-full gap-2 no-wrap"):
+                with ui.row().classes("w-full gap-2 no-wrap items-center"):
                     abstol_in = ui.number("abstol", value=tol.abstol, format="%.4g").classes("grow")
-                    reltol_in = ui.input("reltol", value=_reltol_text(tol)).classes("grow")
-                    reltol_in.props('hint="ratio or 10pct"')
+                    # reltol is entered as a percentage by default -- a % checkbox
+                    # rather than the `10pct` text spelling. Unchecking it reads
+                    # the field as a bare ratio, and the field converts on toggle
+                    # so the underlying value never changes just from flipping it.
+                    pct_in = ui.checkbox("%", value=True).props("dense").tooltip(
+                        "Enter reltol as a percentage"
+                    )
+                    reltol_in = ui.number(
+                        "reltol", value=_reltol_display(tol, percent=True), format="%.4g"
+                    ).classes("grow")
+
+                    def _convert(e) -> None:
+                        if reltol_in.value is None:
+                            return
+                        reltol_in.value = (
+                            reltol_in.value * 100 if e.value else reltol_in.value / 100
+                        )
+                    pct_in.on_value_change(_convert)
                 if locked:
                     abstol_in.props("readonly").tooltip("The parity line is a zero tolerance")
                     reltol_in.props("readonly")
+                    pct_in.props("disable")
 
                 kind_sel = ui.select(list(KINDS), value=tol.kind, label="Kind").classes("w-full")
                 if locked:
@@ -129,9 +145,10 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                 error = ui.label("").classes("text-red-400 text-xs")
 
                 def save() -> None:
+                    reltol = _reltol_from_field(reltol_in.value, pct_in.value)
                     edited = _from_editor(
                         tol, locked, name_in.value, label_mode.value, label_in.value,
-                        abstol_in.value, reltol_in.value, kind_sel.value,
+                        abstol_in.value, reltol, kind_sel.value,
                         color_sel.value, style_sel.value, legend_sw.value,
                     )
                     if isinstance(edited, str):  # an error message
@@ -151,10 +168,18 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
         render()
 
 
-def _reltol_text(tol: NamedTolerance) -> str:
+def _reltol_display(tol: NamedTolerance, percent: bool) -> float | None:
+    """The number to seed the reltol field with, in the field's current units."""
     if tol.reltol is None:
-        return ""
-    return f"{tol.reltol:g}"
+        return None
+    return tol.reltol * 100 if percent else tol.reltol
+
+
+def _reltol_from_field(value: float | None, percent: bool) -> float | None:
+    """The stored ratio from what the field holds, given the % checkbox state."""
+    if value in (None, ""):
+        return None
+    return float(value) / 100 if percent else float(value)
 
 
 def _color_value(tol: NamedTolerance) -> str:
@@ -167,9 +192,10 @@ def _from_editor(
 ):
     """Assemble an edited NamedTolerance, or return an error string.
 
-    Kept separate from the widgets so the assembly rules are one place. A locked
-    entry keeps its name, bounds and kind no matter what the (read-only) fields
-    hold, so a stray value cannot corrupt the parity line.
+    ``reltol`` here is already a ratio or None -- the % conversion happened at
+    the widget. Kept separate from the widgets so the assembly rules are one
+    place; a locked entry keeps its name, bounds and kind no matter what the
+    (read-only) fields hold, so a stray value cannot corrupt the parity line.
     """
     from dataclasses import replace
 
@@ -185,18 +211,11 @@ def _from_editor(
         )
 
     name = (name or "").strip()
-    parsed_reltol = None
-    if reltol not in (None, "", " "):
-        try:
-            parsed_reltol = parse_reltol(reltol)
-        except ValueError as exc:
-            return str(exc)
-
     try:
         return NamedTolerance(
             name=name,
             abstol=float(abstol) if abstol not in (None, "") else None,
-            reltol=parsed_reltol,
+            reltol=reltol,
             kind=kind,
             color=color or None,
             style=style,

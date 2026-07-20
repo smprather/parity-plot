@@ -86,3 +86,25 @@ def test_normalise_keeps_a_customised_parity(tols):
     result = ops.normalise((NamedTolerance(name="spec", reltol=0.1), disabled))
     assert result[0].name == PARITY_NAME
     assert result[0].enabled is False
+
+
+# --- the editor's percent-checkbox conversion (panel helpers) ---
+
+def test_reltol_percent_field_round_trips():
+    from parity_plot.designer.panels.tolerances import (
+        _reltol_display,
+        _reltol_from_field,
+    )
+    from parity_plot.tolerances import NamedTolerance, parity
+
+    spec = NamedTolerance(name="spec", reltol=0.10)
+    # Default is percent: 0.10 shows as 10, and 10 stores back as 0.10.
+    assert _reltol_display(spec, percent=True) == 10.0
+    assert _reltol_from_field(10, percent=True) == pytest.approx(0.10)
+    # Unchecked, the field is a bare ratio.
+    assert _reltol_display(spec, percent=False) == 0.10
+    assert _reltol_from_field(0.10, percent=False) == pytest.approx(0.10)
+    # No reltol either way.
+    assert _reltol_display(parity(), percent=True) is None
+    assert _reltol_from_field(None, percent=True) is None
+    assert _reltol_from_field("", percent=True) is None
