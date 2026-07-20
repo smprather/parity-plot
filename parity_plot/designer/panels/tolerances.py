@@ -1,0 +1,208 @@
+"""The tolerance list panel: add, edit, delete, enable.
+
+Thin over `tolerance_ops`. Every edit rebuilds the whole list and pushes it
+through `state.update("plot", tolerances=...)`, so the config on screen and the
+config that saves cannot disagree -- the same discipline as the rest of the
+designer.
+
+The parity entry is special: it leads the list, cannot be deleted, and its
+name, kind and bounds are locked in the editor. Everything else about it --
+colour, style, whether it is drawn, whether it is in the legend -- is editable,
+because those are presentation.
+"""
+
+from __future__ import annotations
+
+from typing import Callable
+
+from ...tolerance import parse_reltol
+from ...tolerances import (
+    KINDS,
+    PARITY_NAME,
+    STYLES,
+    NamedTolerance,
+)
+from ...themes import COLOR_TOKENS
+from .. import tolerance_ops as ops
+from ..state import DesignerState
+
+
+def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
+    """Render the tolerance list and the controls that edit it."""
+    from nicegui import ui
+
+    with ui.expansion("Tolerances", value=True).classes("w-full"):
+        container = ui.column().classes("w-full gap-1")
+
+        def current() -> tuple[NamedTolerance, ...]:
+            return state.config.plot.tolerances
+
+        def commit(tolerances) -> None:
+            """Push a new list into state and redraw the whole panel."""
+            if not state.update("plot", tolerances=ops.normalise(tolerances)):
+                ui.notify(state.last_error, type="negative")
+            render()
+            on_change()
+
+        def render() -> None:
+            container.clear()
+            with container:
+                for tol in current():
+                    _row(tol)
+                ui.button("Add tolerance", icon="add",
+                          on_click=lambda: commit(ops.add(current()))).props("flat dense")
+
+        def _row(tol: NamedTolerance) -> None:
+            with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                ui.checkbox(
+                    value=tol.enabled,
+                    on_change=lambda e, n=tol.name: commit(ops.set_enabled(current(), n, e.value)),
+                ).props("dense").tooltip("Draw this tolerance")
+
+                _swatch(tol)
+
+                with ui.column().classes("gap-0 grow"):
+                    ui.label(tol.name).classes("text-sm font-medium leading-tight")
+                    ui.label(f"{tol.display_label} · {tol.kind}").classes(
+                        "text-xs opacity-60 leading-tight"
+                    )
+
+                ui.button(icon="edit", on_click=lambda _, t=tol: _open_editor(t)).props(
+                    "flat dense round size=sm"
+                )
+                if tol.name != PARITY_NAME:
+                    ui.button(
+                        icon="delete",
+                        on_click=lambda _, n=tol.name: commit(ops.delete(current(), n)),
+                    ).props("flat dense round size=sm color=negative")
+
+        def _swatch(tol: NamedTolerance) -> None:
+            from ...themes import get as get_theme
+
+            colour = get_theme(state.config.plot.theme).resolve_color(tol.color_token)
+            style = f"width:14px;height:14px;border-radius:3px;background:{colour}"
+            if not tol.enabled:
+                style += ";opacity:0.3"
+            ui.element("div").style(style)
+
+        def _open_editor(tol: NamedTolerance) -> None:
+            locked = tol.name == PARITY_NAME
+            with ui.dialog() as dialog, ui.card().classes("w-96 gap-2"):
+                ui.label(f"Edit {tol.name}").classes("text-base font-medium")
+
+                name_in = ui.input("Name", value=tol.name).classes("w-full")
+                name_in.props(f'hint="No spaces{" · locked" if locked else ""}"')
+                if locked:
+                    name_in.props("readonly")
+
+                auto = tol.label in (None, "auto")
+                label_mode = ui.toggle(
+                    {"auto": "Auto label", "manual": "Manual label"},
+                    value="auto" if auto else "manual",
+                ).props("dense")
+                label_in = ui.input(
+                    "Legend label",
+                    value="" if auto else tol.label,
+                ).classes("w-full")
+                label_in.bind_visibility_from(label_mode, "value", value="manual")
+
+                with ui.row().classes("w-full gap-2 no-wrap"):
+                    abstol_in = ui.number("abstol", value=tol.abstol, format="%.4g").classes("grow")
+                    reltol_in = ui.input("reltol", value=_reltol_text(tol)).classes("grow")
+                    reltol_in.props('hint="ratio or 10pct"')
+                if locked:
+                    abstol_in.props("readonly").tooltip("The parity line is a zero tolerance")
+                    reltol_in.props("readonly")
+
+                kind_sel = ui.select(list(KINDS), value=tol.kind, label="Kind").classes("w-full")
+                if locked:
+                    kind_sel.props("readonly").tooltip("The parity line is informational")
+
+                with ui.row().classes("w-full gap-2 no-wrap"):
+                    color_sel = ui.select(
+                        list(COLOR_TOKENS), value=_color_value(tol), label="Colour",
+                    ).classes("grow")
+                    style_sel = ui.select(list(STYLES), value=tol.style, label="Draw as").classes("grow")
+
+                legend_sw = ui.switch("Show in legend", value=tol.show_in_legend)
+
+                error = ui.label("").classes("text-red-400 text-xs")
+
+                def save() -> None:
+                    edited = _from_editor(
+                        tol, locked, name_in.value, label_mode.value, label_in.value,
+                        abstol_in.value, reltol_in.value, kind_sel.value,
+                        color_sel.value, style_sel.value, legend_sw.value,
+                    )
+                    if isinstance(edited, str):  # an error message
+                        error.text = edited
+                        return
+                    if not ops.rename_is_free(current(), tol.name, edited.name):
+                        error.text = f"a tolerance named {edited.name!r} already exists"
+                        return
+                    dialog.close()
+                    commit(ops.update(current(), tol.name, edited))
+
+                with ui.row().classes("w-full justify-end"):
+                    ui.button("Cancel", on_click=dialog.close).props("flat")
+                    ui.button("Save", on_click=save)
+            dialog.open()
+
+        render()
+
+
+def _reltol_text(tol: NamedTolerance) -> str:
+    if tol.reltol is None:
+        return ""
+    return f"{tol.reltol:g}"
+
+
+def _color_value(tol: NamedTolerance) -> str:
+    token = tol.color_token
+    return token if not token.startswith("#") else token
+
+
+def _from_editor(
+    original, locked, name, label_mode, label, abstol, reltol, kind, color, style, in_legend,
+):
+    """Assemble an edited NamedTolerance, or return an error string.
+
+    Kept separate from the widgets so the assembly rules are one place. A locked
+    entry keeps its name, bounds and kind no matter what the (read-only) fields
+    hold, so a stray value cannot corrupt the parity line.
+    """
+    from dataclasses import replace
+
+    from ...tolerances import ToleranceError
+
+    if locked:
+        return replace(
+            original,
+            color=color or None,
+            style=style,
+            show_in_legend=bool(in_legend),
+            label=None if label_mode == "auto" else (label.strip() or None),
+        )
+
+    name = (name or "").strip()
+    parsed_reltol = None
+    if reltol not in (None, "", " "):
+        try:
+            parsed_reltol = parse_reltol(reltol)
+        except ValueError as exc:
+            return str(exc)
+
+    try:
+        return NamedTolerance(
+            name=name,
+            abstol=float(abstol) if abstol not in (None, "") else None,
+            reltol=parsed_reltol,
+            kind=kind,
+            color=color or None,
+            style=style,
+            show_in_legend=bool(in_legend),
+            label=None if label_mode == "auto" else (label.strip() or None),
+            enabled=original.enabled,
+        )
+    except ToleranceError as exc:
+        return str(exc)

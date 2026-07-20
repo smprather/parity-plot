@@ -16,6 +16,7 @@ from .panels.controls import build_controls
 from .panels.data_panel import build_data_panel
 from .panels.inspector import build_inspector
 from .panels.table import build_table
+from .panels.tolerances import build_tolerances_panel
 from .records import key_from_customdata
 from .selection import range_from_selection
 from .session import Session, StaleFileError
@@ -64,6 +65,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
         with ui.row().classes("w-full no-wrap gap-4"):
             with ui.column().classes("w-80 shrink-0"):
                 build_data_panel(state, lambda: reload_everything())
+                build_tolerances_panel(state, lambda: refresh())
                 ui.label("Settings").classes("text-base font-medium")
                 build_controls(state, lambda: refresh())
                 ui.separator()
