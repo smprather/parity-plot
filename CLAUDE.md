@@ -26,6 +26,12 @@ plotly_get_chrome`); kaleido and the browser are separate installs and each
 failure reports itself in terms of the other. `plot.py::_export_hint` exists to
 untangle that — keep it accurate if the export path changes.
 
+**Python floor is `>=3.14`**, matching the sibling `time-plot` project. Nothing in
+the code needs 3.14 specifically — `tomllib` only wants 3.11 — so the floor is a
+deliberate consistency choice, not a technical constraint. The completed plan
+documents under `docs/superpowers/plans/` state `>=3.11`; they are historical
+records of what was true when written, and this file is authoritative.
+
 ## Architecture
 
 The pipeline is `load → compute → build_figure → save`, with `config.py`

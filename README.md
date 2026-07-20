@@ -7,6 +7,11 @@ to show how well the two agree. This one handles the case most tools ignore:
 records that exist in one dataset but have **no corresponding measurement** in
 the other.
 
+## Requirements
+
+- Python `>=3.14`
+- [`uv`](https://docs.astral.sh/uv/)
+
 ## Install
 
 ```bash

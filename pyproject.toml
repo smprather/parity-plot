@@ -3,7 +3,7 @@ name = "parity-plot"
 version = "0.1.0"
 description = "45-degree parity plots from Plotly, as a Python package and a CLI"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
     "kaleido>=1.3.0",
     "plotly>=6.0",
