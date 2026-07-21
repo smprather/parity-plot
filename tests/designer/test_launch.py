@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from parity_plot.cli import cli
 from parity_plot.designer.launch import MissingDependencyError, require_nicegui
 
-WIDE = "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n"
+WIDE = "id,reference,test\nA1,10.0,11.0\nA2,20.0,21.0\n"
 
 
 @pytest.fixture
@@ -78,14 +78,16 @@ def test_design_reports_a_bad_csv_without_a_traceback(tmp_path):
     path without a server ever starting. Stubbing `run` would stub out the very
     thing under test.
     """
+    # Only one numeric column: the single-file default needs two, so the load
+    # fails with a clear message rather than a traceback.
     bad = tmp_path / "bad.csv"
-    bad.write_text("id,reference,measured\nA1,1.0,oops\n", encoding="utf-8")
+    bad.write_text("id,reference,note\nA1,1.0,oops\n", encoding="utf-8")
 
     result = CliRunner().invoke(cli, ["design", str(bad), "--no-open-browser"])
 
     assert result.exit_code != 0
     assert "Traceback" not in result.output
-    assert "oops" in result.output  # names the offending value
+    assert "numeric" in result.output  # names the problem: not enough numeric columns
 
 
 def test_bad_input_fails_before_any_server_starts(tmp_path, monkeypatch):
@@ -95,7 +97,7 @@ def test_bad_input_fails_before_any_server_starts(tmp_path, monkeypatch):
         "parity_plot.designer.launch.free_port", lambda p: started.append(p) or p
     )
     bad = tmp_path / "bad.csv"
-    bad.write_text("id,reference,measured\nA1,1.0,oops\n", encoding="utf-8")
+    bad.write_text("id,reference,test\nA1,1.0,oops\n", encoding="utf-8")
 
     CliRunner().invoke(cli, ["design", str(bad), "--no-open-browser"])
 

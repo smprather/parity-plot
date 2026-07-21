@@ -12,7 +12,7 @@ def test_defaults_are_usable_without_any_toml():
     assert cfg.plot.theme == "dark"  # dark by default, per the design
     assert cfg.plot.nulls == "rug"
     assert cfg.output.format == "html"
-    assert cfg.data.paths == ()
+    assert cfg.data.files == ()
 
 
 def test_round_trip_of_the_shipped_example(tmp_path: Path):
@@ -21,8 +21,9 @@ def test_round_trip_of_the_shipped_example(tmp_path: Path):
 
     cfg = ParityConfig.from_toml(path)
 
-    assert cfg.data.paths == (Path("data/example.csv"),)
-    assert cfg.data.x == "reference"
+    assert cfg.data.files == (Path("data/example.csv"),)
+    assert cfg.data.ref == "data/example.csv:reference"
+    assert cfg.data.test == "data/example.csv:measured"
     assert cfg.plot.theme == "dark"
     tols = cfg.plot.tolerances
     # The built-in y = x line is guaranteed first; the shipped example adds "spec".

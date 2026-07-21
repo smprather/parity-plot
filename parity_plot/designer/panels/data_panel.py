@@ -40,6 +40,27 @@ def mapping_options(paths: tuple[Path, ...]) -> dict[str, list[str]]:
     }
 
 
+def _ref_col(data, fallback: str | None) -> str | None:
+    """The ref column name from the `file:column` ref, or `fallback`."""
+    if data.ref:
+        return data.ref.rpartition(":")[2]
+    return fallback
+
+
+def _test_col(data, fallback: str | None) -> str | None:
+    if data.test:
+        return data.test.rpartition(":")[2]
+    return fallback
+
+
+def _qualified(files: tuple[Path, ...], column: str | None, which: int) -> str | None:
+    """Build a `file:column` ref from a bare column name, or None."""
+    if column is None or not files:
+        return None
+    f = files[min(which, len(files) - 1)]
+    return f"{f.name}:{column}"
+
+
 def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
     """File paths plus the column mapping, applied together."""
     from nicegui import ui
@@ -47,15 +68,22 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
     with ui.expansion("Data", value=False).classes("w-full"):
         paths_input = ui.input(
             "Paths",
-            value=", ".join(str(p) for p in state.config.data.paths),
+            value=", ".join(str(p) for p in state.config.data.files),
         ).classes("w-full").tooltip(
             "One path for a wide file, or two to outer-join on the key column."
         )
 
-        options = mapping_options(state.config.data.paths)
-        key_select = ui.select(options["key"], value=state.config.data.key, label="Key column").classes("w-full")
-        x_select = ui.select(options["x"], value=state.config.data.x, label="Reference column").classes("w-full")
-        y_select = ui.select(options["y"], value=state.config.data.y, label="Measured column").classes("w-full")
+        options = mapping_options(state.config.data.files)
+        # The config stores `file:column` refs; the selects show bare column names.
+        key_select = ui.select(
+            options["key"], value=state.config.data.join, label="Key column"
+        ).classes("w-full")
+        x_select = ui.select(
+            options["x"], value=_ref_col(state.config.data, None), label="Reference column"
+        ).classes("w-full")
+        y_select = ui.select(
+            options["y"], value=_test_col(state.config.data, None), label="Measured column"
+        ).classes("w-full")
 
         def parse_paths() -> tuple[Path, ...]:
             return tuple(
@@ -85,11 +113,12 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
                 select.update()
 
         def apply() -> None:
+            files = parse_paths()
             ok = state.set_data_source(
-                paths=parse_paths(),
-                key=key_select.value,
-                x=x_select.value,
-                y=y_select.value,
+                files=files,
+                ref=_qualified(files, x_select.value, 0),
+                test=_qualified(files, y_select.value, min(1, len(files) - 1)),
+                join=key_select.value,
             )
             if not ok:
                 ui.notify(state.last_error, type="negative")

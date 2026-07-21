@@ -150,7 +150,7 @@ def test_write_all_emits_both_shapes_from_the_same_draws(tmp_path):
     for row in reference:
         assert by_id[row["id"]]["reference"] == row["value"]
     for row in measured:
-        assert by_id[row["id"]]["measured"] == row["value"]
+        assert by_id[row["id"]]["test"] == row["value"]
 
 
 def test_written_files_use_unix_line_endings(tmp_path):

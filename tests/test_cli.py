@@ -30,9 +30,9 @@ def test_example_writes_both_input_shapes(run, tmp_path):
 
     rows = list(csv.DictReader(wide.open()))
     assert len(rows) == 50
-    assert sum(1 for r in rows if not r["measured"] and r["reference"]) == 3
-    assert sum(1 for r in rows if not r["reference"] and r["measured"]) == 2
-    assert sum(1 for r in rows if not r["reference"] and not r["measured"]) == 1
+    assert sum(1 for r in rows if not r["test"] and r["reference"]) == 3
+    assert sum(1 for r in rows if not r["reference"] and r["test"]) == 2
+    assert sum(1 for r in rows if not r["reference"] and not r["test"]) == 1
 
 
 def test_example_is_reproducible_for_a_seed(run, tmp_path):
@@ -60,8 +60,8 @@ def test_browser_opens_by_default(run, wide_csv, tmp_path, no_real_browser, comm
     """The whole point of `example`: run it and see a plot, no extra flag."""
     out = tmp_path / "p.html"
     if command == "plot":
-        args = ("plot", wide_csv, "--x-col", "reference", "--y-col", "measured",
-                "--key-col", "id", "-o", out)
+        args = ("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
+                "wide.csv:test", "--join", "id", "-o", out)
     else:
         args = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
                 "--missing-x", "1", "--both-null", "0", "-o", out)
@@ -74,8 +74,8 @@ def test_browser_opens_by_default(run, wide_csv, tmp_path, no_real_browser, comm
 def test_no_open_browser_suppresses_the_launch(run, wide_csv, tmp_path, no_real_browser, command):
     out = tmp_path / "p.html"
     if command == "plot":
-        args = ("plot", wide_csv, "--x-col", "reference", "--y-col", "measured",
-                "--key-col", "id", "-o", out, "--no-open-browser")
+        args = ("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
+                "wide.csv:test", "--join", "id", "-o", out, "--no-open-browser")
     else:
         args = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
                 "--missing-x", "1", "--both-null", "0", "-o", out, "--no-open-browser")
@@ -107,8 +107,8 @@ def test_output_suffix_is_never_ignored(run, wide_csv, tmp_path, command):
     """`-o plot.svg` must not write HTML into a .svg file."""
     out = tmp_path / "p.svg"
     if command == "plot":
-        args = ("plot", wide_csv, "--x-col", "reference", "--y-col", "measured",
-                "--key-col", "id", "-o", out)
+        args = ("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
+                "wide.csv:test", "--join", "id", "-o", out)
     else:
         args = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
                 "--missing-x", "1", "--both-null", "0", "-o", out)
@@ -124,15 +124,18 @@ def test_output_suffix_is_never_ignored(run, wide_csv, tmp_path, command):
 
 def test_example_shape_flags_change_the_data(run, tmp_path):
     """The knobs must actually reach the generator, not just parse."""
-    from parity_plot import compute_stats, load_wide
+    from parity_plot import compute_stats
+    from parity_plot.config import DataConfig
+    from parity_plot.data import load
 
     def stats_for(name, *flags):
         d = tmp_path / name
         assert run("example", "--out-dir", d, "-n", "300", "--seed", "3",
                    "--missing-y", "0", "--missing-x", "0", "--both-null", "0",
                    "--no-plot", *flags).exit_code == 0
-        return compute_stats(load_wide(d / "example.csv", "reference", "measured", "id",
-                                       na_values=[""]))
+        wide = d / "example.csv"
+        return compute_stats(load(DataConfig(
+            files=(wide,), ref="example.csv:reference", test="example.csv:test")))
 
     tight = stats_for("tight", "--noise", "0.01", "--outliers", "0", "--bias", "0")
     loose = stats_for("loose", "--noise", "0.30", "--outliers", "0", "--bias", "0")
@@ -192,8 +195,8 @@ def test_example_both_tolerances_give_a_funnel(run, tmp_path):
 def test_plot_still_draws_no_limits_unless_asked(run, wide_csv, tmp_path):
     """The default belongs to the demo, not to every plot anyone renders."""
     out = tmp_path / "p.html"
-    assert run("plot", wide_csv, "--x-col", "reference", "--y-col", "measured",
-               "--key-col", "id", "-o", out).exit_code == 0
+    assert run("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
+               "wide.csv:test", "--join", "id", "-o", out).exit_code == 0
     assert _tolerance_labels(out) == set()
 
 
@@ -230,7 +233,8 @@ def test_example_rejects_more_holes_than_records(run, tmp_path):
 
 def test_plot_renders_from_a_wide_file(run, wide_csv, tmp_path):
     out = tmp_path / "p.html"
-    result = run("plot", wide_csv, "--x-col", "reference", "--y-col", "measured", "--key-col", "id", "-o", out)
+    result = run("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
+                 "wide.csv:test", "--join", "id", "-o", out)
 
     assert result.exit_code == 0, result.output
     assert out.exists()
@@ -244,7 +248,8 @@ def test_plot_joins_two_files(run, write_csv, tmp_path):
     y = write_csv("meas.csv", "id,value\nA,1.1\nC,3.0\n")
     out = tmp_path / "p.html"
 
-    result = run("plot", x, y, "--key-col", "id", "-o", out)
+    result = run("plot", x, y, "--ref", "ref.csv:value", "--test",
+                 "meas.csv:value", "--join", "id", "-o", out)
 
     assert result.exit_code == 0, result.output
     assert "1 paired" in result.output
@@ -253,8 +258,8 @@ def test_plot_joins_two_files(run, write_csv, tmp_path):
 
 def test_plot_infers_the_format_from_the_output_suffix(run, wide_csv, tmp_path):
     """`-o out.svg` should not also require `--format svg`."""
-    result = run("plot", wide_csv, "--x-col", "reference", "--y-col", "measured",
-                 "--key-col", "id", "-o", tmp_path / "p.svg")
+    result = run("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
+                 "wide.csv:test", "--join", "id", "-o", tmp_path / "p.svg")
     # Static export may be unavailable in this environment; what matters is that
     # it attempted svg rather than silently writing HTML into a .svg file.
     if result.exit_code != 0:
@@ -264,7 +269,8 @@ def test_plot_infers_the_format_from_the_output_suffix(run, wide_csv, tmp_path):
 
 
 def test_plot_reports_a_bad_column_without_a_traceback(run, wide_csv, tmp_path):
-    result = run("plot", wide_csv, "--x-col", "nope", "-o", tmp_path / "p.html")
+    result = run("plot", wide_csv, "--ref", "wide.csv:nope", "--test",
+                 "wide.csv:test", "-o", tmp_path / "p.html")
     assert result.exit_code != 0
     assert "nope" in result.output
     assert "Traceback" not in result.output
@@ -300,8 +306,8 @@ def test_init_refuses_to_clobber_without_force(run, tmp_path):
 def test_config_supplies_input_and_flags_override_it(run, wide_csv, tmp_path):
     config = tmp_path / "parity.toml"
     config.write_text(
-        f'[data]\npaths = ["{wide_csv.as_posix()}"]\nx = "reference"\n'
-        f'y = "measured"\nkey = "id"\n\n[plot]\ntheme = "light"\n',
+        f'[data]\nfiles = ["{wide_csv.as_posix()}"]\nref = "wide.csv:reference"\n'
+        f'test = "wide.csv:test"\njoin = "id"\n\n[plot]\ntheme = "light"\n',
         encoding="utf-8",
     )
     out = tmp_path / "p.html"

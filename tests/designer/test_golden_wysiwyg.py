@@ -14,7 +14,7 @@ from parity_plot.plot import build_figure
 from parity_plot.tolerances import PARITY_NAME, NamedTolerance
 
 WIDE = """\
-id,reference,measured
+id,reference,test
 A1,10.0,11.0
 A2,20.0,
 A3,30.0,29.0
@@ -39,11 +39,12 @@ def _state_with(csv: Path, plot: dict) -> DesignerState:
     These tests exercise save/reload/render equality, not the editing path, so
     they build the config directly through `from_dict`.
     """
-    session, config, data = Session.start((csv,), None)
     config = ParityConfig.from_dict(
-        {"data": {"paths": [str(csv)]}, "plot": plot}
+        {"data": {"files": [str(csv)], "ref": "wide.csv:reference",
+                  "test": "wide.csv:test", "join": "id"},
+         "plot": plot}
     )
-    state = DesignerState(config=config, data=data)
+    state = DesignerState(config=config, data=load(config.data))
     return state
 
 
@@ -164,7 +165,8 @@ def test_comments_in_a_config_survive_a_designer_save(csv, tmp_path: Path):
         "[[plot.tolerances]]\n"
         'name = "spec"\n'
         "reltol = 0.10\n"
-        f'\n[data]\npaths = ["{csv.as_posix()}"]\n',
+        f'\n[data]\nfiles = ["{csv.as_posix()}"]\nref = "wide.csv:reference"\n'
+        f'test = "wide.csv:test"\njoin = "id"\n',
         encoding="utf-8",
     )
 

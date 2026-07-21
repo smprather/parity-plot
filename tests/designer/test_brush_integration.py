@@ -23,8 +23,11 @@ WIDE = "".join(
 @pytest.fixture
 def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "ramp.csv"
-    csv.write_text("id,reference,measured\n" + WIDE, encoding="utf-8")
-    config = ParityConfig().merge(data={"paths": (csv,)})
+    csv.write_text("id,reference,test\n" + WIDE, encoding="utf-8")
+    config = ParityConfig().merge(
+        data={"files": (csv,), "ref": "ramp.csv:reference",
+              "test": "ramp.csv:test", "join": "id"}
+    )
     return DesignerState(config=config, data=load(config.data))
 
 
@@ -105,7 +108,7 @@ def test_brushing_an_empty_region_shows_nothing_rather_than_everything(state):
 def test_brushing_never_reaches_the_saved_config(state, tmp_path: Path):
     from parity_plot.designer.session import Session
 
-    session, config, data = Session.start((state.config.data.paths[0],), None)
+    session, config, data = Session.start((state.config.data.files[0],), None)
     live = DesignerState(config=config, data=data)
     apply_brush(live, {"range": {"x": [40.0, 60.0]}})
 

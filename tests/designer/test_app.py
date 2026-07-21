@@ -21,7 +21,7 @@ from parity_plot.tolerances import NamedTolerance
 @pytest.fixture
 def session_and_data(tmp_path: Path):
     csv = tmp_path / "wide.csv"
-    csv.write_text("id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n", encoding="utf-8")
+    csv.write_text("id,reference,test\nA1,10.0,11.0\nA2,20.0,21.0\n", encoding="utf-8")
     return Session.start((csv,), None)
 
 
@@ -83,7 +83,7 @@ def test_the_server_actually_serves_the_page(tmp_path: Path):
     it exercises the actual `parity-plot design` entry point.
     """
     csv = tmp_path / "wide.csv"
-    csv.write_text("id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n", encoding="utf-8")
+    csv.write_text("id,reference,test\nA1,10.0,11.0\nA2,20.0,21.0\n", encoding="utf-8")
 
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))

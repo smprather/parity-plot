@@ -39,7 +39,27 @@ class Session:
             config = ParityConfig()
 
         if data_paths:
-            config = config.merge(data={"paths": tuple(data_paths)})
+            overrides: dict = {"files": tuple(data_paths)}
+            # Command-line paths win over the config file's files, so any ref/test
+            # pointing at the old files no longer resolves. Re-derive them for a
+            # single file (the first two numeric columns); for two files the user
+            # must supply a config that names the right columns.
+            if len(data_paths) == 1:
+                from ..sources import open_sources
+
+                cols = open_sources(data_paths, config.data.na_values).numeric_columns(
+                    config.data.na_values
+                )
+                if len(cols) < 2:
+                    from ..data import DataError
+
+                    raise DataError(
+                        f"{data_paths[0].name}: need at least two numeric columns "
+                        f"for ref/test; found {len(cols)} ({cols})"
+                    )
+                overrides["ref"] = cols[0]
+                overrides["test"] = cols[1]
+            config = config.merge(data=overrides)
 
         data = load(config.data)
         session = cls(

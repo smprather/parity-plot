@@ -17,14 +17,17 @@ from parity_plot.designer import tolerance_ops as ops
 from parity_plot.designer.state import DesignerState
 from parity_plot.tolerances import PARITY_NAME, NamedTolerance
 
-WIDE = "id,reference,measured\nA1,10.0,11.0\nA2,20.0,25.0\nA3,30.0,30.3\n"
+WIDE = "id,reference,test\nA1,10.0,11.0\nA2,20.0,25.0\nA3,30.0,30.3\n"
 
 
 @pytest.fixture
 def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "w.csv"
     csv.write_text(WIDE, encoding="utf-8")
-    config = ParityConfig().merge(data={"paths": (csv,)})
+    config = ParityConfig().merge(
+        data={"files": (csv,), "ref": "w.csv:reference",
+              "test": "w.csv:test", "join": "id"}
+    )
     return DesignerState(config=config, data=load(config.data))
 
 

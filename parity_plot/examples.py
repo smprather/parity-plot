@@ -178,7 +178,7 @@ def write_wide(records: list[Record], path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh, lineterminator="\n")
-        writer.writerow(["id", "reference", "measured"])
+        writer.writerow(["id", "reference", "test"])
         for rec in records:
             writer.writerow([rec.key, _fmt(rec.reference), _fmt(rec.measured)])
     return path

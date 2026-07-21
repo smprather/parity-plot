@@ -63,24 +63,26 @@ __all__ = [
 
 def parity_plot(
     *paths: str | Path,
-    x: str | Iterable[float | None] | None = None,
-    y: str | Iterable[float | None] | None = None,
+    ref: str | Iterable[float | None] | None = None,
+    test: str | Iterable[float | None] | None = None,
+    join: str | None = None,
+    group: str | Sequence[str | None] | None = None,
     keys: Sequence[str] | None = None,
-    key: str | None = None,
     config: str | Path | ParityConfig | None = None,
     **options,
 ) -> go.Figure:
     """Build a parity plot figure in one call.
 
-    Accepts either paths or raw sequences:
+    Accepts either files or raw sequences:
 
-        parity_plot("wide.csv", x="reference", y="measured")
-        parity_plot("ref.csv", "meas.csv", key="id")
-        parity_plot(x=[1.0, 2.0], y=[1.1, None], theme="light")
+        parity_plot("wide.csv", ref="wide.csv:reference", test="wide.csv:test")
+        parity_plot("ref.csv", "meas.csv", ref="ref.csv:value",
+                    test="meas.csv:value", join="id")
+        parity_plot(ref=[1.0, 2.0], test=[1.1, None], theme="light")
 
-    Keyword ``options`` are :class:`PlotConfig` fields (``theme``, ``title``,
-    ``log``, ``tolerance``, ``nulls``, ...). They take precedence over
-    ``config``, matching the CLI's flag-over-file ordering.
+    ``ref`` and ``test`` are ``file:column`` strings when files are given, or
+    sequences of numbers for the in-memory case. Keyword ``options`` are
+    :class:`PlotConfig` fields and take precedence over ``config``.
     """
     if isinstance(config, ParityConfig):
         cfg = config
@@ -89,11 +91,11 @@ def parity_plot(
     else:
         cfg = ParityConfig()
 
-    x_is_column = x is None or isinstance(x, str)
-    y_is_column = y is None or isinstance(y, str)
-    if x_is_column != y_is_column:
+    ref_is_column = ref is None or isinstance(ref, str)
+    test_is_column = test is None or isinstance(test, str)
+    if ref_is_column != test_is_column:
         raise TypeError(
-            "x and y must both be column names or both be sequences of values"
+            "ref and test must both be file:column strings or both be sequences"
         )
 
     plot_overrides = {k: v for k, v in options.items() if v is not None}
@@ -101,14 +103,20 @@ def parity_plot(
     if unknown:
         raise TypeError(f"unexpected keyword argument(s): {sorted(unknown)}")
 
-    if not x_is_column:
+    if not ref_is_column:
         if paths:
-            raise TypeError("pass either paths or x/y sequences, not both")
-        data = from_sequences(x, y, keys=keys)  # type: ignore[arg-type]
+            raise TypeError("pass either files or ref/test sequences, not both")
+        group_seq = group if not isinstance(group, str) else None
+        data = from_sequences(ref, test, keys=keys, group=group_seq)  # type: ignore[arg-type]
     else:
-        data_overrides = {"x": x, "y": y, "key": key}
+        data_overrides = {
+            "ref": ref,
+            "test": test,
+            "join": join,
+            "group": group if isinstance(group, str) else None,
+        }
         if paths:
-            data_overrides["paths"] = tuple(Path(p) for p in paths)
+            data_overrides["files"] = tuple(Path(p) for p in paths)
         cfg = cfg.merge(data=data_overrides)
         data = load(cfg.data)
 
