@@ -45,6 +45,10 @@ class ParityData:
     n_dropped: int = 0
     x_label: str = "x"
     y_label: str = "y"
+    # Per-paired-point group label, or None when no group column was chosen.
+    # Aligned to `keys`/`x`/`y`; an entry may be None if that point's group cell
+    # was blank. Drives colour/symbol-by-group in Phase 2.
+    group: list[str | None] | None = None
 
     @property
     def n_paired(self) -> int:
@@ -64,97 +68,129 @@ class ParityData:
 
 
 def load(cfg: DataConfig) -> ParityData:
-    """Load according to ``cfg``, dispatching on how many paths were given."""
-    paths = cfg.paths
-    if not paths:
-        raise DataError("no input paths configured; pass a CSV path or set data.paths")
-    if len(paths) == 1:
-        return load_wide(
-            paths[0],
-            x_col=cfg.x,
-            y_col=cfg.y,
-            key_col=cfg.key,
-            na_values=cfg.na_values,
+    """Load per the config: N files, ref/test as file:column, join or order.
+
+    The two plotted series are ``ref`` and ``test``, each a ``file:column`` into
+    the open set. A ``join`` column aligns rows across files by key; without one,
+    rows pair by position and the longer column's tail is left unpaired. An
+    optional ``group`` column labels each paired point.
+
+    Both former modes are special cases: one file with two columns and no join is
+    the old wide mode; two files with a join is the old pair mode. There is no
+    dispatch on file count.
+    """
+    from .sources import open_sources  # lazy: sources imports helpers from here
+
+    if not cfg.files:
+        raise DataError("no input files; pass a CSV path or set data.files")
+    if not cfg.ref or not cfg.test:
+        raise DataError("both a ref and a test column are required (file:column)")
+
+    src = open_sources(cfg.files, cfg.na_values)
+    na = _na_set(cfg.na_values)
+
+    ref_col = src.resolve(cfg.ref)
+    test_col = src.resolve(cfg.test)
+    _require_numeric(ref_col, na, "ref")
+    _require_numeric(test_col, na, "test")
+    group_col = src.resolve(cfg.group) if cfg.group else None
+
+    builder = _Builder(x_label=ref_col.name, y_label=test_col.name)
+    if cfg.join:
+        _load_joined(builder, src, ref_col, test_col, group_col, cfg.join, na)
+    else:
+        _load_by_order(builder, ref_col, test_col, group_col, na)
+    return builder.build()
+
+
+def _require_numeric(col, na: frozenset[str], role: str) -> None:
+    """ref and test are the axes -- every non-NA cell must be a number."""
+    for index, raw in enumerate(col.values):
+        text = (raw or "").strip()
+        if text.lower() in na:
+            continue
+        try:
+            float(text)
+        except ValueError:
+            raise DataError(
+                f"{col.file}:{index + 2}: {role} column {col.name!r} has "
+                f"non-numeric value {text!r}"
+            ) from None
+
+
+def _load_by_order(builder: "_Builder", ref_col, test_col, group_col, na) -> None:
+    """Pair rows by position; the longer column's tail becomes unpaired."""
+    n = max(len(ref_col.values), len(test_col.values))
+    for i in range(n):
+        rv = ref_col.values[i] if i < len(ref_col.values) else None
+        tv = test_col.values[i] if i < len(test_col.values) else None
+        gv = group_col.values[i] if group_col and i < len(group_col.values) else None
+        builder.add(
+            str(i),
+            _parse(rv, na, ref_col.file, i + 2, ref_col.name) if rv is not None else None,
+            _parse(tv, na, test_col.file, i + 2, test_col.name) if tv is not None else None,
+            group=_group_value(gv, na),
         )
-    if len(paths) == 2:
-        return load_pair(
-            paths[0],
-            paths[1],
-            key_col=cfg.key,
-            value_col=cfg.value,
-            x_col=cfg.x,
-            y_col=cfg.y,
-            na_values=cfg.na_values,
-        )
-    raise DataError(
-        f"expected 1 path (wide mode) or 2 paths (join mode), got {len(paths)}"
-    )
 
 
-def load_wide(
-    path: str | Path,
-    x_col: str,
-    y_col: str,
-    key_col: str | None = None,
-    na_values: Sequence[str] = (),
-) -> ParityData:
-    """Load one CSV holding both value columns. An empty cell is a null."""
-    path = Path(path)
-    na = _na_set(na_values)
-    rows = _read_rows(path)
-    if not rows:
-        raise DataError(f"{path}: file is empty")
+def _load_joined(builder: "_Builder", src, ref_col, test_col, group_col, join, na) -> None:
+    """Outer-join ref and test files on ``join``; a key on one side is unpaired."""
+    ref_by = _index_by_key(src, ref_col, join)
+    test_by = _index_by_key(src, test_col, join)
+    group_by = _index_by_key(src, group_col, join) if group_col else {}
 
-    header = rows[0][1].keys()
-    _require_columns(path, header, {x_col, y_col} | ({key_col} if key_col else set()))
-
-    builder = _Builder(x_label=x_col, y_label=y_col)
-    for line, row in rows:
-        key = row[key_col].strip() if key_col else str(line - 1)
+    # ref-file order first, then keys only in the test file -- deterministic and
+    # mirroring how the data was laid out.
+    ordered = list(ref_by) + [k for k in test_by if k not in ref_by]
+    for key in ordered:
+        rline, rraw = ref_by.get(key, (0, None))
+        tline, traw = test_by.get(key, (0, None))
+        _, graw = group_by.get(key, (0, None))
         builder.add(
             key,
-            _parse(row.get(x_col), na, path, line, x_col),
-            _parse(row.get(y_col), na, path, line, y_col),
+            _parse(rraw, na, ref_col.file, rline, ref_col.name) if rraw is not None else None,
+            _parse(traw, na, test_col.file, tline, test_col.name) if traw is not None else None,
+            group=_group_value(graw, na),
         )
-    return builder.build()
 
 
-def load_pair(
-    x_path: str | Path,
-    y_path: str | Path,
-    key_col: str | None = "id",
-    value_col: str = "value",
-    x_col: str | None = None,
-    y_col: str | None = None,
-    na_values: Sequence[str] = (),
-) -> ParityData:
-    """Outer-join two CSVs on ``key_col``.
+def _index_by_key(src, col, join: str) -> dict[str, tuple[int, str]]:
+    """{join-key: (line, raw value)} for one column, keyed on the join column.
 
-    A key present in only one file is the null case -- there is genuinely no
-    corresponding measurement, as opposed to a blank cell.
+    The key file must contain the join column, and its keys must be unique -- a
+    duplicate would make the join ambiguous.
     """
-    x_path, y_path = Path(x_path), Path(y_path)
-    if not key_col:
-        raise DataError("join mode needs a key column; set data.key or pass --key-col")
-    na = _na_set(na_values)
+    table = src.tables[col.file]
+    if join not in table:
+        raise DataError(
+            f"{col.file}: join column {join!r} not found; available: {sorted(table)}"
+        )
+    keys = table[join]
+    out: dict[str, tuple[int, str]] = {}
+    for index, (key, value) in enumerate(zip(keys, col.values)):
+        key = (key or "").strip()
+        if key in out:
+            raise DataError(
+                f"{col.file}:{index + 2}: duplicate join key {key!r}; the join "
+                f"would be ambiguous"
+            )
+        out[key] = (index + 2, value)
+    return out
 
-    x_vals, x_label = _read_keyed(x_path, key_col, value_col, x_col, na)
-    y_vals, y_label = _read_keyed(y_path, key_col, value_col, y_col, na)
 
-    # x-file order first, then keys only present in the y file, so the output is
-    # deterministic and mirrors how the user laid the data out.
-    ordered = list(x_vals) + [k for k in y_vals if k not in x_vals]
-
-    builder = _Builder(x_label=x_label, y_label=y_label)
-    for key in ordered:
-        builder.add(key, x_vals.get(key), y_vals.get(key))
-    return builder.build()
+def _group_value(raw: str | None, na: frozenset[str]) -> str | None:
+    """A group label, or None when the cell is blank/NA."""
+    if raw is None:
+        return None
+    text = raw.strip()
+    return None if text.lower() in na else text
 
 
 def from_sequences(
     x: Iterable[float | None],
     y: Iterable[float | None],
     keys: Sequence[str] | None = None,
+    group: Sequence[str | None] | None = None,
     x_label: str = "x",
     y_label: str = "y",
 ) -> ParityData:
@@ -168,11 +204,15 @@ def from_sequences(
         raise DataError(f"x and y differ in length: {len(xs)} vs {len(ys)}")
     if keys is not None and len(keys) != len(xs):
         raise DataError(f"keys has length {len(keys)}, expected {len(xs)}")
+    groups = list(group) if group is not None else None
+    if groups is not None and len(groups) != len(xs):
+        raise DataError(f"group has length {len(groups)}, expected {len(xs)}")
 
     builder = _Builder(x_label=x_label, y_label=y_label)
     for i, (xv, yv) in enumerate(zip(xs, ys)):
         key = keys[i] if keys is not None else str(i)
-        builder.add(str(key), _clean(xv), _clean(yv))
+        gv = groups[i] if groups is not None else None
+        builder.add(str(key), _clean(xv), _clean(yv), group=gv)
     return builder.build()
 
 
@@ -183,6 +223,7 @@ class _Builder:
         self.keys: list[str] = []
         self.x: list[float] = []
         self.y: list[float] = []
+        self.groups: list[str | None] = []
         self.missing_y_keys: list[str] = []
         self.missing_y_vals: list[float] = []
         self.missing_x_keys: list[str] = []
@@ -191,11 +232,16 @@ class _Builder:
         self.x_label = x_label
         self.y_label = y_label
 
-    def add(self, key: str, xv: float | None, yv: float | None) -> None:
+    def add(
+        self, key: str, xv: float | None, yv: float | None, group: str | None = None
+    ) -> None:
         if xv is not None and yv is not None:
             self.keys.append(key)
             self.x.append(xv)
             self.y.append(yv)
+            # Group is a property of a paired point only; unpaired records have
+            # no place in the encoded scatter, so their group is not tracked.
+            self.groups.append(group)
         elif xv is not None:
             self.missing_y_keys.append(key)
             self.missing_y_vals.append(xv)
@@ -206,6 +252,8 @@ class _Builder:
             self.n_dropped += 1
 
     def build(self) -> ParityData:
+        # None unless a group column actually supplied a label somewhere.
+        group = self.groups if any(g is not None for g in self.groups) else None
         return ParityData(
             keys=self.keys,
             x=self.x,
@@ -215,6 +263,7 @@ class _Builder:
             n_dropped=self.n_dropped,
             x_label=self.x_label,
             y_label=self.y_label,
+            group=group,
         )
 
 
@@ -230,51 +279,6 @@ def _read_rows(path: Path) -> list[tuple[int, dict[str, str]]]:
         raise DataError(f"input file not found: {path}") from None
     except OSError as exc:
         raise DataError(f"could not read {path}: {exc}") from None
-
-
-def _read_keyed(
-    path: Path,
-    key_col: str,
-    value_col: str,
-    axis_col: str | None,
-    na: frozenset[str],
-) -> tuple[dict[str, float | None], str]:
-    """Read one side of a join into ``{key: value}``.
-
-    The value column is ``value_col`` if the file has it, otherwise the
-    axis-specific name -- so ``reference.csv`` may use either ``value`` or
-    ``reference`` as its column header.
-    """
-    rows = _read_rows(path)
-    if not rows:
-        raise DataError(f"{path}: file is empty")
-
-    header = set(rows[0][1].keys())
-    _require_columns(path, header, {key_col})
-
-    if value_col in header:
-        column = value_col
-    elif axis_col and axis_col in header:
-        column = axis_col
-    else:
-        wanted = f"'{value_col}'" + (f" or '{axis_col}'" if axis_col else "")
-        raise DataError(
-            f"{path}: no value column {wanted}; available columns are "
-            f"{sorted(header)}"
-        )
-
-    values: dict[str, float | None] = {}
-    seen_at: dict[str, int] = {}
-    for line, row in rows:
-        key = (row.get(key_col) or "").strip()
-        if key in seen_at:
-            raise DataError(
-                f"{path}:{line}: duplicate key {key!r} (first seen on line "
-                f"{seen_at[key]}); the join would be ambiguous"
-            )
-        seen_at[key] = line
-        values[key] = _parse(row.get(column), na, path, line, column)
-    return values, column
 
 
 def _require_columns(path: Path, header: Iterable[str], needed: Iterable[str]) -> None:

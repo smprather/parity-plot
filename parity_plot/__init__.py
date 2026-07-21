@@ -21,7 +21,7 @@ from .config import (
     PlotConfig,
     StatsConfig,
 )
-from .data import DataError, ParityData, Unpaired, from_sequences, load, load_pair, load_wide
+from .data import DataError, ParityData, Unpaired, from_sequences, load
 from .examples import ExampleSpec, SpecError
 from .examples import generate as generate_example
 from .examples import write_all as write_example_data
@@ -38,8 +38,6 @@ __all__ = [
     "build_figure",
     "save",
     "load",
-    "load_wide",
-    "load_pair",
     "from_sequences",
     "compute_stats",
     "generate_example",
