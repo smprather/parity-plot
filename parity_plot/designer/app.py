@@ -14,6 +14,7 @@ from ..config import ParityConfig
 from ..data import ParityData
 from .panels.controls import build_controls
 from .panels.data_panel import build_data_panel
+from .panels.encoding import build_encoding_panel
 from .panels.inspector import build_inspector
 from .panels.table import build_table
 from .panels.tolerances import build_tolerances_panel
@@ -69,6 +70,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 # wrapper, since the whole column is settings.
                 build_data_panel(state, lambda: reload_everything())
                 build_tolerances_panel(state, lambda: refresh())
+                build_encoding_panel(state, lambda: refresh())
                 build_controls(state, lambda: refresh())
                 ui.separator()
                 with ui.row():

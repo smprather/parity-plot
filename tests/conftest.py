@@ -37,12 +37,12 @@ def write_csv(tmp_path: Path):
 def wide_csv(write_csv):
     """A small wide file covering every null case.
 
-    A2 has no measured value, A4 has no reference, A5 has neither.
+    A2 has no test value, A4 has no reference, A5 has neither.
     """
     return write_csv(
         "wide.csv",
         """
-        id,reference,measured
+        id,reference,test
         A1,10.0,11.0
         A2,20.0,
         A3,30.0,29.0

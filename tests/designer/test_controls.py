@@ -25,10 +25,10 @@ def test_every_plot_setting_has_a_control():
     """A setting with no control is a setting the designer silently cannot
     reach, which makes the saved config differ from what was on screen.
 
-    `tolerances` is the exception: the list UI is Phase 3, so for now the
-    designer cannot edit it from the controls panel (a saved config still
-    carries whatever the CLI or TOML set)."""
-    plot_fields = {f.name for f in fields(PlotConfig)} - {"tolerances"}
+    `tolerances` has its own list panel, and `encoding` gets a dedicated panel
+    in the data-sources Phase 3 work; neither is a plain control, so both are
+    excluded here (a saved config still carries whatever the CLI or TOML set)."""
+    plot_fields = {f.name for f in fields(PlotConfig)} - {"tolerances", "encoding"}
     assert specs_for("plot").keys() == plot_fields
 
 

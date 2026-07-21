@@ -94,9 +94,9 @@ def test_none_values_are_removed_not_written_as_null():
     assert "abstol" not in text
 
 
-def test_paths_and_tuples_become_toml_types(tmp_path: Path):
+def test_files_and_tuples_become_toml_types(tmp_path: Path):
     config = ParityConfig.from_dict(
-        {"data": {"paths": ["a.csv", "b.csv"]}, "stats": {"metrics": ["n", "rmse"]}}
+        {"data": {"files": ["a.csv", "b.csv"]}, "stats": {"metrics": ["n", "rmse"]}}
     )
 
     text = config_to_toml(config)
@@ -104,7 +104,7 @@ def test_paths_and_tuples_become_toml_types(tmp_path: Path):
     path.write_text(text, encoding="utf-8")
     loaded = ParityConfig.from_toml(path)
 
-    assert loaded.data.paths == (Path("a.csv"), Path("b.csv"))
+    assert loaded.data.files == (Path("a.csv"), Path("b.csv"))
     assert loaded.stats.metrics == ("n", "rmse")
 
 

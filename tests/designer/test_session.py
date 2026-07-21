@@ -9,7 +9,7 @@ from parity_plot.config import ParityConfig
 from parity_plot.designer.session import Session, StaleFileError
 
 WIDE = """\
-id,reference,measured
+id,reference,test
 A1,10.0,11.0
 A2,20.0,
 A3,30.0,29.0
@@ -28,13 +28,16 @@ def test_start_loads_data_from_paths(csv):
 
     assert data.n_paired == 2
     assert len(data.missing_y) == 1
-    assert config == ParityConfig().merge(data={"paths": (csv,)})
+    assert config == ParityConfig().merge(
+        data={"files": (csv,), "ref": "wide.csv:reference", "test": "wide.csv:test"}
+    )
 
 
 def test_start_loads_config_and_its_paths(csv, tmp_path: Path):
     cfg_path = tmp_path / "parity.toml"
     cfg_path.write_text(
-        f'[data]\npaths = ["{csv.as_posix()}"]\n\n[plot]\ntheme = "light"\n',
+        f'[data]\nfiles = ["{csv.as_posix()}"]\nref = "wide.csv:reference"\n'
+        f'test = "wide.csv:test"\n\n[plot]\ntheme = "light"\n',
         encoding="utf-8",
     )
 
@@ -48,11 +51,15 @@ def test_command_line_paths_win_over_the_config_file(csv, tmp_path: Path):
     other = tmp_path / "other.csv"
     other.write_text(WIDE, encoding="utf-8")
     cfg_path = tmp_path / "parity.toml"
-    cfg_path.write_text(f'[data]\npaths = ["{other.as_posix()}"]\n', encoding="utf-8")
+    cfg_path.write_text(
+        f'[data]\nfiles = ["{other.as_posix()}"]\nref = "other.csv:reference"\n'
+        f'test = "other.csv:test"\n',
+        encoding="utf-8",
+    )
 
     _, config, _ = Session.start((csv,), cfg_path)
 
-    assert config.data.paths == (csv,)
+    assert config.data.files == (csv,)
 
 
 def test_dirty_only_once_the_config_changes(csv):

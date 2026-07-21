@@ -25,11 +25,12 @@ class Session:
     @classmethod
     def start(
         cls, data_paths: tuple[Path, ...], config_path: Path | None
-    ) -> tuple[Session, ParityConfig, ParityData]:
+    ) -> tuple[Session, ParityConfig, ParityData | None]:
         """Load config then data, with command-line paths winning.
 
         Same precedence as the CLI: an explicit path on the command line beats
-        whatever the config file names.
+        whatever the config file names. With no files anywhere, `data` is None
+        and the designer starts empty.
         """
         if config_path is not None:
             text = Path(config_path).read_text(encoding="utf-8")
@@ -39,9 +40,31 @@ class Session:
             config = ParityConfig()
 
         if data_paths:
-            config = config.merge(data={"paths": tuple(data_paths)})
+            overrides: dict = {"files": tuple(data_paths)}
+            # Command-line paths win over the config file's files, so any ref/test
+            # pointing at the old files no longer resolves. Re-derive them for a
+            # single file (the first two numeric columns); for two files the user
+            # must supply a config that names the right columns.
+            if len(data_paths) == 1:
+                from ..sources import open_sources
 
-        data = load(config.data)
+                cols = open_sources(data_paths, config.data.na_values).numeric_columns(
+                    config.data.na_values
+                )
+                if len(cols) < 2:
+                    from ..data import DataError
+
+                    raise DataError(
+                        f"{data_paths[0].name}: need at least two numeric columns "
+                        f"for ref/test; found {len(cols)} ({cols})"
+                    )
+                overrides["ref"] = cols[0]
+                overrides["test"] = cols[1]
+            config = config.merge(data=overrides)
+
+        # No files chosen yet -> start empty rather than erroring; the file
+        # browser fills this in.
+        data = load(config.data) if config.data.files else None
         session = cls(
             config_path=Path(config_path) if config_path else None,
             original_text=text,

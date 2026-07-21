@@ -316,17 +316,18 @@ def test_save_writes_html_and_creates_parent_dirs(data, tmp_path):
 
 
 def test_public_api_accepts_sequences_and_paths(wide_csv):
-    from_arrays = parity_plot(x=[1.0, 2.0], y=[1.1, None], theme="light")
+    from_arrays = parity_plot(ref=[1.0, 2.0], test=[1.1, None], theme="light")
     assert from_arrays.layout.template.layout.paper_bgcolor == "#ffffff"
 
-    from_path = parity_plot(wide_csv, x="reference", y="measured", key="id")
+    from_path = parity_plot(wide_csv, ref="wide.csv:reference",
+                           test="wide.csv:test", join="id")
     assert trace_named(from_path, "paired").x == (10.0, 30.0)
 
 
 def test_public_api_rejects_mixed_and_unknown_arguments(wide_csv):
-    with pytest.raises(TypeError, match="both be column names"):
-        parity_plot(wide_csv, x="reference", y=[1.0, 2.0])
+    with pytest.raises(TypeError, match="both be file:column strings"):
+        parity_plot(wide_csv, ref="wide.csv:reference", test=[1.0, 2.0])
     with pytest.raises(TypeError, match="unexpected keyword"):
-        parity_plot(x=[1.0], y=[1.0], colour="blue")
+        parity_plot(ref=[1.0], test=[1.0], colour="blue")
     with pytest.raises(TypeError, match="not both"):
-        parity_plot(wide_csv, x=[1.0], y=[1.0])
+        parity_plot(wide_csv, ref=[1.0], test=[1.0])

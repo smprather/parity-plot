@@ -620,17 +620,13 @@ wheels = [
 
 [[package]]
 name = "parity-plot"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "." }
 dependencies = [
     { name = "kaleido" },
+    { name = "nicegui" },
     { name = "plotly" },
     { name = "rich-click" },
-]
-
-[package.optional-dependencies]
-designer = [
-    { name = "nicegui" },
     { name = "tomlkit" },
 ]
 
@@ -643,12 +639,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "kaleido", specifier = ">=1.3.0" },
-    { name = "nicegui", marker = "extra == 'designer'", specifier = ">=3.14" },
+    { name = "nicegui", specifier = ">=3.14" },
     { name = "plotly", specifier = ">=6.0" },
     { name = "rich-click", specifier = ">=1.8" },
-    { name = "tomlkit", marker = "extra == 'designer'", specifier = ">=0.13" },
+    { name = "tomlkit", specifier = ">=0.13" },
 ]
-provides-extras = ["designer"]
 
 [package.metadata.requires-dev]
 dev = [

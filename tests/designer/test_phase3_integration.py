@@ -18,7 +18,7 @@ SPEC_5PCT = [NamedTolerance(name="spec", reltol=0.05)]
 
 # A1 +10%, A2 +0.5%, A3 +25%, A4 unpaired
 WIDE = (
-    "id,reference,measured\n"
+    "id,reference,test\n"
     "A1,10.0,11.0\n"
     "A2,100.0,100.5\n"
     "A3,40.0,50.0\n"
@@ -41,7 +41,10 @@ def with_spec(state: DesignerState) -> DesignerState:
 def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "wide.csv"
     csv.write_text(WIDE, encoding="utf-8")
-    config = ParityConfig().merge(data={"paths": (csv,)})
+    config = ParityConfig().merge(
+        data={"files": (csv,), "ref": "wide.csv:reference",
+              "test": "wide.csv:test", "join": "id"}
+    )
     return DesignerState(config=config, data=load(config.data))
 
 
@@ -77,7 +80,7 @@ def test_unfiltered_designer_still_matches_the_cli(state, tmp_path: Path):
     from parity_plot.designer.session import Session
     from parity_plot.plot import build_figure
 
-    session, config, data = Session.start((state.config.data.paths[0],), None)
+    session, config, data = Session.start((state.config.data.files[0],), None)
     fresh = DesignerState(config=config, data=data)
     with_spec(fresh)
 
@@ -93,7 +96,7 @@ def test_a_saved_config_carries_no_filter_state(state, tmp_path: Path):
     """A config describes the plot, not whatever you were looking at."""
     from parity_plot.designer.session import Session
 
-    session, config, data = Session.start((state.config.data.paths[0],), None)
+    session, config, data = Session.start((state.config.data.files[0],), None)
     live = DesignerState(config=config, data=data)
     live.filters = FilterSet(outside_tolerance_only=True, show_paired=False)
 

@@ -12,7 +12,7 @@ from parity_plot.designer.filters import FilterSet
 from parity_plot.designer.state import DesignerState
 
 WIDE = (
-    "id,reference,measured\n"
+    "id,reference,test\n"
     "A1,10.0,11.0\n"
     "A2,50.0,51.0\n"
     "A3,90.0,95.0\n"
@@ -24,7 +24,10 @@ WIDE = (
 def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "wide.csv"
     csv.write_text(WIDE, encoding="utf-8")
-    config = ParityConfig().merge(data={"paths": (csv,)})
+    config = ParityConfig().merge(
+        data={"files": (csv,), "ref": "wide.csv:reference",
+              "test": "wide.csv:test", "join": "id"}
+    )
     return DesignerState(config=config, data=load(config.data))
 
 

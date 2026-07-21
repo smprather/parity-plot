@@ -11,6 +11,7 @@ import rich_click as click
 from . import examples
 from .config import (
     BAND_STYLES,
+    DEFAULT_NA_VALUES,
     LEGEND_POSITIONS,
     NULL_MODES,
     OUTPUT_FORMATS,
@@ -33,7 +34,7 @@ HELP_CONFIG = click.RichHelpConfiguration(
         "parity-plot plot": [
             {
                 "name": "Input",
-                "options": ["PATHS", "--config", "--x-col", "--y-col", "--key-col"],
+                "options": ["PATHS", "--config", "--ref", "--test", "--join", "--group"],
             },
             {
                 "name": "Appearance",
@@ -141,6 +142,36 @@ def _infer_format(output: Path | None, fmt: str | None) -> str | None:
     return suffix if suffix in OUTPUT_FORMATS else fmt
 
 
+def _default_ref_test(
+    paths: tuple[Path, ...],
+    ref: str | None,
+    test: str | None,
+    na_values: tuple[str, ...],
+) -> tuple[str | None, str | None]:
+    """Fill in the single-file numeric-column default for `--ref`/`--test`.
+
+    When exactly one file is given and neither flag is set, default to that
+    file's first two numeric columns -- keeps `parity-plot plot data.csv`
+    working with no flags. Fewer than two numeric columns is a user error.
+    """
+    if ref and test:
+        return ref, test
+    if len(paths) == 1 and not (ref or test):
+        from .sources import open_sources
+
+        try:
+            cols = open_sources(paths, na_values).numeric_columns(na_values)
+        except DataError as exc:
+            raise click.ClickException(str(exc)) from None
+        if len(cols) < 2:
+            raise click.ClickException(
+                f"{paths[0].name}: need at least two numeric columns for "
+                f"--ref/--test; found {len(cols)} ({cols})"
+            )
+        return cols[0], cols[1]
+    return ref, test
+
+
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(package_name="parity-plot")
 @click.rich_config(help_config=HELP_CONFIG)
@@ -159,9 +190,10 @@ def cli() -> None:
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
 @click.option("-c", "--config", type=click.Path(dir_okay=False, path_type=Path), help="TOML config file.")
-@click.option("--x-col", help="Column holding the reference values.")
-@click.option("--y-col", help="Column holding the measured values.")
-@click.option("--key-col", help="Column identifying each record (required to join two files).")
+@click.option("--ref", help="Reference column as `file:column` (numeric). Defaults to the first numeric column of a single file.")
+@click.option("--test", help="Test column as `file:column` (numeric). Defaults to the second numeric column of a single file.")
+@click.option("--join", help="Column name to join files on. Omit to pair rows by order.")
+@click.option("--group", help="Group column as `file:column` (any type), to colour points by.")
 @click.option("--theme", type=click.Choice(THEMES), help="Colour theme.  [default: dark]")
 @click.option("--title", help="Plot title.")
 @click.option("--x-label", help="X axis label.  [default: column name]")
@@ -182,9 +214,10 @@ def cli() -> None:
 def plot(
     paths: tuple[Path, ...],
     config: Path | None,
-    x_col: str | None,
-    y_col: str | None,
-    key_col: str | None,
+    ref: str | None,
+    test: str | None,
+    join: str | None,
+    group: str | None,
     theme: str | None,
     title: str | None,
     x_label: str | None,
@@ -205,8 +238,10 @@ def plot(
 ) -> None:
     """Render a parity plot from **PATHS**.
 
-    One path reads a single wide file; two paths outer-join a file per dataset
-    on the key column. With no paths, the input comes from the config file.
+    Each path is a CSV file. `--ref` and `--test` name the plotted columns as
+    `file:column`. With exactly one file and neither flag set, the first two
+    numeric columns are used. A `--join` column aligns rows across files;
+    without one, rows pair by order.
     """
     try:
         cfg = ParityConfig.from_toml(config) if config else ParityConfig()
@@ -216,12 +251,15 @@ def plot(
             tolerances = build_tolerances(tol, abstol, reltol, band_style)
         except TolSpecError as exc:
             raise click.ClickException(str(exc)) from None
+
+        ref, test = _default_ref_test(paths, ref, test, cfg.data.na_values)
         cfg = cfg.merge(
             data={
-                "paths": tuple(paths) or None,
-                "x": x_col,
-                "y": y_col,
-                "key": key_col,
+                "files": tuple(paths) or None,
+                "ref": ref,
+                "test": test,
+                "join": join,
+                "group": group,
             },
             plot={
                 "theme": theme,
@@ -310,8 +348,9 @@ def example(
 ) -> None:
     """Generate example data and plot it.
 
-    Writes both input shapes from the same draws: `example.csv` for wide mode,
-    plus `reference.csv` and `measured.csv` for join mode.
+    Writes both input shapes from the same draws: `example.csv` (a wide file
+    with `reference` and `test` columns), plus `reference.csv` and `measured.csv`
+    for join mode.
 
     The shape of the data is adjustable, so you can see how the plot responds:
 
@@ -363,8 +402,10 @@ def example(
                 tolerances = build_tolerances(tol, abstol, reltol, band_style)
             except TolSpecError as exc:
                 raise click.ClickException(str(exc)) from None
+        wide = written["wide"]
+        ref, test = _default_ref_test((wide,), None, None, DEFAULT_NA_VALUES)
         cfg = ParityConfig().merge(
-            data={"paths": (written["wide"],)},
+            data={"files": (wide,), "ref": ref, "test": test},
             plot={
                 "theme": theme,
                 "tolerances": tolerances or None,

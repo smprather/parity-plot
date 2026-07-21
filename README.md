@@ -15,8 +15,7 @@ the other.
 ## Install
 
 ```bash
-uv sync                    # runtime + dev
-uv sync --extra designer   # adds the interactive designer
+uv sync                    # everything, including the interactive designer
 ```
 
 png/svg/pdf export additionally needs a headless Chrome for kaleido to render
@@ -75,59 +74,67 @@ Counts appear in the subtitle. Unpaired records are excluded from the
 statistics, since there is no difference to measure. Use `--nulls drop` to hide
 the rug marks while still reporting the counts.
 
-## Two input shapes
+## Data sources
 
-Both are auto-detected from how many paths you pass.
-
-**One path — wide mode.** An empty cell is a null.
-
-```csv
-id,reference,measured
-A1,10.2,10.9
-A2,15.7,          <- no measurement
-A3,,8.1           <- no reference
-```
-
-**Two paths — join mode.** Outer-joined on the key column; a row absent from one
-file is the null case.
+Open any number of files; the two plotted series — **reference** and **test** —
+are each picked as `file:column`. They must be numeric.
 
 ```bash
-uv run parity-plot plot data/reference.csv data/measured.csv --key-col id
+# both columns in one file (they pair by row order)
+uv run parity-plot plot data.csv --ref 'data.csv:reference' --test 'data.csv:test'
+
+# a column from each of two files, aligned on a join key
+uv run parity-plot plot meas.csv sim.csv \
+    --ref 'meas.csv:voltage' --test 'sim.csv:voltage' --join id
+
+# a single file with no flags defaults ref/test to its first two numeric columns
+uv run parity-plot plot data.csv
 ```
+
+With `--join`, rows are outer-joined on that key (a key on only one side is
+unpaired). **Without a join, rows pair by position**, and the longer column's
+tail is left unpaired. A `--group FILE:COL` labels each point for the encoding
+below. Unpaired records — a value with no partner — are drawn as rug ticks on
+the axis whose value is known, never dropped.
+
+## Encoding
+
+Marker **colour** and **symbol** are driven independently, each by one of
+`single | pass-fail | group`:
+
+```bash
+uv run parity-plot plot data.csv --group 'data.csv:batch' \
+    # via TOML, or the designer: color_by = group, symbol_by = pass-fail
+```
+
+```toml
+[plot.encoding]
+color_by  = "group"       # single | pass-fail | group
+symbol_by = "pass-fail"
+color     = "blue"        # the token used when color_by = single
+symbol    = "circle"      # the symbol used when symbol_by = single
+```
+
+- **single** — every point the same colour/symbol.
+- **pass-fail** — the overall verdict: pass = green circle, fail = red ✕.
+- **group** — by the group column: a colour palette / a symbol cycle.
+
+So "colour by batch, `✕` for failures, `○` for passes" is `color_by = group`,
+`symbol_by = pass-fail` — one legend entry per `(batch, verdict)`.
 
 ## Python API
 
 ```python
 from parity_plot import parity_plot
 
-fig = parity_plot("data/example.csv", x="reference", y="measured")
-fig = parity_plot("data/reference.csv", "data/measured.csv", key="id")
-fig = parity_plot(x=[1.0, 2.0, 3.0], y=[1.1, None, 2.9], theme="light")
+fig = parity_plot("data.csv", ref="data.csv:reference", test="data.csv:test")
+fig = parity_plot("meas.csv", "sim.csv", ref="meas.csv:v", test="sim.csv:v", join="id")
+fig = parity_plot(ref=[1.0, 2.0, 3.0], test=[1.1, None, 2.9], theme="light")
 fig.show()
 ```
 
-The generator is importable too, with the same knobs as the CLI:
-
-```python
-from parity_plot import ExampleSpec, generate_example, write_example_data
-
-records = generate_example(n=500, noise=0.2, bias=0.0, outlier_rate=0)
-write_example_data("data", ExampleSpec(n=5000, x_min=1, x_max=1e4))
-```
-
-Any iterable of numbers works for `x`/`y` — lists, pandas Series, numpy arrays —
-with `None` or `NaN` marking a missing value. The pieces are importable
-separately too:
-
-```python
-from parity_plot import load_wide, compute_stats, build_figure, save
-from parity_plot.config import PlotConfig, OutputConfig
-
-data = load_wide("data/example.csv", "reference", "measured", "id")
-from parity_plot.tolerances import NamedTolerance
-stats = compute_stats(data, [NamedTolerance(name="spec", reltol=0.1)])
-save(build_figure(data, PlotConfig(theme="light")), OutputConfig(path="out.html"))
-```
+Any iterable of numbers works for `ref`/`test` — lists, pandas Series, numpy
+arrays — with `None` or `NaN` marking a missing value.
 
 ## Config file
 
@@ -136,15 +143,20 @@ matching CLI flag, and **CLI flags win over the file, which wins over defaults**
 
 ```toml
 [data]
-paths = ["data/example.csv"]   # one path = wide, two = join
-x = "reference"
-y = "measured"
-key = "id"
+files = ["data/example.csv"]   # any number of files
+ref   = "example.csv:reference"   # file:column, numeric
+test  = "example.csv:test"
+# join  = "id"                 # optional; omit to pair by row order
+# group = "example.csv:batch"  # optional
 
 [plot]
 theme = "dark"                 # dark | light
 nulls = "rug"                  # rug | drop
 legend = "right"               # right | bottom | none
+
+[plot.encoding]
+color_by  = "single"           # single | pass-fail | group
+symbol_by = "single"
 
 [[plot.tolerances]]            # a list; repeat the block for more
 name = "spec"
@@ -210,7 +222,6 @@ tables, and is editable live in the designer.
 ## Interactive designer
 
 ```bash
-uv sync --extra designer
 uv run parity-plot design data/example.csv -c parity.toml
 ```
 

@@ -21,6 +21,7 @@ from .tolerances import (
     require_unique_names,
     with_parity,
 )
+from .encoding import Encoding, EncodingError
 
 DEFAULT_NA_VALUES: tuple[str, ...] = (
     "",
@@ -49,15 +50,15 @@ class ConfigError(ValueError):
 class DataConfig:
     """Where the numbers come from.
 
-    One path is wide mode (a single file with both value columns); two paths is
-    join mode (one file per dataset, outer-joined on ``key``).
+    An arbitrary set of files; the two plotted series are `file:column` refs.
+    A join column aligns rows across files; without one, rows pair by order.
     """
 
-    paths: tuple[Path, ...] = ()
-    x: str = "reference"
-    y: str = "measured"
-    key: str | None = "id"
-    value: str = "value"
+    files: tuple[Path, ...] = ()
+    ref: str | None = None       # "file:column", a numeric column
+    test: str | None = None      # "file:column", a numeric column
+    join: str | None = None      # column name in both files, or None -> pair by order
+    group: str | None = None     # "file:column", any column, or None
     na_values: tuple[str, ...] = DEFAULT_NA_VALUES
 
 
@@ -76,6 +77,9 @@ class PlotConfig:
     tolerances: tuple[NamedTolerance, ...] = field(default_factory=lambda: (parity(),))
     nulls: str = "rug"
     legend: str = "right"
+    # How marker colour/symbol are driven from the data (single | pass-fail |
+    # group). Default is the behaviour-preserving one-trace plot.
+    encoding: Encoding = field(default_factory=Encoding)
 
 
 @dataclass(frozen=True)
@@ -174,6 +178,17 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
                 f'  kind = "pass"       # pass | info\n'
                 f"  enabled = false     # replaces identity_line for the parity entry\n"
             )
+    if cls is DataConfig:
+        retired = [k for k in RETIRED_DATA_KEYS if k in raw]
+        if retired:
+            raise ConfigError(
+                f"{source}: {', '.join(retired)} were replaced in 0.3.0. Use:\n"
+                f"  [data]\n"
+                f'  files = ["meas.csv", "sim.csv"]\n'
+                f'  ref   = "meas.csv:voltage"    # file:column\n'
+                f'  test  = "sim.csv:voltage"\n'
+                f'  join  = "id"                  # optional; omit to pair by order\n'
+            )
     known = {f.name for f in fields(cls)}
     unknown = set(raw) - known
     if unknown:
@@ -185,7 +200,7 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
     return replace(base, **coerced) if base is not None else cls(**coerced)
 
 
-_TUPLE_OF_PATH = {"paths"}
+_TUPLE_OF_PATH = {"files"}
 _TUPLE_OF_STR = {"na_values", "metrics"}
 _PATH = {"path"}
 _POSITIVE_FLOAT: set[str] = set()
@@ -198,6 +213,7 @@ _CHOICES = {
 }
 
 RETIRED_PLOT_KEYS = ("abstol", "reltol", "band_style", "identity_line")
+RETIRED_DATA_KEYS = ("paths", "x", "y", "key", "value")
 
 
 def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
@@ -225,6 +241,8 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         return Path(value)
     if key == "tolerances":
         return _coerce_tolerances(value, where)
+    if key == "encoding":
+        return _coerce_encoding(value, where)
     if key in _CHOICES:
         if value not in _CHOICES[key]:
             raise ConfigError(
@@ -300,19 +318,73 @@ def _coerce_tolerances(value: Any, where: str) -> tuple[NamedTolerance, ...]:
     return with_parity(tuple(built))
 
 
+def _coerce_encoding(value: Any, where: str) -> Encoding:
+    """Build an :class:`Encoding` from a TOML table or a ready-made object.
+
+    The designer hands over an ``Encoding`` directly; TOML hands over a dict.
+    Both arrive here so validation happens in exactly one place.
+    """
+    if isinstance(value, Encoding):
+        return value
+    if not isinstance(value, dict):
+        raise ConfigError(f"{where}: expected a table, got {value!r}")
+    known = set(Encoding.__dataclass_fields__)
+    unknown = set(value) - known
+    if unknown:
+        raise ConfigError(
+            f"{where}: unknown key(s) {sorted(unknown)}; "
+            f"valid keys are {sorted(known)}"
+        )
+    try:
+        return Encoding(**value)
+    except EncodingError as exc:
+        raise ConfigError(f"{where}: {exc}") from None
+
+
+def _register_tomlkit_encoding_encoder() -> None:
+    """Teach tomlkit to render an :class:`Encoding` as a `[plot.encoding]` table.
+
+    The designer's serializer (``designer/serialize.py``) walks ``PlotConfig``
+    fields and hands each value to tomlkit; without an encoder for the new
+    ``encoding`` field, tomlkit raises ``ConvertError`` on the frozen dataclass.
+    Registering here keeps the encoder alongside the type it knows about, and
+    runs once at import so the designer (which imports this module) picks it up.
+    """
+    from tomlkit.items import CUSTOM_ENCODERS, Table, Trivia
+    from tomlkit.container import Container
+
+    def _encode_encoding(value: object, **_: object) -> Table:
+        if not isinstance(value, Encoding):
+            raise TypeError
+        table = Table(Container(), Trivia(), False)
+        table["color_by"] = value.color_by
+        table["symbol_by"] = value.symbol_by
+        table["color"] = value.color
+        table["symbol"] = value.symbol
+        return table
+
+    if not any(
+        getattr(enc, "__name__", None) == "_encode_encoding"
+        for enc in CUSTOM_ENCODERS
+    ):
+        CUSTOM_ENCODERS.append(_encode_encoding)
+
+
+_register_tomlkit_encoding_encoder()
+
+
 EXAMPLE_TOML = """\
 # parity-plot configuration
 # Every key here can also be overridden by the matching CLI flag.
 
 [data]
-# One path = wide mode (both value columns in one file).
-# Two paths = join mode (one file per dataset, outer-joined on `key`).
-paths = ["data/example.csv"]
-x = "reference"
-y = "measured"
-key = "id"
-# In join mode, the value column to read from each file.
-value = "value"
+# An arbitrary set of CSV files; the two plotted series are `file:column` refs.
+# A join column aligns rows across files; omit it to pair rows by order.
+files = ["data/example.csv"]
+ref = "data/example.csv:reference"    # file:column, a numeric column
+test = "data/example.csv:measured"    # file:column, a numeric column
+# join = "id"                         # optional; column name in both files
+# group = "data/example.csv:batch"    # optional; any column, or file:column
 na_values = ["", "NA", "N/A", "null", "none", "nan", "-"]
 
 [plot]
@@ -345,6 +417,22 @@ legend = "right"        # right | bottom | none
 [[plot.tolerances]]
 name = "spec"
 reltol = 0.10           # a ratio; write "10pct" if you prefer percent
+
+# Marker colour and symbol can each be driven from the data:
+#   color_by   = "single"     # one colour for all points (see `color` below)
+#              | "pass-fail"  # overall verdict: pass → green, fail → red
+#              | "group"      # the point's group column → a qualitative palette
+#   symbol_by  = "single"     # one symbol for all points (see `symbol` below)
+#              | "pass-fail"  # pass → circle, fail → x
+#              | "group"      # the group column → a symbol cycle
+#   color      = "blue"       # token or hex; used when color_by = "single"
+#   symbol     = "circle"     # Plotly symbol name; used when symbol_by = "single"
+# The default reproduces today's one-trace plot, so nothing changes unless set.
+[plot.encoding]
+color_by = "single"
+symbol_by = "single"
+color = "blue"
+symbol = "circle"
 
 [stats]
 show = true

@@ -25,11 +25,17 @@ class DesignerState:
     """
 
     config: ParityConfig
-    data: ParityData
+    # None before any file is opened -- the designer starts empty and shows a
+    # blank plot until files and ref/test are chosen.
+    data: ParityData | None = None
     selection: str | None = None
     filters: FilterSet = field(default_factory=FilterSet)
     last_error: str | None = None
     _last_figure: go.Figure | None = field(default=None, repr=False)
+
+    @property
+    def has_data(self) -> bool:
+        return self.data is not None
 
     def update(self, section: str, **values: Any) -> bool:
         """Apply settings to one config section. Returns whether it worked.
@@ -54,8 +60,25 @@ class DesignerState:
         """
         try:
             candidate = self.config.merge(data=values)
+        except (ConfigError, ValueError) as exc:
+            self.last_error = str(exc)
+            return False
+
+        # An incomplete source -- no files, or no ref/test yet -- is the empty
+        # state, not an error: the user removed the last file or has not finished
+        # picking columns. Go blank cleanly rather than keeping stale data.
+        if not candidate.data.files or not candidate.data.ref or not candidate.data.test:
+            self.config = candidate
+            self.data = None
+            self.selection = None
+            self.last_error = None
+            return True
+
+        try:
             data = load(candidate.data)
         except (ConfigError, DataError, ValueError) as exc:
+            # A complete-but-broken source (bad column, unreadable file) keeps the
+            # working dataset -- losing it to a typo is worse than the message.
             self.last_error = str(exc)
             return False
 
@@ -71,7 +94,7 @@ class DesignerState:
         self, tolerances: Sequence[NamedTolerance] = ()
     ) -> RecordView | None:
         """The pinned record, judged against ``tolerances`` if any are given."""
-        if self.selection is None:
+        if self.selection is None or self.data is None:
             return None
         return find_record(record_views(self.data, tolerances), self.selection)
 
@@ -80,7 +103,13 @@ class DesignerState:
         return self.config.plot.tolerances
 
     def visible_data(self) -> ParityData:
-        """The dataset after filtering. The plot and the table both read this."""
+        """The dataset after filtering. The plot and the table both read this.
+
+        Empty (not None) before any file is opened, so consumers need no None
+        guard of their own.
+        """
+        if self.data is None:
+            return ParityData()
         return self.filters.apply(self.data, self.tolerances())
 
     def visible_records(self) -> list[RecordView]:
@@ -90,6 +119,8 @@ class DesignerState:
     def counts(self) -> tuple[int, int]:
         """``(showing, total)`` records -- a filtered view that looks unfiltered
         is a trap, so the UI always states both."""
+        if self.data is None:
+            return 0, 0
         visible = self.visible_data()
         showing = visible.n_paired + visible.n_unpaired
         total = self.data.n_paired + self.data.n_unpaired

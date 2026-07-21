@@ -24,6 +24,7 @@ from . import stats as stats_mod
 from . import themes
 from .config import OutputConfig, PlotConfig, StatsConfig
 from .data import ParityData, Unpaired
+from .encoding import Encoding, partition
 from .tolerances import (
     NamedTolerance,
     draw_order,
@@ -70,7 +71,7 @@ def build_figure(
 
     fig = go.Figure()
     _add_tolerances(fig, plot.tolerances, lo, hi, plot.log, theme)
-    _add_paired(fig, data, plot.tolerances, theme)
+    _add_paired(fig, data, plot.tolerances, plot.encoding, theme)
     if plot.nulls == "rug":
         _add_rugs(fig, data, lo, hi, plot.log, theme)
 
@@ -237,33 +238,75 @@ def _add_paired(
     fig: go.Figure,
     data: ParityData,
     tolerances: Sequence[NamedTolerance],
+    encoding: Encoding,
     theme: themes.Theme,
 ) -> None:
+    """Draw the paired points, one trace per (colour, symbol) the encoding yields.
+
+    `encoding.partition` decides which points share a trace; here each trace's
+    colour key is resolved to a real colour through the theme (symbol keys are
+    already Plotly symbol names). The default encoding produces a single trace,
+    so the plot -- and the golden test -- are unchanged until a channel is set.
+    """
     scatter = go.Scattergl if data.n_paired > _WEBGL_THRESHOLD else go.Scatter
     diffs = [yi - xi for xi, yi in zip(data.x, data.y)]
     verdicts = [verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)]
-    fig.add_trace(
-        scatter(
-            x=data.x,
-            y=data.y,
-            mode="markers",
-            name=f"paired (n={data.n_paired:,})",
-            customdata=list(zip(data.keys, diffs, verdicts)),
-            marker=dict(
-                color=theme.marker,
-                opacity=theme.marker_opacity,
-                size=7,
-                line=dict(color=theme.marker_line, width=0.5),
-            ),
-            hovertemplate=(
-                "<b>%{customdata[0]}</b><br>"
-                f"{data.x_label}: %{{x:.4g}}<br>"
-                f"{data.y_label}: %{{y:.4g}}<br>"
-                "difference: %{customdata[1]:+.4g}<br>"
-                "%{customdata[2]}<extra></extra>"
-            ),
+    passes = [failures(tolerances, xi, yi) == () for xi, yi in zip(data.x, data.y)]
+
+    specs = partition(data.n_paired, passes, data.group, encoding)
+    colours = _resolve_colours(specs, encoding, theme)
+
+    for spec in specs:
+        idx = spec.indices
+        name = spec.name if len(specs) > 1 else f"paired (n={data.n_paired:,})"
+        fig.add_trace(
+            scatter(
+                x=[data.x[i] for i in idx],
+                y=[data.y[i] for i in idx],
+                mode="markers",
+                name=name,
+                customdata=[(data.keys[i], diffs[i], verdicts[i]) for i in idx],
+                marker=dict(
+                    color=colours[spec.color_key],
+                    symbol=spec.symbol_key,
+                    opacity=theme.marker_opacity,
+                    size=7,
+                    line=dict(color=theme.marker_line, width=0.5),
+                ),
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    f"{data.x_label}: %{{x:.4g}}<br>"
+                    f"{data.y_label}: %{{y:.4g}}<br>"
+                    "difference: %{customdata[1]:+.4g}<br>"
+                    "%{customdata[2]}<extra></extra>"
+                ),
+            )
         )
-    )
+
+
+def _resolve_colours(
+    specs: Sequence, encoding: Encoding, theme: themes.Theme
+) -> dict[str, str]:
+    """Map each trace's colour key to a real colour, per channel.
+
+    Symbol keys are already Plotly names, but colour is theme-dependent, so it
+    stays a key until here: a token for `single`, pass/fail for the verdict, or
+    a group value cycled through the theme palette in first-seen order.
+    """
+    if encoding.color_by == "pass-fail":
+        return {"pass": theme.pass_color, "fail": theme.fail_color}
+    if encoding.color_by == "group":
+        distinct: list[str] = []
+        for spec in specs:
+            if spec.color_key not in distinct:
+                distinct.append(spec.color_key)
+        palette = themes.GROUP_PALETTE
+        return {
+            key: theme.resolve_color(palette[i % len(palette)])
+            for i, key in enumerate(distinct)
+        }
+    # single: the colour key is a token (or hex) the theme resolves directly.
+    return {spec.color_key: theme.resolve_color(spec.color_key) for spec in specs}
 
 
 def _add_rugs(
