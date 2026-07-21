@@ -18,6 +18,23 @@ import plotly.io as pio
 # olive and a true blue rather than the mint and cyan those reserved roles use.
 COLOR_TOKENS = ("red", "yellow", "orange", "green", "blue", "purple", "magenta", "grey")
 
+# Symbol cycle used when a symbol channel is driven by group. Plotly symbol names.
+SYMBOL_CYCLE: tuple[str, ...] = (
+    "circle",
+    "x",
+    "diamond",
+    "square",
+    "triangle-up",
+    "cross",
+    "star",
+)
+
+# Qualitative colour tokens cycled for group colours. Reuse COLOR_TOKENS: they
+# already resolve per theme and sit apart from the reserved identity/marker/rug
+# shades (test_theme_colors.py guards that), so a group colour never impersonates
+# another on-plot element.
+GROUP_PALETTE: tuple[str, ...] = COLOR_TOKENS
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -40,6 +57,10 @@ class Theme:
     # Markers are translucent because at n=1000 an opaque cloud hides its own
     # density exactly where a parity plot is most interesting: near the line.
     marker_opacity: float = 0.65
+    # pass/fail colours for the pass-fail marker channel. pass must be distinct
+    # from `identity` (the y = x line) or a passing point would be lost in it.
+    pass_color: str = ""
+    fail_color: str = ""
 
     @property
     def template_name(self) -> str:
@@ -86,6 +107,8 @@ DARK = Theme(
     band_fill="rgba(255, 77, 90, 0.10)",
     box_bg="rgba(23, 27, 33, 0.85)",
     box_border="#3a414a",
+    pass_color="#8aff80",
+    fail_color="#ff4d5a",
     tolerance_colors={
         "red": "#ff4d5a",
         "yellow": "#ffd23f",
@@ -114,6 +137,8 @@ LIGHT = Theme(
     band_fill="rgba(208, 0, 0, 0.08)",
     box_bg="rgba(255, 255, 255, 0.88)",
     box_border="#c2c8d0",
+    pass_color="#2e8b57",
+    fail_color="#d00000",
     tolerance_colors={
         "red": "#d00000",
         "yellow": "#b38600",
