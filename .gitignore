@@ -16,3 +16,4 @@ data/
 *.png
 *.svg
 *.pdf
+out/
