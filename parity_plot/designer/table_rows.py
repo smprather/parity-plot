@@ -19,7 +19,7 @@ COLUMNS: list[dict[str, Any]] = [
     {"name": "key", "label": "Record", "field": "key", "required": True,
      "align": "left", "sortable": True},
     {"name": "x", "label": "Reference", "field": "x", "sortable": True},
-    {"name": "y", "label": "Measured", "field": "y", "sortable": True},
+    {"name": "y", "label": "Test", "field": "y", "sortable": True},
     {"name": "error", "label": "Error", "field": "error", "sortable": True},
     {"name": "rel_error", "label": "Error %", "field": "rel_error", "sortable": True},
     {"name": "status", "label": "Status", "field": "status", "align": "left",

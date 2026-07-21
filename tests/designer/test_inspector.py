@@ -18,7 +18,7 @@ def test_a_paired_record_shows_both_values_and_the_error():
     fields = labelled(view)
     assert fields["Record"] == "A1"
     assert fields["Reference"] == "10"
-    assert fields["Measured"] == "11"
+    assert fields["Test"] == "11"
     assert fields["Error"] == "+1"
     assert fields["Relative error"] == "+10%"
 
@@ -26,7 +26,7 @@ def test_a_paired_record_shows_both_values_and_the_error():
 def test_an_unpaired_record_says_what_is_missing():
     view = RecordView("A2", 20.0, None, None, None, "missing y", None)
     fields = labelled(view)
-    assert fields["Measured"] == "missing"
+    assert fields["Test"] == "missing"
     assert fields["Error"] == "n/a"
     assert "missing y" in fields["Status"]
 

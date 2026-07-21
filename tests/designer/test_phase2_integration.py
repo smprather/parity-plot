@@ -90,7 +90,7 @@ def test_clicking_a_rug_tick_resolves_to_the_unpaired_record(state, tmp_path: Pa
     assert view.key == "B3"
     assert view.status == "missing y"
     assert view.failed is None  # never judged, not judged as failing
-    assert dict(describe(view))["Measured"] == "missing"
+    assert dict(describe(view))["Test"] == "missing"
 
 
 def test_the_figure_and_the_inspector_agree_about_the_data(state, tmp_path: Path):

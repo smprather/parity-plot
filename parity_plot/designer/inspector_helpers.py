@@ -14,7 +14,7 @@ def describe(view: RecordView | None) -> list[tuple[str, str]]:
     fields = [
         ("Record", view.key),
         ("Reference", _num(view.x)),
-        ("Measured", _num(view.y)),
+        ("Test", _num(view.y)),
         ("Error", _signed(view.error)),
     ]
     if view.rel_error is not None:

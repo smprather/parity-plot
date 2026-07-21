@@ -7,8 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Managed by [uv](https://docs.astral.sh/uv/) — no `pip`, no `requirements.txt`.
 
 ```bash
-uv sync                          # runtime + dev deps
-uv sync --extra designer         # adds nicegui + tomlkit for the designer
+uv sync                          # runtime + dev deps (designer included)
 uv run pytest                    # full suite
 uv run pytest tests/test_data.py::test_wide_sorts_records_into_paired_and_unpaired
 uv run parity-plot example       # regenerate data/ sample CSVs, plot, open browser
@@ -39,10 +38,24 @@ records of what was true when written, and this file is authoritative.
 The pipeline is `load → compute → build_figure → save`, with `config.py`
 supplying parameters at each stage.
 
-**`data.py` is the seam.** Both input shapes — one wide CSV, or two CSVs
-outer-joined on a key — collapse into a single `ParityData` struct, so nothing
-downstream knows which mode was used. If you add an input format, add a loader
-here and leave the rest of the pipeline alone.
+**`data.py` is the seam.** `sources.py` opens N files and resolves a
+`file:column` reference against them (`numeric_columns` filters ref/test to the
+numeric ones — they are the axes; join/group take any column, compared as raw
+strings). `data.py`'s `load` picks ref and test columns, then aligns them: with
+a `join` column it outer-joins the two files on the key; without one it pairs by
+row position and leaves the longer column's tail unpaired. Both former modes —
+one wide file, two joined files — are special cases of this one path; there is no
+dispatch on file count. Everything collapses into one `ParityData` struct (now
+carrying an optional per-point `group`), so nothing downstream knows how it was
+loaded. `sources` imports helpers from `data`, so `data.load` imports
+`open_sources` **lazily** to break the cycle.
+
+**Marker encoding** (`encoding.py`, pure) partitions paired points into traces by
+their `(colour-key, symbol-key)` — each channel is `single | pass-fail | group`.
+It is theme-free: keys are tokens / `pass`/`fail` / group values / symbol names,
+and `plot._resolve_colours` turns colour keys into real colours via the theme, so
+one encoding renders on both themes. The default (single blue circle) is one
+trace, keeping the golden test behaviour-preserving.
 
 **Unpaired records are the reason this tool is not fifteen lines.** A record
 present in one dataset but not the other has only one coordinate and cannot be
@@ -54,8 +67,8 @@ remembering before changing anything:
   metric would be meaningless — there is no difference to measure.
 - `ParityData.all_values()` includes unpaired values, because the axis range is
   built from it and a rug mark outside the range would silently vanish.
-- Join mode cannot count records missing from *both* files — they leave no row
-  anywhere. Wide mode reports them as `n_dropped`. This asymmetry is inherent,
+- Join alignment cannot count records missing from *both* files — they leave no row
+  anywhere; pair-by-order reports them as `n_dropped`. This asymmetry is inherent,
   not a bug.
 
 **The 45° invariant** needs three things, not two: both axes sharing one range,
@@ -124,9 +137,10 @@ compares equal to the default and is never written at all.
 `launch.run` loads the session **before** importing any UI, so bad input fails with
 a plain message instead of after a server is already listening.
 
-`nicegui` is an optional extra. Never import it at `parity_plot` module scope —
-`designer/launch.py` imports it lazily and raises `MissingDependencyError` naming
-`uv sync --extra designer`.
+`nicegui` is a core dependency now, but is still imported lazily inside
+`designer/` functions, never at `parity_plot` module scope — the plotting CLI
+does not pull in the UI stack at import time. `designer/launch.py` keeps its
+`MissingDependencyError` guard as a safety net.
 
 **Phase 2 pure modules:** `datasets.py` reads only a CSV's header and first row —
 loading a large file just to list its columns makes opening one feel broken, and a
