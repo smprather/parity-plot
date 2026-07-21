@@ -25,11 +25,17 @@ class DesignerState:
     """
 
     config: ParityConfig
-    data: ParityData
+    # None before any file is opened -- the designer starts empty and shows a
+    # blank plot until files and ref/test are chosen.
+    data: ParityData | None = None
     selection: str | None = None
     filters: FilterSet = field(default_factory=FilterSet)
     last_error: str | None = None
     _last_figure: go.Figure | None = field(default=None, repr=False)
+
+    @property
+    def has_data(self) -> bool:
+        return self.data is not None
 
     def update(self, section: str, **values: Any) -> bool:
         """Apply settings to one config section. Returns whether it worked.
@@ -71,7 +77,7 @@ class DesignerState:
         self, tolerances: Sequence[NamedTolerance] = ()
     ) -> RecordView | None:
         """The pinned record, judged against ``tolerances`` if any are given."""
-        if self.selection is None:
+        if self.selection is None or self.data is None:
             return None
         return find_record(record_views(self.data, tolerances), self.selection)
 
@@ -80,7 +86,13 @@ class DesignerState:
         return self.config.plot.tolerances
 
     def visible_data(self) -> ParityData:
-        """The dataset after filtering. The plot and the table both read this."""
+        """The dataset after filtering. The plot and the table both read this.
+
+        Empty (not None) before any file is opened, so consumers need no None
+        guard of their own.
+        """
+        if self.data is None:
+            return ParityData()
         return self.filters.apply(self.data, self.tolerances())
 
     def visible_records(self) -> list[RecordView]:
@@ -90,6 +102,8 @@ class DesignerState:
     def counts(self) -> tuple[int, int]:
         """``(showing, total)`` records -- a filtered view that looks unfiltered
         is a trap, so the UI always states both."""
+        if self.data is None:
+            return 0, 0
         visible = self.visible_data()
         showing = visible.n_paired + visible.n_unpaired
         total = self.data.n_paired + self.data.n_unpaired
