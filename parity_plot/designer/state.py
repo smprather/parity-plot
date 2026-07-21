@@ -60,8 +60,25 @@ class DesignerState:
         """
         try:
             candidate = self.config.merge(data=values)
+        except (ConfigError, ValueError) as exc:
+            self.last_error = str(exc)
+            return False
+
+        # An incomplete source -- no files, or no ref/test yet -- is the empty
+        # state, not an error: the user removed the last file or has not finished
+        # picking columns. Go blank cleanly rather than keeping stale data.
+        if not candidate.data.files or not candidate.data.ref or not candidate.data.test:
+            self.config = candidate
+            self.data = None
+            self.selection = None
+            self.last_error = None
+            return True
+
+        try:
             data = load(candidate.data)
         except (ConfigError, DataError, ValueError) as exc:
+            # A complete-but-broken source (bad column, unreadable file) keeps the
+            # working dataset -- losing it to a typo is worse than the message.
             self.last_error = str(exc)
             return False
 
