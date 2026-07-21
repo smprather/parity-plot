@@ -49,15 +49,15 @@ class ConfigError(ValueError):
 class DataConfig:
     """Where the numbers come from.
 
-    One path is wide mode (a single file with both value columns); two paths is
-    join mode (one file per dataset, outer-joined on ``key``).
+    An arbitrary set of files; the two plotted series are `file:column` refs.
+    A join column aligns rows across files; without one, rows pair by order.
     """
 
-    paths: tuple[Path, ...] = ()
-    x: str = "reference"
-    y: str = "measured"
-    key: str | None = "id"
-    value: str = "value"
+    files: tuple[Path, ...] = ()
+    ref: str | None = None       # "file:column", a numeric column
+    test: str | None = None      # "file:column", a numeric column
+    join: str | None = None      # column name in both files, or None -> pair by order
+    group: str | None = None     # "file:column", any column, or None
     na_values: tuple[str, ...] = DEFAULT_NA_VALUES
 
 
@@ -174,6 +174,17 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
                 f'  kind = "pass"       # pass | info\n'
                 f"  enabled = false     # replaces identity_line for the parity entry\n"
             )
+    if cls is DataConfig:
+        retired = [k for k in RETIRED_DATA_KEYS if k in raw]
+        if retired:
+            raise ConfigError(
+                f"{source}: {', '.join(retired)} were replaced in 0.3.0. Use:\n"
+                f"  [data]\n"
+                f'  files = ["meas.csv", "sim.csv"]\n'
+                f'  ref   = "meas.csv:voltage"    # file:column\n'
+                f'  test  = "sim.csv:voltage"\n'
+                f'  join  = "id"                  # optional; omit to pair by order\n'
+            )
     known = {f.name for f in fields(cls)}
     unknown = set(raw) - known
     if unknown:
@@ -185,7 +196,7 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
     return replace(base, **coerced) if base is not None else cls(**coerced)
 
 
-_TUPLE_OF_PATH = {"paths"}
+_TUPLE_OF_PATH = {"files"}
 _TUPLE_OF_STR = {"na_values", "metrics"}
 _PATH = {"path"}
 _POSITIVE_FLOAT: set[str] = set()
@@ -198,6 +209,7 @@ _CHOICES = {
 }
 
 RETIRED_PLOT_KEYS = ("abstol", "reltol", "band_style", "identity_line")
+RETIRED_DATA_KEYS = ("paths", "x", "y", "key", "value")
 
 
 def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
@@ -305,14 +317,13 @@ EXAMPLE_TOML = """\
 # Every key here can also be overridden by the matching CLI flag.
 
 [data]
-# One path = wide mode (both value columns in one file).
-# Two paths = join mode (one file per dataset, outer-joined on `key`).
-paths = ["data/example.csv"]
-x = "reference"
-y = "measured"
-key = "id"
-# In join mode, the value column to read from each file.
-value = "value"
+# An arbitrary set of CSV files; the two plotted series are `file:column` refs.
+# A join column aligns rows across files; omit it to pair rows by order.
+files = ["data/example.csv"]
+ref = "data/example.csv:reference"    # file:column, a numeric column
+test = "data/example.csv:measured"    # file:column, a numeric column
+# join = "id"                         # optional; column name in both files
+# group = "data/example.csv:batch"    # optional; any column, or file:column
 na_values = ["", "NA", "N/A", "null", "none", "nan", "-"]
 
 [plot]
