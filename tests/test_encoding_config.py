@@ -40,6 +40,28 @@ def test_invalid_channel_value_raises_config_error():
         )
 
 
+def test_symbol_sequence_parses_from_a_toml_list_into_a_tuple():
+    cfg = ParityConfig.from_dict(
+        {
+            "plot": {
+                "encoding": {
+                    "color_by": "pass-fail",
+                    "symbol_by": "group",
+                    "symbol_sequence": ["circle", "square", "diamond"],
+                }
+            }
+        }
+    )
+    assert cfg.plot.encoding.symbol_sequence == ("circle", "square", "diamond")
+
+
+def test_unknown_symbol_in_sequence_raises_config_error():
+    with pytest.raises(ConfigError, match="unknown symbol"):
+        ParityConfig.from_dict(
+            {"plot": {"encoding": {"symbol_sequence": ["crcle"]}}}
+        )
+
+
 def test_unknown_encoding_key_raises_config_error():
     with pytest.raises(ConfigError, match="unknown key"):
         ParityConfig.from_dict(
@@ -70,7 +92,9 @@ def test_every_group_palette_token_resolves(theme_name):
 
 
 def test_symbol_cycle_has_at_least_six_entries():
-    assert len(themes.SYMBOL_CYCLE) >= 6
+    from parity_plot.encoding import DEFAULT_SYMBOLS
+
+    assert len(DEFAULT_SYMBOLS) >= 6
 
 
 @pytest.mark.parametrize("theme_name", ["dark", "light"])

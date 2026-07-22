@@ -361,6 +361,10 @@ def _register_tomlkit_encoding_encoder() -> None:
         table["symbol_by"] = value.symbol_by
         table["color"] = value.color
         table["symbol"] = value.symbol
+        # Only emit a symbol_sequence when set, so an unused default does not
+        # litter every config with `symbol_sequence = []`.
+        if value.symbol_sequence:
+            table["symbol_sequence"] = list(value.symbol_sequence)
         return table
 
     if not any(
@@ -427,12 +431,17 @@ reltol = 0.10           # a ratio; write "10pct" if you prefer percent
 #              | "group"      # the group column → a symbol cycle
 #   color      = "blue"       # token or hex; used when color_by = "single"
 #   symbol     = "circle"     # Plotly symbol name; used when symbol_by = "single"
+#   symbol_sequence = [...]   # symbols the groups cycle through when
+#                             # symbol_by = "group"; empty = a built-in default.
+#                             # e.g. colour by pass/fail, shape by group:
+#                             #   color_by = "pass-fail", symbol_by = "group"
 # The default reproduces today's one-trace plot, so nothing changes unless set.
 [plot.encoding]
 color_by = "single"
 symbol_by = "single"
 color = "blue"
 symbol = "circle"
+# symbol_sequence = ["circle", "square", "diamond", "triangle-up", "x"]
 
 [stats]
 show = true

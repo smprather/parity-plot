@@ -5,6 +5,7 @@ import pytest
 from parity_plot import parity_plot
 from parity_plot.config import OutputConfig, PlotConfig, StatsConfig
 from parity_plot.data import ParityData, Unpaired, from_sequences
+from parity_plot.encoding import Encoding
 from parity_plot.plot import build_figure, save
 from parity_plot.tolerances import NamedTolerance, parity, with_parity
 
@@ -306,6 +307,41 @@ def test_subtitle_reports_every_null_category():
 def test_empty_data_still_builds():
     fig = build_figure(from_sequences(x=[], y=[]), PlotConfig())
     assert fig.layout.xaxis.range is not None
+
+
+def _grouped():
+    return ParityData(
+        keys=["a", "b", "c", "d"],
+        x=[1.0, 2.0, 3.0, 4.0],
+        y=[1.0, 2.0, 3.0, 4.0],
+        group=["r", "r", "c", "c"],
+    )
+
+
+def test_symbol_by_group_gives_each_group_a_distinct_symbol():
+    """The headline case: colour by verdict, one symbol per group."""
+    fig = build_figure(
+        _grouped(),
+        PlotConfig(encoding=Encoding(color_by="pass-fail", symbol_by="group")),
+    )
+    # One symbol per group, all different; the group name is in the trace name.
+    by_group = {t.name: t.marker.symbol for t in fig.data if t.name and "·" in t.name}
+    r_syms = {s for n, s in by_group.items() if n.endswith("r")}
+    c_syms = {s for n, s in by_group.items() if n.endswith("c")}
+    assert r_syms and c_syms and r_syms.isdisjoint(c_syms)
+
+
+def test_symbol_sequence_assigns_symbols_in_first_seen_order():
+    fig = build_figure(
+        _grouped(),
+        PlotConfig(
+            encoding=Encoding(
+                symbol_by="group", symbol_sequence=("square", "diamond")
+            )
+        ),
+    )
+    by_group = {t.name: t.marker.symbol for t in fig.data if t.name in ("r", "c")}
+    assert by_group == {"r": "square", "c": "diamond"}  # first-seen: r, then c
 
 
 def test_save_writes_html_and_creates_parent_dirs(data, tmp_path):

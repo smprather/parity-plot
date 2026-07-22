@@ -24,16 +24,76 @@ __all__ = [
 
 CHANNELS: tuple[str, str, str] = ("single", "pass-fail", "group")
 
-# A stable symbol cycle used when ``symbol_by = "group"``. Plotly symbol names.
-_SYMBOL_CYCLE: tuple[str, ...] = (
+# The default symbol cycle used when ``symbol_by = "group"`` and no explicit
+# ``symbol_sequence`` is given. Ordered for maximum shape contrast early, so the
+# first few groups are the easiest to tell apart. Plotly symbol names.
+DEFAULT_SYMBOLS: tuple[str, ...] = (
     "circle",
-    "x",
-    "diamond",
     "square",
+    "diamond",
     "triangle-up",
     "cross",
+    "x",
     "star",
+    "triangle-down",
+    "pentagon",
+    "hexagon",
+    "star-triangle-up",
+    "hexagram",
+    "bowtie",
+    "hourglass",
+    "star-square",
+    "star-diamond",
 )
+
+# The symbols offered in the designer's pickers. The same list backs both the
+# single-symbol dropdown and the ``symbol_sequence`` multi-select. A TOML author
+# is not limited to this shortlist -- any Plotly base symbol (below), with an
+# optional ``-open`` / ``-dot`` / ``-open-dot`` variant suffix, is accepted.
+SYMBOL_CATALOG: tuple[str, ...] = DEFAULT_SYMBOLS
+
+# Every Plotly marker base-symbol name. A configured symbol is validated against
+# this set (after stripping a variant suffix) so a typo is caught with a named
+# error rather than rendering an invisible marker. This mirrors the colour-token
+# check in ``themes`` and the project's "unknown key is an error" stance.
+_BASE_SYMBOLS: frozenset[str] = frozenset({
+    "circle", "square", "diamond", "cross", "x",
+    "triangle-up", "triangle-down", "triangle-left", "triangle-right",
+    "triangle-ne", "triangle-se", "triangle-sw", "triangle-nw",
+    "pentagon", "hexagon", "hexagon2", "octagon",
+    "star", "hexagram",
+    "star-triangle-up", "star-triangle-down", "star-square", "star-diamond",
+    "diamond-tall", "diamond-wide", "hourglass", "bowtie",
+    "circle-cross", "circle-x", "square-cross", "square-x",
+    "diamond-cross", "diamond-x", "cross-thin", "x-thin",
+    "asterisk", "hash",
+    "y-up", "y-down", "y-left", "y-right",
+    "line-ew", "line-ns", "line-ne", "line-nw",
+    "arrow-up", "arrow-down", "arrow-left", "arrow-right",
+    "arrow-bar-up", "arrow-bar-down", "arrow-bar-left", "arrow-bar-right",
+    "arrow", "arrow-wide",
+})
+_SYMBOL_VARIANTS: tuple[str, ...] = ("-open-dot", "-open", "-dot")
+
+
+def _validate_symbol(symbol: str, *, where: str) -> None:
+    """Raise :class:`EncodingError` if ``symbol`` is not a known Plotly symbol.
+
+    A variant suffix (``-open``/``-dot``/``-open-dot``) is stripped before the
+    base name is checked, so ``"circle-open-dot"`` validates via ``"circle"``.
+    """
+    if not isinstance(symbol, str) or not symbol.strip():
+        raise EncodingError(f"{where} must be a non-empty symbol name, got {symbol!r}")
+    base = symbol
+    for suffix in _SYMBOL_VARIANTS:
+        if base.endswith(suffix):
+            base = base[: -len(suffix)]
+            break
+    if base not in _BASE_SYMBOLS:
+        raise EncodingError(
+            f"{where}: unknown symbol {symbol!r}; base name {base!r} is not a "
+            f"Plotly marker symbol"
+        )
 
 # Bucket keys for the group channel.
 _NO_COLUMN_BUCKET = "ungrouped"
@@ -56,12 +116,19 @@ class Encoding:
       ``"pass"``/``"fail"`` and ``"circle"``/``"x"``; the theme resolves them).
     - ``"group"``     — the point's group value: a qualitative palette / symbol
       cycle assigned to distinct values in first-seen order.
+
+    ``symbol_sequence`` overrides the default symbol cycle for ``symbol_by =
+    "group"`` — the distinct groups (first-seen order) are assigned symbols from
+    it, wrapping if there are more groups than symbols. Empty means the built-in
+    :data:`DEFAULT_SYMBOLS`. It is stored as a tuple so the frozen dataclass stays
+    hashable even when a list arrives from TOML.
     """
 
     color_by: str = "single"
     symbol_by: str = "single"
     color: str = "blue"
     symbol: str = "circle"
+    symbol_sequence: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if self.color_by not in CHANNELS:
@@ -72,6 +139,12 @@ class Encoding:
             raise EncodingError(
                 f"symbol_by must be one of {CHANNELS!r}, got {self.symbol_by!r}"
             )
+        _validate_symbol(self.symbol, where="symbol")
+        # TOML (and the designer's multi-select) hand over a list; normalise to a
+        # tuple so the frozen dataclass is hashable and compares by value.
+        object.__setattr__(self, "symbol_sequence", tuple(self.symbol_sequence))
+        for s in self.symbol_sequence:
+            _validate_symbol(s, where="symbol_sequence entry")
 
 
 @dataclass(frozen=True)
@@ -82,17 +155,6 @@ class TraceSpec:
     indices: list[int]
     color_key: str
     symbol_key: str
-
-
-def _group_first_seen_order(groups: Sequence[str | None]) -> list[str | None]:
-    """Distinct group values in first-seen order (None included)."""
-    order: list[str | None] = []
-    seen: set[str | None] = set()
-    for g in groups:
-        if g not in seen:
-            seen.add(g)
-            order.append(g)
-    return order
 
 
 def color_key_of(
@@ -128,18 +190,25 @@ def symbol_key_of(
     enc: Encoding,
     *,
     has_group_column: bool,
-    group_order: Sequence[str | None],
 ) -> str:
-    """Symbol key for one point."""
+    """Symbol key for one point.
+
+    For ``single``/``pass-fail`` the key is already a Plotly symbol name. For
+    ``group`` the key is the *group value* (mirroring :func:`color_key_of`), and
+    ``plot.py`` resolves it to an actual symbol through the sequence — so the
+    trace is named by the group, not by the glyph, and the group→symbol mapping
+    is configurable via ``symbol_sequence``.
+    """
     if enc.symbol_by == "single":
         return enc.symbol
     if enc.symbol_by == "pass-fail":
         return "circle" if verdict else "x"
-    # group: cycle by the group's first-seen index
+    # group: same bucketing as the colour channel.
     if not has_group_column:
-        return _SYMBOL_CYCLE[0]
-    idx = group_order.index(group) if group in group_order else 0
-    return _SYMBOL_CYCLE[idx % len(_SYMBOL_CYCLE)]
+        return _NO_COLUMN_BUCKET
+    if group is None:
+        return _NONE_VALUE_BUCKET
+    return str(group)
 
 
 def _channel_label(
@@ -205,9 +274,6 @@ def partition(
         raise ValueError(
             f"groups length {len(groups)} does not match n={n}"  # type: ignore[arg-type]
         )
-    group_order: list[str | None] = (
-        _group_first_seen_order(groups) if has_group_column else []
-    )
 
     # (color_key, symbol_key) -> (indices, insertion_order, verdict, group)
     buckets: dict[
@@ -221,12 +287,7 @@ def partition(
             i, verdict, group, enc, has_group_column=has_group_column
         )
         sk = symbol_key_of(
-            i,
-            verdict,
-            group,
-            enc,
-            has_group_column=has_group_column,
-            group_order=group_order,
+            i, verdict, group, enc, has_group_column=has_group_column
         )
         key = (ck, sk)
         bucket = buckets.get(key)

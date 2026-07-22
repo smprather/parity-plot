@@ -98,3 +98,43 @@ def test_invalid_channel_is_rejected(field, bad):
 
     with pytest.raises(EncodingError):
         Encoding(**{field: bad})
+
+
+def test_symbol_by_group_keys_by_group_value_not_glyph():
+    """The symbol channel now buckets by the group value, so a trace is named
+    for the group -- the headline case: colour by verdict, shape by group."""
+    specs = partition(
+        4, [True, False, True, False], ["a", "a", "b", "b"],
+        Encoding(color_by="pass-fail", symbol_by="group"),
+    )
+    got = {(s.color_key, s.symbol_key): s.indices for s in specs}
+    assert got[("pass", "a")] == [0]
+    assert got[("fail", "a")] == [1]
+    assert got[("pass", "b")] == [2]
+    assert got[("fail", "b")] == [3]
+    assert {s.name for s in specs} == {"pass · a", "fail · a", "pass · b", "fail · b"}
+
+
+def test_symbol_sequence_normalises_a_list_to_a_tuple():
+    enc = Encoding(symbol_by="group", symbol_sequence=["circle", "square"])
+    assert enc.symbol_sequence == ("circle", "square")
+    hash(enc)  # frozen + hashable despite the list input
+
+
+def test_symbol_sequence_accepts_variant_suffixes():
+    Encoding(symbol_sequence=["circle-open", "square-dot", "diamond-open-dot"])
+
+
+@pytest.mark.parametrize("bad", [["crcle"], ["circle", "definitely-not-a-symbol"], [""]])
+def test_symbol_sequence_rejects_unknown_symbols(bad):
+    from parity_plot.encoding import EncodingError
+
+    with pytest.raises(EncodingError):
+        Encoding(symbol_sequence=bad)
+
+
+def test_single_symbol_is_validated_too():
+    from parity_plot.encoding import EncodingError
+
+    with pytest.raises(EncodingError):
+        Encoding(symbol="nonsense")
