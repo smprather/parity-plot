@@ -89,7 +89,7 @@ def test_join_column_must_exist(tmp_path):
 def test_group_labels_paired_points(tmp_path):
     f = write(tmp_path, "d.csv", "reference,test,batch\n10,11,x\n20,22,y\n30,29,x\n")
     data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           group="d.csv:batch"))
+                           group="batch"))
     assert data.group == ["x", "y", "x"]
 
 
@@ -102,14 +102,14 @@ def test_group_aligns_through_a_join(tmp_path):
     a = write(tmp_path, "a.csv", "id,v,batch\nA1,10,x\nA2,20,y\n")
     b = write(tmp_path, "b.csv", "id,v\nA1,11\nA2,22\n")
     data = load(DataConfig(files=(a, b), ref="a.csv:v", test="b.csv:v", join="id",
-                           group="a.csv:batch"))
+                           group="batch"))
     assert dict(zip(data.keys, data.group)) == {"A1": "x", "A2": "y"}
 
 
 def test_a_blank_group_cell_is_none(tmp_path):
     f = write(tmp_path, "d.csv", "reference,test,batch\n10,11,x\n20,22,\n")
     data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           group="d.csv:batch"))
+                           group="batch"))
     assert data.group == ["x", None]
 
 
@@ -140,3 +140,35 @@ def test_ref_and_test_are_required(tmp_path):
     f = write(tmp_path, "d.csv", "a,b\n1,2\n")
     with pytest.raises(DataError, match="ref and a test"):
         load(DataConfig(files=(f,)))
+
+
+def test_group_may_live_in_only_one_file(write_csv):
+    """The test file need not carry the group column."""
+    a = write_csv("sim.csv", "id,v,type\nA,10,diode\nB,20,mosfet\n")
+    b = write_csv("meas.csv", "id,v\nA,11\nB,22\n")  # no type column
+    data = load(DataConfig(files=(a, b), ref="sim.csv:v", test="meas.csv:v",
+                           join="id", group="type"))
+    assert dict(zip(data.keys, data.group)) == {"A": "diode", "B": "mosfet"}
+
+
+def test_group_disagreement_across_files_is_an_error(write_csv):
+    a = write_csv("sim.csv", "id,v,type\nA,10,diode\n")
+    b = write_csv("meas.csv", "id,v,type\nA,11,mosfet\n")
+    with pytest.raises(DataError, match="group column 'type' disagrees"):
+        load(DataConfig(files=(a, b), ref="sim.csv:v", test="meas.csv:v",
+                        join="id", group="type"))
+
+
+def test_group_agreeing_across_files_is_fine(write_csv):
+    a = write_csv("sim.csv", "id,v,type\nA,10,diode\n")
+    b = write_csv("meas.csv", "id,v,type\nA,11,diode\n")
+    data = load(DataConfig(files=(a, b), ref="sim.csv:v", test="meas.csv:v",
+                           join="id", group="type"))
+    assert data.group == ["diode"]
+
+
+def test_missing_group_column_names_what_is_available(write_csv):
+    f = write_csv("d.csv", "id,reference,test\nA,10,11\n")
+    with pytest.raises(DataError, match="group column 'nope' not found"):
+        load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                        group="nope"))

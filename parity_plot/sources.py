@@ -56,6 +56,14 @@ class Sources:
     def length(self, file: Path) -> int:
         return max((len(v) for v in self.tables[file].values()), default=0)
 
+    def files_with_column(self, name: str) -> list[Path]:
+        """Every open file that has a column of this bare name, in open order.
+
+        Used for file-independent columns like the group label, which may live
+        in one file or several.
+        """
+        return [f for f in self.order if name in self.tables[f]]
+
     def _match(self, file_part: str) -> Path:
         by_name = [p for p in self.order if p.name == file_part]
         if len(by_name) == 1:

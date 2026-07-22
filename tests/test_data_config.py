@@ -19,7 +19,7 @@ def test_parses_the_new_shape(tmp_path: Path):
     p.write_text(
         '[data]\nfiles = ["meas.csv", "sim.csv"]\n'
         'ref = "meas.csv:voltage"\ntest = "sim.csv:voltage"\n'
-        'join = "id"\ngroup = "meas.csv:batch"\n',
+        'join = "id"\ngroup = "batch"\n',
         encoding="utf-8",
     )
     d = ParityConfig.from_toml(p).data
@@ -27,7 +27,7 @@ def test_parses_the_new_shape(tmp_path: Path):
     assert d.ref == "meas.csv:voltage"
     assert d.test == "sim.csv:voltage"
     assert d.join == "id"
-    assert d.group == "meas.csv:batch"
+    assert d.group == "batch"
 
 
 def test_join_and_group_are_optional(tmp_path: Path):

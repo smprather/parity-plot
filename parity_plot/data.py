@@ -93,14 +93,67 @@ def load(cfg: DataConfig) -> ParityData:
     test_col = src.resolve(cfg.test)
     _require_numeric(ref_col, na, "ref")
     _require_numeric(test_col, na, "test")
-    group_col = src.resolve(cfg.group) if cfg.group else None
+
+    # Group is a bare, file-independent column name: it labels the paired entity,
+    # not a per-file measurement. It may live in one file or several; when in
+    # several, the value must agree for each paired point -- a part cannot be
+    # both a "diode" and a "mosfet". A file that lacks it simply does not vote.
+    group_lookup = _group_lookup(src, cfg.group, cfg.join, na) if cfg.group else None
 
     builder = _Builder(x_label=ref_col.name, y_label=test_col.name)
     if cfg.join:
-        _load_joined(builder, src, ref_col, test_col, group_col, cfg.join, na)
+        _load_joined(builder, src, ref_col, test_col, group_lookup, cfg.join, na)
     else:
-        _load_by_order(builder, ref_col, test_col, group_col, na)
+        _load_by_order(builder, ref_col, test_col, group_lookup, na)
     return builder.build()
+
+
+def _group_lookup(src, group: str, join: str | None, na: frozenset[str]):
+    """A callable resolving a paired point's group value across all files.
+
+    Given a join key (join mode) or a row index (order mode), it collects the
+    group value from every file that carries the column and agrees on the
+    answer, raising if two files disagree for the same point.
+    """
+    files = src.files_with_column(group)
+    if not files:
+        raise DataError(
+            f"group column {group!r} not found in any open file; "
+            f"available: {sorted(set(src.columns()))}"
+        )
+
+    if join:
+        # Only files that ALSO have the join column can be aligned by key.
+        keyed = {
+            f: dict(zip(src.tables[f][join], src.tables[f][group]))
+            for f in files
+            if join in src.tables[f]
+        }
+
+        def lookup(key: str):
+            return _agree({f: d[key] for f, d in keyed.items() if key in d}, key, group, na)
+
+        return lookup
+
+    columns = {f: src.tables[f][group] for f in files}
+
+    def lookup_by_index(index: int):
+        present = {f: v[index] for f, v in columns.items() if index < len(v)}
+        return _agree(present, str(index), group, na)
+
+    return lookup_by_index
+
+
+def _agree(values: dict, point: str, column: str, na: frozenset[str]) -> str | None:
+    """The one group value the files agree on, or None if none, or raise."""
+    cleaned = {f: v.strip() for f, v in values.items() if v.strip().lower() not in na}
+    distinct = set(cleaned.values())
+    if len(distinct) > 1:
+        detail = ", ".join(f"{f.name}={v!r}" for f, v in sorted(cleaned.items()))
+        raise DataError(
+            f"{point}: group column {column!r} disagrees across files ({detail})"
+        )
+    return next(iter(distinct)) if distinct else None
 
 
 def _require_numeric(col, na: frozenset[str], role: str) -> None:
@@ -118,26 +171,24 @@ def _require_numeric(col, na: frozenset[str], role: str) -> None:
             ) from None
 
 
-def _load_by_order(builder: "_Builder", ref_col, test_col, group_col, na) -> None:
+def _load_by_order(builder: "_Builder", ref_col, test_col, group_lookup, na) -> None:
     """Pair rows by position; the longer column's tail becomes unpaired."""
     n = max(len(ref_col.values), len(test_col.values))
     for i in range(n):
         rv = ref_col.values[i] if i < len(ref_col.values) else None
         tv = test_col.values[i] if i < len(test_col.values) else None
-        gv = group_col.values[i] if group_col and i < len(group_col.values) else None
         builder.add(
             str(i),
             _parse(rv, na, ref_col.file, i + 2, ref_col.name) if rv is not None else None,
             _parse(tv, na, test_col.file, i + 2, test_col.name) if tv is not None else None,
-            group=_group_value(gv, na),
+            group=group_lookup(i) if group_lookup else None,
         )
 
 
-def _load_joined(builder: "_Builder", src, ref_col, test_col, group_col, join, na) -> None:
+def _load_joined(builder: "_Builder", src, ref_col, test_col, group_lookup, join, na) -> None:
     """Outer-join ref and test files on ``join``; a key on one side is unpaired."""
     ref_by = _index_by_key(src, ref_col, join)
     test_by = _index_by_key(src, test_col, join)
-    group_by = _index_by_key(src, group_col, join) if group_col else {}
 
     # ref-file order first, then keys only in the test file -- deterministic and
     # mirroring how the data was laid out.
@@ -145,12 +196,11 @@ def _load_joined(builder: "_Builder", src, ref_col, test_col, group_col, join, n
     for key in ordered:
         rline, rraw = ref_by.get(key, (0, None))
         tline, traw = test_by.get(key, (0, None))
-        _, graw = group_by.get(key, (0, None))
         builder.add(
             key,
             _parse(rraw, na, ref_col.file, rline, ref_col.name) if rraw is not None else None,
             _parse(traw, na, test_col.file, tline, test_col.name) if traw is not None else None,
-            group=_group_value(graw, na),
+            group=group_lookup(key) if group_lookup else None,
         )
 
 
@@ -176,14 +226,6 @@ def _index_by_key(src, col, join: str) -> dict[str, tuple[int, str]]:
             )
         out[key] = (index + 2, value)
     return out
-
-
-def _group_value(raw: str | None, na: frozenset[str]) -> str | None:
-    """A group label, or None when the cell is blank/NA."""
-    if raw is None:
-        return None
-    text = raw.strip()
-    return None if text.lower() in na else text
 
 
 def from_sequences(

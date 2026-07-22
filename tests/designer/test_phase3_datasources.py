@@ -48,7 +48,7 @@ def test_group_column_enables_group_encoding(tmp_path):
               "id,reference,test,batch\nA1,10,11,x\nA2,20,22,y\nA3,30,29,x\n")
     state = DesignerState(config=ParityConfig())
     state.set_data_source(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                          group="d.csv:batch")
+                          group="batch")
 
     assert state.update("plot", encoding=Encoding(color_by="group"))
     # One trace per group value (x, y) plus the tolerance/parity lines.

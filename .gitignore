@@ -17,3 +17,7 @@ data/
 *.svg
 *.pdf
 out/
+
+# committed README screenshots (override the global *.png ignore)
+!docs/images/
+!docs/images/*.png

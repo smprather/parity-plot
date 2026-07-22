@@ -50,6 +50,16 @@ carrying an optional per-point `group`), so nothing downstream knows how it was
 loaded. `sources` imports helpers from `data`, so `data.load` imports
 `open_sources` **lazily** to break the cycle.
 
+**Group is file-independent, a bare column name — not `file:column`.** A group
+labels the joined *entity* (a part), not a per-file measurement, so it may live
+in one file or several. `data._group_lookup` resolves it via
+`Sources.files_with_column`, keying by the join value (or row index when
+pairing by order). When 2+ open files carry the group column, `_agree` checks
+that a paired record's value matches across them and raises a `DataError` naming
+the record and the disagreeing values — the test file need not carry it at all.
+`join` stays a column present in *every* file (the key has to match on both
+sides); `group` needs only one.
+
 **Marker encoding** (`encoding.py`, pure) partitions paired points into traces by
 their `(colour-key, symbol-key)` — each channel is `single | pass-fail | group`.
 It is theme-free: keys are tokens / `pass`/`fail` / group values / symbol names,
@@ -155,8 +165,17 @@ rolling back is not equivalent. It also clears a selection absent from the new d
 
 **`figure()` deliberately does not clear `last_error` on success.** A failed
 `set_data_source` leaves the old data loaded, so the next redraw succeeds; clearing
-there would blank the error banner before it ever showed. Errors are cleared by
+there would blank the status bar before it ever showed. Errors are cleared by
 whatever succeeds next (`update` / `set_data_source`).
+
+**Errors surface in a persistent status bar, never a toast.** `app.py` owns a
+colour-coded `status_bar` under the plot; `refresh()` paints it red (`⛔`) from
+`state.last_error`, or neutral "Ready" when clear. Panels never call
+`ui.notify(..., type="negative")` — they set `state.last_error` (via `update` /
+`set_data_source`) and call `on_change()`, and `refresh()` does the rest. The
+**one** surviving toast is the positive "Saved" confirmation, which is transient
+good news; the status bar also shows a green `✅ Saved` and reverts to the live
+error/idle state on the next `refresh()`. Do not reintroduce negative toasts.
 
 Plotly click payloads carry `customdata` in **two shapes**: the paired trace carries
 `(key, diff)`, the rug traces a bare key. `key_from_customdata` normalises both —
