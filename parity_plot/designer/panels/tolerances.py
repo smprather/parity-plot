@@ -38,8 +38,8 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
 
         def commit(tolerances) -> None:
             """Push a new list into state and redraw the whole panel."""
-            if not state.update("plot", tolerances=ops.normalise(tolerances)):
-                ui.notify(state.last_error, type="negative")
+            # A rejected update leaves state.last_error; the status bar shows it.
+            state.update("plot", tolerances=ops.normalise(tolerances))
             render()
             on_change()
 

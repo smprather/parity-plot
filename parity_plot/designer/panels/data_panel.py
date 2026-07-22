@@ -42,10 +42,18 @@ def column_options(files: tuple[Path, ...]) -> dict[str, list[str]]:
         for col in src.tables[src.order[0]]
         if all(col in src.tables[f] for f in src.order)
     ]
+    # group and join are file-independent (bare column names): a group labels
+    # the joined entity, and a join key must match across files. group offers
+    # every distinct column name; join offers those present in every file.
+    distinct: list[str] = []
+    for f in src.order:
+        for col in src.tables[f]:
+            if col not in distinct:
+                distinct.append(col)
     return {
         "ref": numeric,
         "test": list(numeric),
-        "group": src.columns(),
+        "group": distinct,
         "join": common,
     }
 
@@ -107,8 +115,9 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
                 join=None if join_sel.value == _NONE else join_sel.value,
                 group=None if group_sel.value == _NONE else group_sel.value,
             )
-            if not ok and state.last_error:
-                ui.notify(state.last_error, type="negative")
+            # On failure last_error is set; the status bar (painted by
+            # on_change -> refresh) shows it persistently -- no toast.
+            _ = ok
             on_change()
 
         def _remove(path: Path) -> None:

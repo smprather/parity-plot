@@ -193,7 +193,7 @@ def cli() -> None:
 @click.option("--ref", help="Reference column as `file:column` (numeric). Defaults to the first numeric column of a single file.")
 @click.option("--test", help="Test column as `file:column` (numeric). Defaults to the second numeric column of a single file.")
 @click.option("--join", help="Column name to join files on. Omit to pair rows by order.")
-@click.option("--group", help="Group column as `file:column` (any type), to colour points by.")
+@click.option("--group", help="Group column (a bare column name, any type), to colour points by. File-independent: it may live in one file or several.")
 @click.option("--theme", type=click.Choice(THEMES), help="Colour theme.  [default: dark]")
 @click.option("--title", help="Plot title.")
 @click.option("--x-label", help="X axis label.  [default: column name]")

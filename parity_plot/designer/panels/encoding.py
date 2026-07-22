@@ -32,8 +32,8 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
                 color=color_pick.value or "blue",
                 symbol=symbol_pick.value or "circle",
             )
-            if not state.update("plot", encoding=new):
-                ui.notify(state.last_error, type="negative")
+            # A rejected update leaves state.last_error; the status bar shows it.
+            state.update("plot", encoding=new)
             on_change()
 
         with ui.row().classes("w-full items-center gap-2 no-wrap"):

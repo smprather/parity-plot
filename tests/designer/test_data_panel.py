@@ -19,10 +19,18 @@ def test_ref_and_test_are_numeric_columns_only(tmp_path):
     assert opts["test"] == ["d.csv:voltage"]
 
 
-def test_group_offers_every_column(tmp_path):
+def test_group_offers_bare_column_names(tmp_path):
+    """Group is file-independent -- a bare name, not file:column."""
     f = write(tmp_path, "d.csv", "id,voltage,batch\nA1,10.0,x\n")
     opts = column_options((f,))
-    assert opts["group"] == ["d.csv:id", "d.csv:voltage", "d.csv:batch"]
+    assert opts["group"] == ["id", "voltage", "batch"]
+
+
+def test_group_names_are_deduplicated_across_files(tmp_path):
+    a = write(tmp_path, "a.csv", "id,v,batch\nA,1,x\n")
+    b = write(tmp_path, "b.csv", "id,v\nA,2\n")
+    # id and v appear in both but list once; batch only in a.
+    assert column_options((a, b))["group"] == ["id", "v", "batch"]
 
 
 def test_join_is_columns_common_to_all_files(tmp_path):

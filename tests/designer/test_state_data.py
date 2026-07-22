@@ -72,6 +72,24 @@ def test_a_missing_file_is_reported_not_raised(state, tmp_path):
     assert "not found" in state.last_error
 
 
+def test_group_disagreement_across_files_becomes_a_status_error(state, tmp_path):
+    """A cross-file group conflict must land in last_error -- the status bar's
+    source -- not raise, and must keep the working dataset."""
+    a = tmp_path / "sim.csv"
+    a.write_text("id,v,type\nA,10,diode\n", encoding="utf-8")
+    b = tmp_path / "meas.csv"
+    b.write_text("id,v,type\nA,11,mosfet\n", encoding="utf-8")
+    before = state.data
+
+    ok = state.set_data_source(
+        files=(a, b), ref="sim.csv:v", test="meas.csv:v", join="id", group="type"
+    )
+
+    assert not ok
+    assert state.data is before
+    assert "group column 'type' disagrees" in state.last_error
+
+
 def test_the_figure_follows_the_new_dataset(state, second):
     before = state.figure().to_dict()
     state.set_data_source(

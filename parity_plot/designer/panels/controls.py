@@ -75,8 +75,8 @@ def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], 
     current = getattr(getattr(state.config, spec.section), spec.key)
 
     def apply(value: Any) -> None:
-        if not state.update(spec.section, **{spec.key: _clean(spec, value)}):
-            ui.notify(state.last_error, type="negative")
+        # A rejected update leaves state.last_error; the status bar surfaces it.
+        state.update(spec.section, **{spec.key: _clean(spec, value)})
         on_change()
 
     if spec.kind == "switch":

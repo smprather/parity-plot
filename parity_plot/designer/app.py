@@ -82,7 +82,12 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 # Brushing is still available from the modebar's box-select and
                 # lasso tools; the selection handlers below serve both.
                 plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
-                error_banner = ui.label("").classes("text-red-400 text-sm")
+                # A persistent, colour-coded status bar -- no toasts. Errors (a
+                # group conflict, a bad column) stay here until the next action
+                # clears them, rather than popping and vanishing.
+                status_bar = ui.label("Ready").classes(
+                    "w-full text-sm px-2 py-1 rounded opacity-70"
+                )
                 refresh_inspector = build_inspector(state, state.tolerances)
 
                 refresh_table = build_table(
@@ -106,9 +111,24 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 plot_view.on("plotly_selected", on_brush)
                 plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
 
+        def set_status(message: str, kind: str = "info") -> None:
+            """Write the persistent status bar. kind: error | ok | info."""
+            colour = {
+                "error": "bg-red-900 text-red-100",
+                "ok": "bg-green-900 text-green-100",
+                "info": "opacity-70",
+            }[kind]
+            status_bar.classes(
+                replace="w-full text-sm px-2 py-1 rounded " + colour
+            )
+            status_bar.text = message
+
         def refresh() -> None:
             plot_view.update_figure(state.figure())
-            error_banner.text = state.last_error or ""
+            if state.last_error:
+                set_status(f"⛔  {state.last_error}", "error")
+            else:
+                set_status("Ready", "info")
             status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
             refresh_inspector()
             refresh_table()
@@ -124,9 +144,13 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 confirm_overwrite(str(exc))
                 return
             except (ValueError, OSError) as exc:
-                ui.notify(str(exc), type="negative")
+                set_status(f"⛔  {exc}", "error")
                 return
+            # The one place a toast survives: a save is a discrete action whose
+            # confirmation is transient good news, and the status bar goes back
+            # to reflecting the live error/idle state on the next refresh.
             ui.notify(f"Saved {written}", type="positive")
+            set_status(f"✅  Saved {written}", "ok")
             refresh()
 
         def confirm_overwrite(message: str) -> None:
