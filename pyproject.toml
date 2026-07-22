@@ -1,6 +1,6 @@
 [project]
 name = "parity-plot"
-version = "0.3.0"
+version = "0.4.0"
 description = "45-degree parity plots from Plotly, as a Python package and a CLI"
 readme = "README.md"
 requires-python = ">=3.14"
