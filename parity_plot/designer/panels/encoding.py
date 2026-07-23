@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from ...encoding import COLOR_CHANNELS, SYMBOL_CHANNELS, SYMBOL_CATALOG, Encoding
+from ...encoding import COLOR_CHANNELS, SYMBOL_CATALOG, SYMBOL_CHANNELS, Encoding
 from ...themes import COLOR_TOKENS
 from ..state import DesignerState
 

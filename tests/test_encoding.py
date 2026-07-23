@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from parity_plot.encoding import CHANNELS, Encoding, partition
+from parity_plot.encoding import Encoding, partition
 
 
 def test_default_is_a_single_trace():

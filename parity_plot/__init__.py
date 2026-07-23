@@ -26,10 +26,11 @@ from .examples import ExampleSpec, SpecError
 from .examples import generate as generate_example
 from .examples import write_all as write_example_data
 from .plot import build_figure, save
-from .stats import Stats, compute as compute_stats
-from .tolerance import Tolerance
+from .stats import Stats
+from .stats import compute as compute_stats
 from .themes import THEMES as THEME_NAMES
 from .themes import Theme
+from .tolerance import Tolerance
 
 __version__ = "0.1.0"
 

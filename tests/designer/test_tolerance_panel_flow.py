@@ -90,8 +90,8 @@ def test_disabling_parity_removes_the_line_but_keeps_the_entry(state):
 
 
 def test_the_verdict_column_populates_after_adding_a_criterion(state):
-    from parity_plot.designer.table_rows import to_rows
     from parity_plot.designer.records import record_views
+    from parity_plot.designer.table_rows import to_rows
 
     commit(state, ops.add(state.tolerances()))  # reltol 10%
     rows = {

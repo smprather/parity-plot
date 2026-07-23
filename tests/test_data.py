@@ -159,7 +159,7 @@ def test_empty_file_is_an_error(write_csv):
 
 def test_missing_file_is_reported_by_name(tmp_path):
     with pytest.raises(DataError, match="not found"):
-        open_and_load = load(
+        load(
             DataConfig(
                 files=(tmp_path / "nope.csv",), ref="nope.csv:a", test="nope.csv:b"
             )

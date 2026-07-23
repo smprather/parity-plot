@@ -9,7 +9,7 @@ render correctly under both dark and light themes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
 
 import plotly.colors as _pcolors

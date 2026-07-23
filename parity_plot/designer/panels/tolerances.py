@@ -15,13 +15,12 @@ from __future__ import annotations
 
 from typing import Callable
 
+from ...themes import COLOR_TOKENS
 from ...tolerances import (
-    KINDS,
     PARITY_NAME,
     STYLES,
     NamedTolerance,
 )
-from ...themes import COLOR_TOKENS
 from .. import tolerance_ops as ops
 from ..state import DesignerState
 

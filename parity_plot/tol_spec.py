@@ -8,7 +8,7 @@ click-free so it is unit-tested on its own.
 from __future__ import annotations
 
 from .tolerance import parse_reltol
-from .tolerances import KINDS, STYLES, NamedTolerance, ToleranceError
+from .tolerances import NamedTolerance, ToleranceError
 
 _KEYS = {"name", "label", "abstol", "reltol", "kind", "color", "style"}
 

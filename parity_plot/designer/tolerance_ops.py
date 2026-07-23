@@ -14,8 +14,8 @@ from dataclasses import replace
 from typing import Sequence
 
 from ..tolerances import (
-    NamedTolerance,
     PARITY_NAME,
+    NamedTolerance,
     default_name,
     with_parity,
 )

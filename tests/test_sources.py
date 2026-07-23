@@ -7,7 +7,7 @@ import pytest
 
 from parity_plot.config import DEFAULT_NA_VALUES
 from parity_plot.data import DataError
-from parity_plot.sources import Sources, open_sources
+from parity_plot.sources import open_sources
 
 
 def write(tmp_path: Path, name: str, text: str) -> Path:

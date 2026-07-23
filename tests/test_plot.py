@@ -140,7 +140,6 @@ def test_parity_line_spans_the_full_range(data):
 def test_parity_line_can_be_switched_off(data):
     """Disabling the parity entry replaces the old identity_line = false."""
     from dataclasses import replace
-    from parity_plot.tolerances import parity
 
     fig = build_figure(data, PlotConfig(tolerances=(replace(parity(), enabled=False),)))
     assert trace_named(fig, "0% error") is None
@@ -394,9 +393,9 @@ def _scale_data():
 
 
 def test_colorscale_draws_one_colorbar():
-    from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
 
     fig = build_figure(
         _scale_data(),
@@ -419,9 +418,9 @@ def test_colorscale_draws_one_colorbar():
 
 
 def test_colorscale_partitions_by_symbol():
-    from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
 
     fig = build_figure(
         _scale_data(),
@@ -439,10 +438,11 @@ def test_colorscale_partitions_by_symbol():
 
 def test_colorscale_without_column_raises():
     import pytest
-    from parity_plot.plot import build_figure
+
     from parity_plot.config import PlotConfig
-    from parity_plot.encoding import Encoding
     from parity_plot.data import ParityData
+    from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
 
     d = ParityData(keys=["a"], x=[1.0], y=[1.0])
     with pytest.raises(ValueError, match="color_column"):
@@ -450,9 +450,9 @@ def test_colorscale_without_column_raises():
 
 
 def test_colorbar_and_right_legend_do_not_overlap():
-    from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
 
     fig = build_figure(
         _scale_data(),

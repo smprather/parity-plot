@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from parity_plot.config import ParityConfig
 from parity_plot.designer.panels.data_panel import column_options
-from parity_plot.designer.panels.encoding import build_encoding_panel  # noqa: F401 (import guard)
+from parity_plot.designer.panels.encoding import (
+    build_encoding_panel,  # noqa: F401 (import guard)
+)
 from parity_plot.designer.state import DesignerState
 from parity_plot.encoding import Encoding
 

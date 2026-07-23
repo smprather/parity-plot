@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
+from .encoding import Encoding, EncodingError
 from .tolerance import parse_reltol
 from .tolerances import (
     NamedTolerance,
@@ -21,7 +22,6 @@ from .tolerances import (
     require_unique_names,
     with_parity,
 )
-from .encoding import Encoding, EncodingError
 
 DEFAULT_NA_VALUES: tuple[str, ...] = (
     "",
@@ -364,8 +364,8 @@ def _register_tomlkit_encoding_encoder() -> None:
     Registering here keeps the encoder alongside the type it knows about, and
     runs once at import so the designer (which imports this module) picks it up.
     """
-    from tomlkit.items import CUSTOM_ENCODERS, Table, Trivia
     from tomlkit.container import Container
+    from tomlkit.items import CUSTOM_ENCODERS, Table, Trivia
 
     def _encode_encoding(value: object, **_: object) -> Table:
         if not isinstance(value, Encoding):

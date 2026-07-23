@@ -5,8 +5,8 @@ import math
 import pytest
 
 from parity_plot.data import ParityData, Unpaired
-from parity_plot.tolerances import NamedTolerance
 from parity_plot.stats import compute, format_lines, summarize_nulls
+from parity_plot.tolerances import NamedTolerance
 
 
 def make(x, y, **kwargs):

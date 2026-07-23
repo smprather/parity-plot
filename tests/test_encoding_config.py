@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
+from parity_plot import themes
 from parity_plot.config import EXAMPLE_TOML, ConfigError, ParityConfig
 from parity_plot.encoding import Encoding
-from parity_plot import themes
 
 
 def test_default_encoding_is_a_default_encoding():
