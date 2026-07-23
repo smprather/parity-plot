@@ -16,7 +16,7 @@ import math
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import plotly.graph_objects as go
 
@@ -273,16 +273,20 @@ def _add_paired(
     is_scale = encoding.color_by == "colorscale"
     colours = None if is_scale else _resolve_colours(specs, encoding, theme)
     cmin = cmax = None
+    color_values: list[float | None] = []
     if is_scale:
-        finite = [c for c in data.color_values if c is not None]
+        # build_figure guarantees color_values is present under colorscale.
+        assert data.color_values is not None
+        color_values = data.color_values
+        finite = [c for c in color_values if c is not None]
         cmin, cmax = (min(finite), max(finite)) if finite else (0.0, 1.0)
 
     for i, spec in enumerate(specs):
         idx = spec.indices
         name = spec.name if len(specs) > 1 else f"paired (n={data.n_paired:,})"
         if is_scale:
-            marker = dict(
-                color=[data.color_values[j] for j in idx],
+            marker: dict[str, Any] = dict(
+                color=[color_values[j] for j in idx],
                 colorscale=encoding.colorscale,
                 cmin=cmin,
                 cmax=cmax,
@@ -303,6 +307,7 @@ def _add_paired(
                     yanchor="middle",
                 )
         else:
+            assert colours is not None
             marker = dict(
                 color=colours[spec.color_key],
                 symbol=symbols[spec.symbol_key],
@@ -441,8 +446,12 @@ def _apply_layout(
     has_colorbar: bool = False,
 ) -> None:
     axis_type = "log" if plot.log else "linear"
-    x_axis = dict(title=plot.x_label or data.x_label, range=[lo, hi], type=axis_type)
-    y_axis = dict(title=plot.y_label or data.y_label, range=[lo, hi], type=axis_type)
+    x_axis: dict[str, Any] = dict(
+        title=plot.x_label or data.x_label, range=[lo, hi], type=axis_type
+    )
+    y_axis: dict[str, Any] = dict(
+        title=plot.y_label or data.y_label, range=[lo, hi], type=axis_type
+    )
     if plot.equal_axes:
         # `constrain="domain"` is what makes both axes actually *start and end*
         # at the same value. Under the default ("range"), Plotly satisfies the

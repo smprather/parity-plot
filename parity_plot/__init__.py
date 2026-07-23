@@ -108,7 +108,7 @@ def parity_plot(
         if paths:
             raise TypeError("pass either files or ref/test sequences, not both")
         group_seq = group if not isinstance(group, str) else None
-        data = from_sequences(ref, test, keys=keys, group=group_seq)  # type: ignore[arg-type]
+        data = from_sequences(ref, test, keys=keys, group=group_seq)  # ty: ignore[invalid-argument-type]
     else:
         data_overrides = {
             "ref": ref,

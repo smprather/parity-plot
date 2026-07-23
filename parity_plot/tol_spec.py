@@ -53,7 +53,7 @@ def parse_tol_spec(text: str, auto_name: str) -> NamedTolerance:
     fields.setdefault("name", auto_name)
 
     try:
-        return NamedTolerance(**fields)  # type: ignore[arg-type]
+        return NamedTolerance(**fields)  # ty: ignore[invalid-argument-type]
     except ToleranceError as exc:
         raise TolSpecError(str(exc)) from None
 

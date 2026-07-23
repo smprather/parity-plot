@@ -81,7 +81,7 @@ def _hex_to_rgb(value: str) -> tuple[int, int, int]:
     text = value.lstrip("#")
     if len(text) == 3:  # short form, #abc
         text = "".join(character * 2 for character in text)
-    return tuple(int(text[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+    return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
 
 
 DARK = Theme(

@@ -206,7 +206,7 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
                 f'  test  = "sim.csv:voltage"\n'
                 f'  join  = "id"                  # optional; omit to pair by order\n'
             )
-    known = {f.name for f in fields(cls)}
+    known = {f.name for f in fields(cls)}  # ty: ignore[invalid-argument-type]
     unknown = set(raw) - known
     if unknown:
         raise ConfigError(
@@ -347,7 +347,7 @@ def _coerce_encoding(value: Any, where: str) -> Encoding:
     unknown = set(value) - known
     if unknown:
         raise ConfigError(
-            f"{where}: unknown key(s) {sorted(unknown)}; valid keys are {sorted(known)}"
+            f"{where}: unknown key(s) {sorted(unknown)}; valid keys are {sorted(known)}"  # ty: ignore[invalid-argument-type]
         )
     try:
         return Encoding(**value)

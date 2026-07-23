@@ -104,7 +104,7 @@ class ExampleSpec:
 
     @property
     def n_nulls(self) -> int:
-        return self.n_missing_x + self.n_missing_y + self.n_both_null
+        return self.n_missing_x + self.n_missing_y + self.n_both_null  # ty: ignore[unsupported-operator]
 
     @property
     def log_mu(self) -> float:
@@ -162,8 +162,8 @@ def generate(spec: ExampleSpec | None = None, **overrides) -> list[Record]:
     # reachable independently.
     holes = rng.sample(range(spec.n), spec.n_nulls)
     drop_y = holes[: spec.n_missing_y]
-    drop_x = holes[spec.n_missing_y : spec.n_missing_y + spec.n_missing_x]
-    drop_both = holes[spec.n_missing_y + spec.n_missing_x :]
+    drop_x = holes[spec.n_missing_y : spec.n_missing_y + spec.n_missing_x]  # ty: ignore[unsupported-operator]
+    drop_both = holes[spec.n_missing_y + spec.n_missing_x :]  # ty: ignore[unsupported-operator]
 
     for i in drop_y:
         r = records[i]

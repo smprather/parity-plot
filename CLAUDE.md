@@ -28,6 +28,30 @@ other, which would send people to reinstall what they already have.
 `plot.py::_export_hint` untangles that; keep it accurate if the export path
 changes.
 
+## Code quality — ruff and ty must be clean before every commit
+
+**A commit lands only when both are green.** Run before committing:
+
+```bash
+uv run ruff check .          # lint (E/F/I); must print "All checks passed!"
+uv run ruff format .         # formatter; keeps the tree formatted
+uv run ty check parity_plot  # type-check the shipped library; must be 0 diagnostics
+```
+
+Config is in `pyproject.toml`:
+- **ruff lint** selects `E`/`F`/`I`. `E501` (line length) is owned by `ruff
+  format`, so it is ignored. **`C408` is deliberately not selected** — the
+  plotly-heavy code uses `dict(...)` as a readable idiom; rewriting to `{...}`
+  literals would be a regression.
+- **ty is scoped to `parity_plot/`** (`[tool.ty.src] exclude = ["tests"]`): the
+  shipped library is type-checked strictly, but the tests introspect
+  plotly/nicegui objects (`fig.data[i].marker.*`) no checker can resolve, so they
+  are held to ruff only.
+- Prefer a real fix (Optional narrowing, a proper annotation) over a waiver. When
+  a diagnostic is unavoidable third-party / `**kwargs`-into-dataclass noise, waive
+  it with **`# ty: ignore[<rule>]`** — ty does *not* honour the mypy `# type:
+  ignore`, so use ty's own comment.
+
 **Python floor is `>=3.14`**, matching the sibling `time-plot` project. Nothing in
 the code needs 3.14 specifically — `tomllib` only wants 3.11 — so the floor is a
 deliberate consistency choice, not a technical constraint. The completed plan

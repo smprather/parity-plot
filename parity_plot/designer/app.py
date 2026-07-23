@@ -8,6 +8,7 @@ browser.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -83,7 +84,7 @@ def build_app(
 
         # The data panel returns a hook that marks its join field; held here so
         # refresh() can call it after each change. Rebuilt with the column.
-        marks = {"join": lambda problems: None}
+        marks: dict[str, Callable[[list], None]] = {"join": lambda problems: None}
 
         # settings_column is defined before the layout that calls it; its panels'
         # on_change callbacks reference refresh/reload_everything, which are

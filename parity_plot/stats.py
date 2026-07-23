@@ -64,7 +64,7 @@ def compute(data: ParityData, tolerances: Sequence[NamedTolerance] = ()) -> Stat
         "n_dropped": data.n_dropped,
     }
     if len(x) < 2:
-        return Stats(**counts)
+        return Stats(**counts)  # ty: ignore[invalid-argument-type]
 
     residuals = [yi - xi for xi, yi in zip(x, y)]
     n = len(residuals)

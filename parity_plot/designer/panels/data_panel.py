@@ -223,7 +223,7 @@ def _browse(on_pick: Callable[[Path], None]) -> None:
             listing.clear()
             with listing:
                 if result.parent is not None:
-                    ui.button("⬆ up", on_click=lambda: go(result.parent)).props(
+                    ui.button("⬆ up", on_click=lambda: go(result.parent)).props(  # ty: ignore[invalid-argument-type]
                         "flat dense align=left"
                     ).classes("w-full")
                 for entry in result.entries:
