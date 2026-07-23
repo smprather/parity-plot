@@ -186,11 +186,15 @@ only confirm-dialog left guards leaving an *unbound-with-edits* state. The
 external edits are overwritten (bidirectional editing is a deferred non-goal).
 
 **`validation.py` is browser-free cross-field validation** (`problems(config) ->
-list[Problem]`, each with a dotted `field` id). A hard problem or load error
-withholds auto-save, disables Save As, reddens the field (the data panel returns a
-`mark_problems` hook that `app.refresh` calls — today it marks `data.join`), and
-shows in the status bar. First rule: ref and test from the **same file** while a
-`join` is set (a single wide file pairs by order; a self-join is meaningless).
+list[Problem]`, each with a dotted `field` id and a `severity`). **`severity`:
+`"error"` blocks — withholds auto-save, disables Save As, reddens the field (the
+data panel returns a `mark_problems` hook that `app.refresh` calls with the
+*error*-severity problems only, today marking `data.join`); `"warning"` is advisory
+— an amber status note, nothing blocked.** The only rule so far is a **warning**:
+ref and test from the **same file** while a `join` is set. That is redundant, not
+wrong — a wide file's ref/test share a row, so a join re-pairs the same rows to the
+same result (it only adds duplicate-key checking), so it must not block. (An earlier
+version made this a hard error; corrected — don't reintroduce it as blocking.)
 
 **Clearing a text control reverts to the field's default**, via
 `state.reset_fields` — *not* `merge`, which drops `None` and so silently keeps the

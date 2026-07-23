@@ -139,9 +139,10 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
                 plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
 
         def set_status(message: str, kind: str = "info") -> None:
-            """Write the persistent status bar. kind: error | ok | info."""
+            """Write the persistent status bar. kind: error | warn | ok | info."""
             colour = {
                 "error": "bg-red-900 text-red-100",
+                "warn": "bg-amber-900 text-amber-100",
                 "ok": "bg-green-900 text-green-100",
                 "info": "opacity-70",
             }[kind]
@@ -152,19 +153,27 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
             plot_view.update_figure(state.figure())
 
             probs = config_problems(state.config)
-            blocking = state.last_error or (probs[0].message if probs else None)
+            errors = [p for p in probs if p.severity == "error"]
+            warnings = [p for p in probs if p.severity == "warning"]
+            # Only an error (or a load/build failure) blocks; a warning is
+            # advisory -- shown amber, but it neither disables Save As nor
+            # withholds the auto-save.
+            blocking = state.last_error or (errors[0].message if errors else None)
 
             if blocking:
                 set_status(f"⛔  {blocking}", "error")
+            elif warnings:
+                set_status(f"⚠️  {warnings[0].message}", "warn")
             else:
                 set_status("Ready", "info")
 
-            marks["join"](probs)
+            marks["join"](errors)  # only errors redden a field
             save_as_btn.set_enabled(not blocking)
 
-            # Auto-save: only a clean, bound config is written; autosave no-ops
-            # when unbound. The bound file thus always holds the last valid
-            # config -- a broken edit is withheld until it is fixed.
+            # Auto-save: only a clean (no error), bound config is written; autosave
+            # no-ops when unbound. The bound file thus always holds the last valid
+            # config -- a broken edit is withheld until it is fixed. A warning does
+            # not withhold the write.
             if not blocking:
                 sess["session"].autosave(state.config)
 

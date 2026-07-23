@@ -8,12 +8,18 @@ def _cfg(**data) -> ParityConfig:
     return ParityConfig.from_dict({"data": data})
 
 
-def test_same_file_ref_and_test_with_a_join_is_a_problem():
+def test_same_file_ref_and_test_with_a_join_is_an_advisory():
     cfg = _cfg(files=["d.csv"], ref="d.csv:reference", test="d.csv:test", join="id")
     probs = problems(cfg)
     assert len(probs) == 1
     assert probs[0].field == "data.join"
     assert "join" in probs[0].message.lower()
+    # Redundant, not wrong -> advisory, not a blocking error.
+    assert probs[0].severity == "warning"
+
+
+def test_problem_defaults_to_error_severity():
+    assert Problem(message="x", field="data.join").severity == "error"
 
 
 def test_same_file_without_a_join_is_fine():

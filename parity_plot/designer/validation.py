@@ -16,11 +16,16 @@ __all__ = ["Problem", "problems"]
 
 @dataclass(frozen=True)
 class Problem:
-    """One validation failure. ``field`` is a dotted id (e.g. ``"data.join"``)
-    so the owning panel can mark the exact widget."""
+    """One validation finding.
+
+    ``field`` is a dotted id (e.g. ``"data.join"``) so the owning panel can mark
+    the exact widget. ``severity`` is ``"error"`` (blocking: withholds auto-save,
+    disables Save As, reddens the field) or ``"warning"`` (advisory: an amber
+    note only, nothing blocked)."""
 
     message: str
     field: str
+    severity: str = "error"
 
 
 def _ref_file(ref: str | None) -> str | None:
@@ -35,16 +40,20 @@ def problems(config: ParityConfig) -> list[Problem]:
     found: list[Problem] = []
     data = config.data
 
+    # Redundant, not wrong: ref and test on the same row already pair by order,
+    # so a join re-pairs the same rows to the same result. It even adds
+    # duplicate-key checking. So this is advisory, never blocking.
     ref_file, test_file = _ref_file(data.ref), _ref_file(data.test)
     if data.join and ref_file is not None and ref_file == test_file:
         found.append(
             Problem(
                 message=(
-                    f"ref and test are both from {ref_file}; a join is meaningless "
-                    f"there — clear the join to pair by row order, or point ref/test "
-                    f"at different files"
+                    f"redundant join: ref and test are both from {ref_file}, so they "
+                    f"already pair by row order; a join here only adds duplicate-key "
+                    f"checking"
                 ),
                 field="data.join",
+                severity="warning",
             )
         )
 

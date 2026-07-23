@@ -297,11 +297,13 @@ original spelling (`reltol = "10pct"` is not rewritten as `0.1`).
 
 The preview is produced by the same `build_figure` the CLI uses, so what you see
 is exactly what `parity-plot plot parity.toml` will render — an equivalence pinned
-by a test, not assumed. **Invalid settings are flagged, not saved:** a bad
-combination (e.g. a join column while `ref` and `test` come from one file) reddens
-the field, disables Save As, and withholds the auto-save, so a broken config never
-reaches disk. **Errors surface in a persistent status bar under the plot**, never a
-disappearing pop-up.
+by a test, not assumed. **Problems are flagged in place.** A blocking error (a
+setting that would produce a broken config) reddens the field, disables Save As,
+and withholds the auto-save, so a broken config never reaches disk. A non-blocking
+advisory — e.g. a join column while `ref` and `test` come from one file, which is
+merely *redundant* (they already pair by row) — shows an amber note without
+stopping anything. **Both surface in a persistent status bar under the plot**,
+never a disappearing pop-up.
 
 - **Data panel** — open any CSV and map its columns; the designer reads just the
   header to offer choices and guesses the mapping from names seen in the wild
