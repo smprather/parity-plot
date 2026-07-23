@@ -212,3 +212,47 @@ def test_a_multi_tolerance_config_round_trips_identically(csv, tmp_path: Path):
 
     assert from_disk.plot.tolerances == state.config.plot.tolerances
     assert rendered.to_dict() == preview.to_dict()
+
+
+def test_colorscale_multigroup_designer_matches_cli(tmp_path: Path):
+    """A colorscale + multi-column-group config must render identically through
+    the designer preview and the CLI reload path."""
+    from parity_plot.encoding import Encoding
+
+    rich = tmp_path / "rich.csv"
+    rich.write_text(
+        "id,reference,test,package,vendor,temp\n"
+        "A1,10,11,SMD,Acme,25\n"
+        "A2,20,22,DIP,Beta,80\n"
+        "A3,30,29,SMD,Ceres,-10\n"
+        "A4,40,44,QFN,Acme,55\n",
+        encoding="utf-8",
+    )
+    config = ParityConfig.from_dict(
+        {
+            "data": {
+                "files": [str(rich)],
+                "ref": "rich.csv:reference",
+                "test": "rich.csv:test",
+                "join": "id",
+                "group": ["package", "vendor"],
+                "color_column": "rich.csv:temp",
+            },
+            "plot": {
+                "encoding": Encoding(
+                    color_by="colorscale", symbol_by="group", colorscale="turbo"
+                )
+            },
+        }
+    )
+    state = DesignerState(config=config, data=load(config.data))
+    assert state.last_error is None, state.last_error
+
+    preview = state.figure()
+
+    out = tmp_path / "parity.toml"
+    Session().save(state.config, out)
+    from_disk = ParityConfig.from_toml(out)
+    rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
+
+    assert rendered.to_dict() == preview.to_dict()

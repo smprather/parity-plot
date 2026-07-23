@@ -408,7 +408,10 @@ files = ["data/example.csv"]
 ref = "data/example.csv:reference"    # file:column, a numeric column
 test = "data/example.csv:measured"    # file:column, a numeric column
 # join = "id"                         # optional; column name in both files
-# group = "data/example.csv:batch"    # optional; any column, or file:column
+# group = ["package", "vendor"]       # optional; one or more bare column names,
+#                                     # joined into one label ("SMD, Acme")
+# color_column = "data/example.csv:temperature"  # optional; a numeric file:column
+#                                     # driving the colorscale colour mode below
 na_values = ["", "NA", "N/A", "null", "none", "nan", "-"]
 
 [plot]
@@ -446,6 +449,8 @@ reltol = 0.10           # a ratio; write "10pct" if you prefer percent
 #   color_by   = "single"     # one colour for all points (see `color` below)
 #              | "pass-fail"  # overall verdict: pass → green, fail → red
 #              | "group"      # the point's group column → a qualitative palette
+#              | "colorscale" # a numeric [data].color_column → a continuous
+#                             # colorbar; pick the scale with `colorscale` below
 #   symbol_by  = "single"     # one symbol for all points (see `symbol` below)
 #              | "pass-fail"  # pass → circle, fail → x
 #              | "group"      # the group column → a symbol cycle
@@ -462,6 +467,8 @@ symbol_by = "single"
 color = "blue"
 symbol = "circle"
 # symbol_sequence = ["circle", "square", "diamond", "triangle-up", "x"]
+# colorscale = "viridis"    # any Plotly named scale (viridis, plasma, turbo, cividis, …);
+#                           # only used when color_by = "colorscale"
 
 [stats]
 show = true

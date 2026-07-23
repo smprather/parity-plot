@@ -10,11 +10,16 @@ from __future__ import annotations
 
 from typing import Callable
 
-from ...encoding import CHANNELS, SYMBOL_CATALOG, Encoding
+from ...encoding import COLOR_CHANNELS, SYMBOL_CHANNELS, SYMBOL_CATALOG, Encoding
 from ...themes import COLOR_TOKENS
 from ..state import DesignerState
 
-_CHANNEL_LABELS = {"single": "one value", "pass-fail": "pass / fail", "group": "group"}
+_CHANNEL_LABELS = {
+    "single": "one value",
+    "pass-fail": "pass / fail",
+    "group": "group",
+    "colorscale": "colour scale",
+}
 
 
 def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
@@ -32,6 +37,7 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
                 color=color_pick.value or "blue",
                 symbol=symbol_pick.value or "circle",
                 symbol_sequence=tuple(seq_pick.value or ()),
+                colorscale=scale_pick.value or "viridis",
             )
             # A rejected update leaves state.last_error; the status bar shows it.
             state.update("plot", encoding=new)
@@ -40,7 +46,7 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
         with ui.row().classes("w-full items-center gap-2 no-wrap"):
             ui.label("Colour by").classes("w-24 text-sm")
             color_by = ui.select(
-                {c: _CHANNEL_LABELS[c] for c in CHANNELS}, value=enc.color_by,
+                {c: _CHANNEL_LABELS[c] for c in COLOR_CHANNELS}, value=enc.color_by,
                 on_change=lambda: commit(),
             ).classes("grow")
             color_pick = ui.select(
@@ -48,11 +54,18 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
             ).classes("w-28")
             # The fixed colour only matters when the channel is "single".
             color_pick.bind_visibility_from(color_by, "value", value="single")
+            from plotly.colors import named_colorscales
+
+            scale_pick = ui.select(
+                sorted(named_colorscales()), value=enc.colorscale,
+                on_change=lambda: commit(),
+            ).classes("w-32")
+            scale_pick.bind_visibility_from(color_by, "value", value="colorscale")
 
         with ui.row().classes("w-full items-center gap-2 no-wrap"):
             ui.label("Symbol by").classes("w-24 text-sm")
             symbol_by = ui.select(
-                {c: _CHANNEL_LABELS[c] for c in CHANNELS}, value=enc.symbol_by,
+                {c: _CHANNEL_LABELS[c] for c in SYMBOL_CHANNELS}, value=enc.symbol_by,
                 on_change=lambda: commit(),
             ).classes("grow")
             symbol_pick = ui.select(
