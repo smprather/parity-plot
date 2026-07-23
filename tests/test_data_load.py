@@ -205,3 +205,42 @@ def test_single_group_column_keeps_bare_value(tmp_path):
     data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
                            group=("batch",)))
     assert data.group == ["x", "y"]  # no separator for a single column
+
+
+# --- color column ---
+
+def test_color_column_values_align_to_paired_points(tmp_path):
+    f = write(tmp_path, "d.csv",
+              "reference,test,temp\n10,11,25\n20,22,80\n30,29,-40\n")
+    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                           color_column="d.csv:temp"))
+    assert data.color_values == [25.0, 80.0, -40.0]
+    assert data.color_label == "temp"
+
+
+def test_color_column_none_without_setting(tmp_path):
+    f = write(tmp_path, "d.csv", "reference,test\n10,11\n")
+    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test"))
+    assert data.color_values is None
+
+
+def test_color_column_blank_cell_is_none(tmp_path):
+    f = write(tmp_path, "d.csv", "reference,test,temp\n10,11,25\n20,22,\n")
+    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                           color_column="d.csv:temp"))
+    assert data.color_values == [25.0, None]
+
+
+def test_color_column_must_be_numeric(tmp_path):
+    f = write(tmp_path, "d.csv", "reference,test,temp\n10,11,hot\n")
+    with pytest.raises(DataError, match="non-numeric"):
+        load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                        color_column="d.csv:temp"))
+
+
+def test_color_column_aligns_through_join(tmp_path):
+    a = write(tmp_path, "a.csv", "id,v,temp\nA1,10,25\nA2,20,80\n")
+    b = write(tmp_path, "b.csv", "id,v\nA1,11\nA2,22\n")
+    data = load(DataConfig(files=(a, b), ref="a.csv:v", test="b.csv:v", join="id",
+                           color_column="a.csv:temp"))
+    assert dict(zip(data.keys, data.color_values)) == {"A1": 25.0, "A2": 80.0}

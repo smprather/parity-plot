@@ -49,6 +49,11 @@ class ParityData:
     # Aligned to `keys`/`x`/`y`; an entry may be None if that point's group cell
     # was blank. Drives colour/symbol-by-group in Phase 2.
     group: list[str | None] | None = None
+    # Per-paired-point numeric value for the colorscale channel, aligned to
+    # keys/x/y; None when no colour column (or every value blank). color_label
+    # is the column's display name, used as the colorbar title.
+    color_values: list[float | None] | None = None
+    color_label: str = ""
 
     @property
     def n_paired(self) -> int:
@@ -100,11 +105,20 @@ def load(cfg: DataConfig) -> ParityData:
     # both a "diode" and a "mosfet". A file that lacks it simply does not vote.
     group_lookup = _group_lookup(src, cfg.group, cfg.join, na) if cfg.group else None
 
-    builder = _Builder(x_label=ref_col.name, y_label=test_col.name)
+    color_col = src.resolve(cfg.color_column) if cfg.color_column else None
+    if color_col is not None:
+        _require_numeric(color_col, na, "color_column")
+    color_lookup = _color_lookup(src, color_col, cfg.join, na) if color_col else None
+
+    builder = _Builder(
+        x_label=ref_col.name,
+        y_label=test_col.name,
+        color_label=color_col.name if color_col else "",
+    )
     if cfg.join:
-        _load_joined(builder, src, ref_col, test_col, group_lookup, cfg.join, na)
+        _load_joined(builder, src, ref_col, test_col, group_lookup, color_lookup, cfg.join, na)
     else:
-        _load_by_order(builder, ref_col, test_col, group_lookup, na)
+        _load_by_order(builder, ref_col, test_col, group_lookup, color_lookup, na)
     return builder.build()
 
 
@@ -125,6 +139,48 @@ def _group_lookup(src, groups: tuple[str, ...], join: str | None, na: frozenset[
         return ", ".join("(none)" if p is None else p for p in parts)
 
     return composite
+
+
+def _color_lookup(src, color_col, join: str | None, na: frozenset[str]):
+    """A callable giving a paired point's numeric colour value.
+
+    Pinned to the colour column's own file (no cross-file agreement): the same
+    column can legitimately differ between the reference and test files.
+    """
+    if join:
+        table = src.tables[color_col.file]
+        if join not in table:
+            raise DataError(
+                f"{color_col.file}: colour column's file lacks join column "
+                f"{join!r}; cannot align colour values"
+            )
+        mapping = dict(zip(table[join], color_col.values))
+
+        def lookup(key):
+            return _color_value(mapping.get(key), na)
+
+        return lookup
+
+    values = color_col.values
+
+    def lookup_by_index(index):
+        return _color_value(values[index] if index < len(values) else None, na)
+
+    return lookup_by_index
+
+
+def _color_value(raw: str | None, na: frozenset[str]) -> float | None:
+    """Parse a colour cell to a float, or None if blank/NA.
+
+    The whole column has already passed ``_require_numeric``, so ``float`` here
+    cannot raise on a non-null cell.
+    """
+    if raw is None:
+        return None
+    text = raw.strip()
+    if text.lower() in na:
+        return None
+    return float(text)
 
 
 def _one_group_lookup(src, group: str, join: str | None, na: frozenset[str]):
@@ -187,7 +243,9 @@ def _require_numeric(col, na: frozenset[str], role: str) -> None:
             ) from None
 
 
-def _load_by_order(builder: "_Builder", ref_col, test_col, group_lookup, na) -> None:
+def _load_by_order(
+    builder: "_Builder", ref_col, test_col, group_lookup, color_lookup, na
+) -> None:
     """Pair rows by position; the longer column's tail becomes unpaired."""
     n = max(len(ref_col.values), len(test_col.values))
     for i in range(n):
@@ -198,10 +256,13 @@ def _load_by_order(builder: "_Builder", ref_col, test_col, group_lookup, na) -> 
             _parse(rv, na, ref_col.file, i + 2, ref_col.name) if rv is not None else None,
             _parse(tv, na, test_col.file, i + 2, test_col.name) if tv is not None else None,
             group=group_lookup(i) if group_lookup else None,
+            color=color_lookup(i) if color_lookup else None,
         )
 
 
-def _load_joined(builder: "_Builder", src, ref_col, test_col, group_lookup, join, na) -> None:
+def _load_joined(
+    builder: "_Builder", src, ref_col, test_col, group_lookup, color_lookup, join, na
+) -> None:
     """Outer-join ref and test files on ``join``; a key on one side is unpaired."""
     ref_by = _index_by_key(src, ref_col, join)
     test_by = _index_by_key(src, test_col, join)
@@ -217,6 +278,7 @@ def _load_joined(builder: "_Builder", src, ref_col, test_col, group_lookup, join
             _parse(rraw, na, ref_col.file, rline, ref_col.name) if rraw is not None else None,
             _parse(traw, na, test_col.file, tline, test_col.name) if traw is not None else None,
             group=group_lookup(key) if group_lookup else None,
+            color=color_lookup(key) if color_lookup else None,
         )
 
 
@@ -277,11 +339,12 @@ def from_sequences(
 class _Builder:
     """Accumulates records and sorts them into paired / unpaired / dropped."""
 
-    def __init__(self, x_label: str, y_label: str) -> None:
+    def __init__(self, x_label: str, y_label: str, color_label: str = "") -> None:
         self.keys: list[str] = []
         self.x: list[float] = []
         self.y: list[float] = []
         self.groups: list[str | None] = []
+        self.colors: list[float | None] = []
         self.missing_y_keys: list[str] = []
         self.missing_y_vals: list[float] = []
         self.missing_x_keys: list[str] = []
@@ -289,9 +352,15 @@ class _Builder:
         self.n_dropped = 0
         self.x_label = x_label
         self.y_label = y_label
+        self.color_label = color_label
 
     def add(
-        self, key: str, xv: float | None, yv: float | None, group: str | None = None
+        self,
+        key: str,
+        xv: float | None,
+        yv: float | None,
+        group: str | None = None,
+        color: float | None = None,
     ) -> None:
         if xv is not None and yv is not None:
             self.keys.append(key)
@@ -300,6 +369,7 @@ class _Builder:
             # Group is a property of a paired point only; unpaired records have
             # no place in the encoded scatter, so their group is not tracked.
             self.groups.append(group)
+            self.colors.append(color)
         elif xv is not None:
             self.missing_y_keys.append(key)
             self.missing_y_vals.append(xv)
@@ -312,6 +382,7 @@ class _Builder:
     def build(self) -> ParityData:
         # None unless a group column actually supplied a label somewhere.
         group = self.groups if any(g is not None for g in self.groups) else None
+        color_values = self.colors if any(c is not None for c in self.colors) else None
         return ParityData(
             keys=self.keys,
             x=self.x,
@@ -322,6 +393,8 @@ class _Builder:
             x_label=self.x_label,
             y_label=self.y_label,
             group=group,
+            color_values=color_values,
+            color_label=self.color_label,
         )
 
 
