@@ -76,7 +76,7 @@ def column_options(
 def build_data_panel(
     state: DesignerState, on_change: Callable[[], None]
 ) -> Callable[[list], None]:
-    """The open-file list, an Open-file browser, and the ref/test/join/group maps.
+    """The open-file list, an Add-file browser, and the ref/test/join/group maps.
 
     Returns a ``mark_problems(problems)`` hook so ``app.refresh`` can redden the
     exact widget a validation problem names -- today just the ``join`` select.
@@ -88,6 +88,9 @@ def build_data_panel(
         options = column_options(
             tuple(files), state.config.data.ref, state.config.data.test
         )
+
+        # Add File sits at the top of the section: choosing the data comes first.
+        ui.button("Add File", icon="add", on_click=lambda: _browse(_add)).props("flat")
 
         file_list = ui.column().classes("w-full gap-0")
 
@@ -108,18 +111,19 @@ def build_data_panel(
             options["ref"],
             value=state.config.data.ref,
             label="Reference",
-            on_change=lambda: refresh_group(),
+            on_change=lambda: (refresh_group(), apply()),
         ).classes("w-full")
         test_sel = ui.select(
             options["test"],
             value=state.config.data.test,
             label="Test",
-            on_change=lambda: refresh_group(),
+            on_change=lambda: (refresh_group(), apply()),
         ).classes("w-full")
         join_sel = ui.select(
             [_NONE, *options["join"]],
             value=state.config.data.join or _NONE,
             label="Join column (blank = pair by order)",
+            on_change=lambda: apply(),
         ).classes("w-full")
         group_sel = (
             ui.select(
@@ -127,6 +131,7 @@ def build_data_panel(
                 value=list(state.config.data.group),
                 multiple=True,
                 label="Group by (one or more columns)",
+                on_change=lambda: apply(),
             )
             .classes("w-full")
             .props("use-chips")
@@ -135,7 +140,12 @@ def build_data_panel(
             [_NONE, *options["color_column"]],
             value=state.config.data.color_column or _NONE,
             label="Colour column (numeric, for colorscale)",
+            on_change=lambda: apply(),
         ).classes("w-full")
+
+        # Guard so the programmatic ref/test guessing in refresh_options does not
+        # re-enter apply() through the selects' on_change.
+        _suspend = {"v": False}
 
         def refresh_options() -> None:
             opts = column_options(tuple(files), ref_sel.value, test_sel.value)
@@ -143,11 +153,13 @@ def build_data_panel(
             join_sel.options = [_NONE, *opts["join"]]
             group_sel.options = opts["group"]
             color_sel.options = [_NONE, *opts["color_column"]]
+            _suspend["v"] = True
             # Guess ref/test if unset and two numeric columns are available.
             if not ref_sel.value and len(opts["ref"]) >= 1:
                 ref_sel.value = opts["ref"][0]
             if not test_sel.value and len(opts["test"]) >= 2:
                 test_sel.value = opts["test"][1]
+            _suspend["v"] = False
             for s in (ref_sel, test_sel, join_sel, group_sel, color_sel):
                 s.update()
 
@@ -157,7 +169,9 @@ def build_data_panel(
             group_sel.update()
 
         def apply() -> None:
-            ok = state.set_data_source(
+            if _suspend["v"]:
+                return
+            state.set_data_source(
                 files=tuple(files),
                 ref=ref_sel.value or None,
                 test=test_sel.value or None,
@@ -167,7 +181,6 @@ def build_data_panel(
             )
             # On failure last_error is set; the status bar (painted by
             # on_change -> refresh) shows it persistently -- no toast.
-            _ = ok
             on_change()
 
         def _remove(path: Path) -> None:
@@ -184,11 +197,6 @@ def build_data_panel(
             apply()
 
         render_files()
-        with ui.row().classes("w-full gap-2"):
-            ui.button(
-                "Open file…", icon="folder_open", on_click=lambda: _browse(_add)
-            ).props("flat")
-            ui.button("Apply", on_click=apply)
 
         def mark_problems(problems) -> None:
             """Redden the join select while a `data.join` problem stands."""
