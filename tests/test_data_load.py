@@ -172,3 +172,36 @@ def test_missing_group_column_names_what_is_available(write_csv):
     with pytest.raises(DataError, match="group column 'nope' not found"):
         load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
                         group="nope"))
+
+
+# --- composite (multi-column) group ---
+
+def test_two_group_columns_join_with_comma(tmp_path):
+    f = write(tmp_path, "d.csv",
+              "reference,test,package,vendor\n10,11,SMD,Acme\n20,22,DIP,Beta\n")
+    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                           group=("package", "vendor")))
+    assert data.group == ["SMD, Acme", "DIP, Beta"]
+
+
+def test_one_blank_slot_shows_none_token(tmp_path):
+    f = write(tmp_path, "d.csv",
+              "reference,test,package,vendor\n10,11,SMD,\n20,22,,Beta\n")
+    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                           group=("package", "vendor")))
+    assert data.group == ["SMD, (none)", "(none), Beta"]
+
+
+def test_all_blank_slots_is_none(tmp_path):
+    f = write(tmp_path, "d.csv",
+              "reference,test,package,vendor\n10,11,,\n20,22,DIP,Beta\n")
+    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                           group=("package", "vendor")))
+    assert data.group == [None, "DIP, Beta"]
+
+
+def test_single_group_column_keeps_bare_value(tmp_path):
+    f = write(tmp_path, "d.csv", "reference,test,batch\n10,11,x\n20,22,y\n")
+    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
+                           group=("batch",)))
+    assert data.group == ["x", "y"]  # no separator for a single column

@@ -108,13 +108,27 @@ def load(cfg: DataConfig) -> ParityData:
     return builder.build()
 
 
-def _group_lookup(src, group: str, join: str | None, na: frozenset[str]):
-    """A callable resolving a paired point's group value across all files.
+def _group_lookup(src, groups: tuple[str, ...], join: str | None, na: frozenset[str]):
+    """A callable giving a paired point's composite group label.
 
-    Given a join key (join mode) or a row index (order mode), it collects the
-    group value from every file that carries the column and agrees on the
-    answer, raising if two files disagree for the same point.
+    Each column is resolved file-independently (present in one file or several,
+    values must agree across files via ``_agree``). The point's label joins the
+    per-column values with ", "; a blank column contributes "(none)", and a
+    point whose columns are all blank has no group (``None``).
     """
+    per_column = [_one_group_lookup(src, col, join, na) for col in groups]
+
+    def composite(point):
+        parts = [fn(point) for fn in per_column]
+        if all(p is None for p in parts):
+            return None
+        return ", ".join("(none)" if p is None else p for p in parts)
+
+    return composite
+
+
+def _one_group_lookup(src, group: str, join: str | None, na: frozenset[str]):
+    """The single-column resolver (the old ``_group_lookup`` body)."""
     files = src.files_with_column(group)
     if not files:
         raise DataError(
@@ -130,16 +144,18 @@ def _group_lookup(src, group: str, join: str | None, na: frozenset[str]):
             if join in src.tables[f]
         }
 
-        def lookup(key: str):
-            return _agree({f: d[key] for f, d in keyed.items() if key in d}, key, group, na)
+        def lookup(key: str, _keyed=keyed, _group=group):
+            return _agree(
+                {f: d[key] for f, d in _keyed.items() if key in d}, key, _group, na
+            )
 
         return lookup
 
     columns = {f: src.tables[f][group] for f in files}
 
-    def lookup_by_index(index: int):
-        present = {f: v[index] for f, v in columns.items() if index < len(v)}
-        return _agree(present, str(index), group, na)
+    def lookup_by_index(index: int, _columns=columns, _group=group):
+        present = {f: v[index] for f, v in _columns.items() if index < len(v)}
+        return _agree(present, str(index), _group, na)
 
     return lookup_by_index
 
