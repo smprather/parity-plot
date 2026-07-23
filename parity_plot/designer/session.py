@@ -29,10 +29,6 @@ def config_choices(directory: Path) -> list[Path]:
     return out
 
 
-class StaleFileError(RuntimeError):
-    """The config file changed on disk after it was loaded."""
-
-
 @dataclass
 class Session:
     config_path: Path | None = None

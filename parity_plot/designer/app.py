@@ -2,7 +2,8 @@
 """NiceGUI assembly.
 
 This module owns layout and event wiring only. Anything worth a test belongs in
-`state.py`, `session.py`, or `serialize.py`, which need no browser.
+`state.py`, `session.py`, `serialize.py`, or `validation.py`, which need no
+browser.
 """
 
 from __future__ import annotations
@@ -10,8 +11,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
-from ..config import ParityConfig
-from ..data import ParityData
+from ..config import ConfigError, ParityConfig
+from ..data import DataError, ParityData
 from .panels.controls import build_controls
 from .panels.data_panel import build_data_panel
 from .panels.encoding import build_encoding_panel
@@ -20,8 +21,12 @@ from .panels.table import build_table
 from .panels.tolerances import build_tolerances_panel
 from .records import key_from_customdata
 from .selection import range_from_selection
-from .session import Session, StaleFileError
+from .session import Session, config_choices
 from .state import DesignerState
+
+# The dropdown entry standing in for a working config not yet bound to a file
+# (a New Design, or a data-only launch). Save As binds it to a name.
+UNSAVED = "‹unsaved›"
 
 
 def select_record(state: DesignerState, key: str | None, *refreshers) -> None:
@@ -49,42 +54,59 @@ def apply_brush(state: DesignerState, args: dict | None, *refreshers) -> None:
             refresh()
 
 
-def build_app(session: Session, config: ParityConfig, data: ParityData) -> DesignerState:
+def build_app(session: Session, config: ParityConfig, data: ParityData | None) -> DesignerState:
     """Register the designer page and return the state it drives."""
     from nicegui import ui
 
     state = DesignerState(config=config, data=data)
+    # The session is swapped when the toolbar opens a config or starts a New
+    # Design, so it lives in a one-element dict the handlers can rebind.
+    sess = {"session": session}
+    # The directory the config picker scans -- where `parity-plot design` ran.
+    launch_dir = Path.cwd()
 
     @ui.page("/")
     def page() -> None:
         ui.dark_mode(True)
 
+        def current_choice() -> str:
+            s = sess["session"]
+            return s.config_path.name if s.config_path is not None else UNSAVED
+
+        def choice_options() -> list[str]:
+            names = [p.name for p in config_choices(launch_dir)]
+            # The unbound sentinel is offered only while unbound.
+            return ([UNSAVED] if sess["session"].config_path is None else []) + names
+
+        # settings_column is defined before the layout that calls it; its panels'
+        # on_change callbacks reference refresh/reload_everything, which are
+        # defined further down and only fire on later user interaction.
+        @ui.refreshable
+        def settings_column() -> None:
+            build_data_panel(state, lambda: reload_everything())
+            build_tolerances_panel(state, lambda: refresh())
+            build_encoding_panel(state, lambda: refresh())
+            build_controls(state, lambda: refresh())
+
         with ui.header().classes("items-center justify-between"):
             ui.label("parity-plot designer").classes("text-lg font-medium")
-            status = ui.label("").classes("text-sm opacity-70")
+            with ui.row().classes("items-center gap-2"):
+                config_pick = ui.select(
+                    choice_options(), value=current_choice(), label="Config",
+                    on_change=lambda e: open_named(e.value),
+                ).classes("w-56")
+                save_as_btn = ui.button("Save As…", on_click=lambda: ask_where_to_save())
+                ui.button("New Design", on_click=lambda: new_design())
 
         with ui.row().classes("w-full no-wrap gap-4"):
             with ui.column().classes("w-80 shrink-0"):
-                # Every panel is a peer top-level expansion -- Data, Tolerances,
-                # then the Appearance/Statistics/Output groups. No "Settings"
-                # wrapper, since the whole column is settings.
-                build_data_panel(state, lambda: reload_everything())
-                build_tolerances_panel(state, lambda: refresh())
-                build_encoding_panel(state, lambda: refresh())
-                build_controls(state, lambda: refresh())
-                ui.separator()
-                with ui.row():
-                    ui.button("Save", on_click=lambda: save(None))
-                    ui.button("Save As…", on_click=lambda: ask_where_to_save())
+                settings_column()
 
             with ui.column().classes("grow"):
-                # Drag zooms, which is Plotly's default and what people expect.
-                # Brushing is still available from the modebar's box-select and
-                # lasso tools; the selection handlers below serve both.
                 plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
                 # A persistent, colour-coded status bar -- no toasts. Errors (a
-                # group conflict, a bad column) stay here until the next action
-                # clears them, rather than popping and vanishing.
+                # validation problem, a bad column) stay here until the next
+                # action clears them, rather than popping and vanishing.
                 status_bar = ui.label("Ready").classes(
                     "w-full text-sm px-2 py-1 rounded opacity-70"
                 )
@@ -118,9 +140,7 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 "ok": "bg-green-900 text-green-100",
                 "info": "opacity-70",
             }[kind]
-            status_bar.classes(
-                replace="w-full text-sm px-2 py-1 rounded " + colour
-            )
+            status_bar.classes(replace="w-full text-sm px-2 py-1 rounded " + colour)
             status_bar.text = message
 
         def refresh() -> None:
@@ -129,7 +149,6 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
                 set_status(f"⛔  {state.last_error}", "error")
             else:
                 set_status("Ready", "info")
-            status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
             refresh_inspector()
             refresh_table()
 
@@ -137,42 +156,87 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
             """After a dataset swap the whole view is stale, selection included."""
             refresh()
 
-        def save(path: Path | None, force: bool = False) -> None:
-            try:
-                written = session.save(state.config, path, force=force)
-            except StaleFileError as exc:
-                confirm_overwrite(str(exc))
+        def _sync_picker() -> None:
+            config_pick.options = choice_options()
+            config_pick.value = current_choice()
+            config_pick.update()
+
+        def _has_unsaved_unbound_edits() -> bool:
+            s = sess["session"]
+            return s.config_path is None and s.is_dirty(state.config)
+
+        def _swap(new_session: Session, cfg: ParityConfig, new_data) -> None:
+            sess["session"] = new_session
+            state.load_session_config(cfg, new_data)
+            settings_column.refresh()
+            _sync_picker()
+            refresh()
+
+        def open_named(name: str) -> None:
+            if name == UNSAVED or name == current_choice():
                 return
+
+            def do_open() -> None:
+                try:
+                    new_session, cfg, new_data = Session.start((), launch_dir / name)
+                except (ConfigError, DataError, ValueError, OSError) as exc:
+                    set_status(f"⛔  {exc}", "error")
+                    _sync_picker()  # revert the selection to the still-open config
+                    return
+                _swap(new_session, cfg, new_data)
+
+            if _has_unsaved_unbound_edits():
+                confirm_discard(do_open, on_cancel=_sync_picker)
+            else:
+                do_open()
+
+        def new_design() -> None:
+            def do_new() -> None:
+                new_session, cfg, new_data = Session.start((), None)
+                _swap(new_session, cfg, new_data)
+
+            if _has_unsaved_unbound_edits():
+                confirm_discard(do_new)
+            else:
+                do_new()
+
+        def confirm_discard(proceed, on_cancel=None) -> None:
+            with ui.dialog() as dialog, ui.card():
+                ui.label("Discard unsaved changes?")
+                with ui.row():
+                    ui.button(
+                        "Cancel",
+                        on_click=lambda: (dialog.close(), on_cancel() if on_cancel else None),
+                    )
+                    ui.button(
+                        "Discard",
+                        on_click=lambda: (dialog.close(), proceed()),
+                    ).props("color=negative")
+            dialog.open()
+
+        def save_as(path: Path) -> None:
+            try:
+                written = sess["session"].save(state.config, path)
             except (ValueError, OSError) as exc:
                 set_status(f"⛔  {exc}", "error")
                 return
             # The one place a toast survives: a save is a discrete action whose
-            # confirmation is transient good news, and the status bar goes back
-            # to reflecting the live error/idle state on the next refresh.
+            # confirmation is transient good news; the status bar reverts to the
+            # live state on the next refresh.
             ui.notify(f"Saved {written}", type="positive")
             set_status(f"✅  Saved {written}", "ok")
+            _sync_picker()
             refresh()
-
-        def confirm_overwrite(message: str) -> None:
-            with ui.dialog() as dialog, ui.card():
-                ui.label(message)
-                with ui.row():
-                    ui.button("Cancel", on_click=dialog.close)
-                    ui.button(
-                        "Overwrite",
-                        on_click=lambda: (dialog.close(), save(None, force=True)),
-                    ).props("color=negative")
-            dialog.open()
 
         def ask_where_to_save() -> None:
             with ui.dialog() as dialog, ui.card():
                 ui.label("Save configuration as")
-                target = ui.input("Path", value=str(session.config_path or "parity.toml"))
+                target = ui.input("Path", value=str(sess["session"].config_path or "parity.toml"))
                 with ui.row():
                     ui.button("Cancel", on_click=dialog.close)
                     ui.button(
                         "Save",
-                        on_click=lambda: (dialog.close(), save(Path(target.value))),
+                        on_click=lambda: (dialog.close(), save_as(Path(target.value))),
                     )
             dialog.open()
 

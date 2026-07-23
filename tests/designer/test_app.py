@@ -32,6 +32,16 @@ def test_build_app_returns_state_wired_to_the_session(session_and_data):
     assert state.data is data
 
 
+def test_build_app_with_no_data_and_no_config_still_builds(tmp_path, monkeypatch):
+    """A New-Design / unbound launch must build the page (toolbar + empty
+    panels) without a dataset."""
+    monkeypatch.chdir(tmp_path)
+    session, config, data = Session.start((), None)
+    state = build_app(session, config, data)
+    assert state.data is None
+    assert state.config == config
+
+
 def test_editing_through_state_changes_the_figure(session_and_data):
     session, config, data = session_and_data
     state = build_app(session, config, data)

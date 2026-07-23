@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from parity_plot.config import ParityConfig
-from parity_plot.designer.session import Session, StaleFileError
+from parity_plot.designer.session import Session
 
 WIDE = """\
 id,reference,test
