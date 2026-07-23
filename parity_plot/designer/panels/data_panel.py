@@ -19,7 +19,16 @@ from ..state import DesignerState
 _NONE = "— none —"
 
 
-def column_options(files: tuple[Path, ...]) -> dict[str, list[str]]:
+def _column_of(ref: str | None) -> str | None:
+    """The bare column name of a ``file:column`` ref, or None."""
+    if not ref or ":" not in ref:
+        return None
+    return ref.split(":", 1)[1]
+
+
+def column_options(
+    files: tuple[Path, ...], ref: str | None = None, test: str | None = None
+) -> dict[str, list[str]]:
     """Dropdown options per role.
 
     ``ref``/``test`` are numeric ``file:column`` (they are the plotted axes);
@@ -50,13 +59,16 @@ def column_options(files: tuple[Path, ...]) -> dict[str, list[str]]:
         for col in src.tables[f]:
             if col not in distinct:
                 distinct.append(col)
+    # Group is almost never the plotted axis: grouping by a continuous ref/test
+    # value gives ~one group per point. Drop the ref/test column names (bare, to
+    # match group's file-independence) from the group list.
+    axis_columns = {c for c in (_column_of(ref), _column_of(test)) if c is not None}
+    group = [c for c in distinct if c not in axis_columns]
     return {
         "ref": numeric,
         "test": list(numeric),
-        "group": distinct,
+        "group": group,
         "join": common,
-        # A single numeric file:column drives the colorscale channel (pinned to
-        # one file, unlike group); offer the same numeric set as ref/test.
         "color_column": list(numeric),
     }
 
@@ -73,7 +85,7 @@ def build_data_panel(
 
     with ui.expansion("Data", value=True).classes("w-full"):
         files = list(state.config.data.files)
-        options = column_options(tuple(files))
+        options = column_options(tuple(files), state.config.data.ref, state.config.data.test)
 
         file_list = ui.column().classes("w-full gap-0")
 
@@ -90,8 +102,14 @@ def build_data_panel(
                             on_click=lambda _, p=f: _remove(p),
                         ).props("flat dense round size=sm")
 
-        ref_sel = ui.select(options["ref"], value=state.config.data.ref, label="Reference").classes("w-full")
-        test_sel = ui.select(options["test"], value=state.config.data.test, label="Test").classes("w-full")
+        ref_sel = ui.select(
+            options["ref"], value=state.config.data.ref, label="Reference",
+            on_change=lambda: refresh_group(),
+        ).classes("w-full")
+        test_sel = ui.select(
+            options["test"], value=state.config.data.test, label="Test",
+            on_change=lambda: refresh_group(),
+        ).classes("w-full")
         join_sel = ui.select(
             [_NONE, *options["join"]],
             value=state.config.data.join or _NONE,
@@ -110,7 +128,7 @@ def build_data_panel(
         ).classes("w-full")
 
         def refresh_options() -> None:
-            opts = column_options(tuple(files))
+            opts = column_options(tuple(files), ref_sel.value, test_sel.value)
             ref_sel.options, test_sel.options = opts["ref"], opts["test"]
             join_sel.options = [_NONE, *opts["join"]]
             group_sel.options = opts["group"]
@@ -122,6 +140,11 @@ def build_data_panel(
                 test_sel.value = opts["test"][1]
             for s in (ref_sel, test_sel, join_sel, group_sel, color_sel):
                 s.update()
+
+        def refresh_group() -> None:
+            opts = column_options(tuple(files), ref_sel.value, test_sel.value)
+            group_sel.options = opts["group"]
+            group_sel.update()
 
         def apply() -> None:
             ok = state.set_data_source(

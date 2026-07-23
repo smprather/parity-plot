@@ -67,6 +67,20 @@ def test_options_include_numeric_colour_column(tmp_path):
     assert opts["color_column"] == ["d.csv:voltage"]   # numeric only (id is text)
 
 
+def test_group_excludes_the_ref_and_test_columns(tmp_path):
+    f = write(tmp_path, "d.csv", "id,reference,test,batch\nA1,10,11,x\nA2,20,22,y\n")
+    opts = column_options((f,), ref="d.csv:reference", test="d.csv:test")
+    assert "reference" not in opts["group"]
+    assert "test" not in opts["group"]
+    assert opts["group"] == ["id", "batch"]
+
+
+def test_group_without_ref_test_still_offers_everything(tmp_path):
+    f = write(tmp_path, "d.csv", "id,reference,test,batch\nA1,10,11,x\n")
+    # no ref/test passed -> nothing excluded (back-compat)
+    assert column_options((f,))["group"] == ["id", "reference", "test", "batch"]
+
+
 def test_build_data_panel_returns_a_problem_mark_hook():
     """The panel exposes a callable so app.refresh can mark the join field."""
     import inspect
