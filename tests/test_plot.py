@@ -367,3 +367,58 @@ def test_public_api_rejects_mixed_and_unknown_arguments(wide_csv):
         parity_plot(ref=[1.0], test=[1.0], colour="blue")
     with pytest.raises(TypeError, match="not both"):
         parity_plot(wide_csv, ref=[1.0], test=[1.0])
+
+
+def _scale_data():
+    from parity_plot.data import ParityData
+    return ParityData(
+        keys=["a", "b", "c", "d"],
+        x=[1.0, 2.0, 3.0, 4.0], y=[1.1, 2.1, 2.9, 4.2],
+        group=["r", "r", "c", "c"],
+        color_values=[10.0, 20.0, 30.0, 40.0], color_label="temp",
+        x_label="ref", y_label="test",
+    )
+
+def test_colorscale_draws_one_colorbar():
+    from parity_plot.plot import build_figure
+    from parity_plot.config import PlotConfig
+    from parity_plot.encoding import Encoding
+    fig = build_figure(_scale_data(),
+                       PlotConfig(encoding=Encoding(color_by="colorscale",
+                                                    symbol_by="group",
+                                                    colorscale="turbo")))
+    paired = [t for t in fig.data if t.mode == "markers" and t.marker.symbol]
+    showscale = [t for t in paired if t.marker.showscale]
+    assert len(showscale) == 1                      # single shared colorbar
+    assert showscale[0].marker.colorbar.title.text == "temp"
+    cmins = {t.marker.cmin for t in paired if t.marker.color and not isinstance(t.marker.color, str)}
+    assert cmins == {10.0}                           # shared cmin across groups
+
+def test_colorscale_partitions_by_symbol():
+    from parity_plot.plot import build_figure
+    from parity_plot.config import PlotConfig
+    from parity_plot.encoding import Encoding
+    fig = build_figure(_scale_data(),
+                       PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group")))
+    paired = [t for t in fig.data if t.mode == "markers" and hasattr(t.marker, "colorscale") and t.marker.colorscale]
+    assert len(paired) == 2                           # one trace per symbol group
+
+def test_colorscale_without_column_raises():
+    import pytest
+    from parity_plot.plot import build_figure
+    from parity_plot.config import PlotConfig
+    from parity_plot.encoding import Encoding
+    from parity_plot.data import ParityData
+    d = ParityData(keys=["a"], x=[1.0], y=[1.0])
+    with pytest.raises(ValueError, match="color_column"):
+        build_figure(d, PlotConfig(encoding=Encoding(color_by="colorscale")))
+
+def test_colorbar_and_right_legend_do_not_overlap():
+    from parity_plot.plot import build_figure
+    from parity_plot.config import PlotConfig
+    from parity_plot.encoding import Encoding
+    fig = build_figure(_scale_data(),
+                       PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group"),
+                                  legend="right"))
+    assert fig.layout.legend.x >= 1.15               # legend pushed right of the colorbar
+    assert fig.layout.margin.r >= 260

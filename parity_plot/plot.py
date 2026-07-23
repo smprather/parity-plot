@@ -63,6 +63,13 @@ def build_figure(
     stats_cfg = stats_cfg or StatsConfig()
     theme = themes.get(plot.theme)
 
+    is_scale = plot.encoding.color_by == "colorscale"
+    if is_scale and data.color_values is None:
+        raise ValueError(
+            "color_by=colorscale needs a numeric colour column; set "
+            "[data].color_column"
+        )
+
     if plot.log:
         data = _drop_non_positive(data)
 
@@ -75,7 +82,7 @@ def build_figure(
     if plot.nulls == "rug":
         _add_rugs(fig, data, lo, hi, plot.log, theme)
 
-    _apply_layout(fig, data, plot, theme, summary, lo, hi)
+    _apply_layout(fig, data, plot, theme, summary, lo, hi, has_colorbar=is_scale)
     if stats_cfg.show:
         _add_stats_box(fig, summary, stats_cfg.metrics, theme, lo, hi)
     return fig
@@ -83,9 +90,10 @@ def build_figure(
 
 def _drop_non_positive(data: ParityData) -> ParityData:
     """Remove values a log axis cannot show, reporting how many were lost."""
+    colors = data.color_values if data.color_values is not None else [None] * data.n_paired
     paired = [
-        (k, xi, yi)
-        for k, xi, yi in zip(data.keys, data.x, data.y)
+        (k, xi, yi, ci)
+        for k, xi, yi, ci in zip(data.keys, data.x, data.y, colors)
         if xi > 0 and yi > 0
     ]
     missing_y = _filter_unpaired(data.missing_y)
@@ -104,9 +112,12 @@ def _drop_non_positive(data: ParityData) -> ParityData:
 
     return replace(
         data,
-        keys=[k for k, _, _ in paired],
-        x=[xi for _, xi, _ in paired],
-        y=[yi for _, _, yi in paired],
+        keys=[k for k, _, _, _ in paired],
+        x=[xi for _, xi, _, _ in paired],
+        y=[yi for _, _, yi, _ in paired],
+        color_values=(
+            [ci for _, _, _, ci in paired] if data.color_values is not None else None
+        ),
         missing_y=missing_y,
         missing_x=missing_x,
     )
@@ -243,10 +254,10 @@ def _add_paired(
 ) -> None:
     """Draw the paired points, one trace per (colour, symbol) the encoding yields.
 
-    `encoding.partition` decides which points share a trace; here each trace's
-    colour key is resolved to a real colour through the theme (symbol keys are
-    already Plotly symbol names). The default encoding produces a single trace,
-    so the plot -- and the golden test -- are unchanged until a channel is set.
+    Under ``color_by = "colorscale"`` colour is per-point, so the colour key is
+    constant and does not split traces: every symbol group shares one continuous
+    colour mapping, drawn once as a colorbar. Otherwise each trace's colour key
+    is resolved to a real colour through the theme.
     """
     scatter = go.Scattergl if data.n_paired > _WEBGL_THRESHOLD else go.Scatter
     diffs = [yi - xi for xi, yi in zip(data.x, data.y)]
@@ -254,26 +265,52 @@ def _add_paired(
     passes = [failures(tolerances, xi, yi) == () for xi, yi in zip(data.x, data.y)]
 
     specs = partition(data.n_paired, passes, data.group, encoding)
-    colours = _resolve_colours(specs, encoding, theme)
     symbols = _resolve_symbols(specs, encoding)
 
-    for spec in specs:
+    is_scale = encoding.color_by == "colorscale"
+    colours = None if is_scale else _resolve_colours(specs, encoding, theme)
+    cmin = cmax = None
+    if is_scale:
+        finite = [c for c in data.color_values if c is not None]
+        cmin, cmax = (min(finite), max(finite)) if finite else (0.0, 1.0)
+
+    for i, spec in enumerate(specs):
         idx = spec.indices
         name = spec.name if len(specs) > 1 else f"paired (n={data.n_paired:,})"
+        if is_scale:
+            marker = dict(
+                color=[data.color_values[j] for j in idx],
+                colorscale=encoding.colorscale,
+                cmin=cmin,
+                cmax=cmax,
+                showscale=(i == 0),
+                symbol=symbols[spec.symbol_key],
+                opacity=theme.marker_opacity,
+                size=7,
+                line=dict(color=theme.marker_line, width=0.5),
+            )
+            if i == 0:
+                marker["colorbar"] = dict(
+                    title=dict(text=data.color_label),
+                    x=1.02, xanchor="left",
+                    thickness=14, len=0.6, y=0.5, yanchor="middle",
+                )
+        else:
+            marker = dict(
+                color=colours[spec.color_key],
+                symbol=symbols[spec.symbol_key],
+                opacity=theme.marker_opacity,
+                size=7,
+                line=dict(color=theme.marker_line, width=0.5),
+            )
         fig.add_trace(
             scatter(
-                x=[data.x[i] for i in idx],
-                y=[data.y[i] for i in idx],
+                x=[data.x[j] for j in idx],
+                y=[data.y[j] for j in idx],
                 mode="markers",
                 name=name,
-                customdata=[(data.keys[i], diffs[i], verdicts[i]) for i in idx],
-                marker=dict(
-                    color=colours[spec.color_key],
-                    symbol=symbols[spec.symbol_key],
-                    opacity=theme.marker_opacity,
-                    size=7,
-                    line=dict(color=theme.marker_line, width=0.5),
-                ),
+                customdata=[(data.keys[j], diffs[j], verdicts[j]) for j in idx],
+                marker=marker,
                 hovertemplate=(
                     "<b>%{customdata[0]}</b><br>"
                     f"{data.x_label}: %{{x:.4g}}<br>"
@@ -396,6 +433,7 @@ def _apply_layout(
     summary: stats_mod.Stats,
     lo: float,
     hi: float,
+    has_colorbar: bool = False,
 ) -> None:
     axis_type = "log" if plot.log else "linear"
     x_axis = dict(title=plot.x_label or data.x_label, range=[lo, hi], type=axis_type)
@@ -416,6 +454,13 @@ def _apply_layout(
             f"unknown legend position {plot.legend!r}; "
             f"available positions are {sorted(_LEGEND_LAYOUTS)}"
         ) from None
+
+    if has_colorbar:
+        if plot.legend == "right" and placement is not None:
+            placement = {**placement, "x": 1.16}
+            margin = {**margin, "r": 300}
+        else:
+            margin = {**margin, "r": max(margin["r"], 110)}
 
     fig.update_layout(
         template=theme.template_name,
