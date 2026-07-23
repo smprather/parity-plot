@@ -286,16 +286,21 @@ uv run parity-plot plot lab/run7.toml   # or any path you name
 uv run parity-plot design data/example.csv -c parity.toml
 ```
 
-Opens a local browser app: edit any setting and the plot updates live, then save
-back to the TOML. Comments in an existing config survive the round trip, and a key
-you have not changed keeps its original spelling (`reltol = "10pct"` is not
-rewritten as `0.1`).
+Opens a local browser app: edit any setting and the plot updates live. **Edits
+auto-save** to the bound config — a top toolbar carries a config dropdown (the
+parity `.toml`s in the launch directory), **Save As**, and **New Design**. Pick a
+config to open it; every valid edit is written straight to it, so the file on disk
+always holds the latest valid config. A `‹unsaved›` design (New Design, or a
+data-only launch) writes nowhere until **Save As** binds it a name. Comments in an
+existing config survive the round trip, and a key you have not changed keeps its
+original spelling (`reltol = "10pct"` is not rewritten as `0.1`).
 
 The preview is produced by the same `build_figure` the CLI uses, so what you see
-is exactly what `parity-plot plot parity.toml` will render — an equivalence
-pinned by a test, not assumed. Saving refuses to overwrite a config that changed
-on disk since it was opened, so an edit made in another window is not silently
-discarded. **Errors surface in a persistent status bar under the plot**, never a
+is exactly what `parity-plot plot parity.toml` will render — an equivalence pinned
+by a test, not assumed. **Invalid settings are flagged, not saved:** a bad
+combination (e.g. a join column while `ref` and `test` come from one file) reddens
+the field, disables Save As, and withholds the auto-save, so a broken config never
+reaches disk. **Errors surface in a persistent status bar under the plot**, never a
 disappearing pop-up.
 
 - **Data panel** — open any CSV and map its columns; the designer reads just the

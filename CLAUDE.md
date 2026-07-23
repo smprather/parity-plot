@@ -164,10 +164,39 @@ that a config saved from the designer renders an identical figure through the
 CLI path — if that test fails, the designer is lying about what the CLI will do,
 and the designer is what needs fixing.
 
-Logic lives in `state.py`, `session.py`, and `serialize.py`, all browser-free and
-unit-tested; `app.py` and `panels/` only wire widgets. Anything worth testing
-belongs in the pure modules. `build_app` registers the page and returns state;
-`launch.run` owns `ui.run`, so they cannot double-serve.
+Logic lives in `state.py`, `session.py`, `serialize.py`, and `validation.py`, all
+browser-free and unit-tested; `app.py` and `panels/` only wire widgets. Anything
+worth testing belongs in the pure modules. `build_app` registers the page and
+returns state; `launch.run` owns `ui.run`, so they cannot double-serve.
+
+**The designer auto-saves.** `app.refresh()` is the single point that, after every
+change, rebuilds the figure, computes `validation.problems(config)`, paints the
+status bar, enables/disables **Save As**, marks the offending field, and — when
+nothing is wrong and a file is **bound** — writes via `Session.autosave`. So a
+*bound* config's file on disk always equals the **most recent valid** config; a
+hard-invalid edit is withheld (disk keeps the last good one) until fixed. There is
+no plain Save button. Persistence is a **top toolbar**: a config dropdown
+(`session.config_choices(dir)` lists parity `.toml`s in the launch dir — touchstone:
+parses + non-empty `data.files`), **Save As**, **New Design**. `<unsaved>` in the
+dropdown means *unbound* — a New Design or data-only launch with no file yet; Save
+As binds it. The settings column is a `@ui.refreshable` rebuilt on a config swap
+(`state.load_session_config`), while the plot/selection on the right persist. The
+only confirm-dialog left guards leaving an *unbound-with-edits* state. The
+**stale-file guard is retired** — the designer owns the open file; concurrent
+external edits are overwritten (bidirectional editing is a deferred non-goal).
+
+**`validation.py` is browser-free cross-field validation** (`problems(config) ->
+list[Problem]`, each with a dotted `field` id). A hard problem or load error
+withholds auto-save, disables Save As, reddens the field (the data panel returns a
+`mark_problems` hook that `app.refresh` calls — today it marks `data.join`), and
+shows in the status bar. First rule: ref and test from the **same file** while a
+`join` is set (a single wide file pairs by order; a self-join is meaningless).
+
+**Clearing a text control reverts to the field's default**, via
+`state.reset_fields` — *not* `merge`, which drops `None` and so silently keeps the
+stale value (the old "blank falls back to default" comment in `controls` was wrong).
+`x_label`/`y_label` show the resolved column name as a dimmed placeholder
+(`controls._placeholder`).
 
 `serialize.py` uses tomlkit rather than generating TOML, because a config meant to
 be hand-edited and committed must not lose its comments on save. It skips writing
