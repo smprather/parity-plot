@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import re
 from pathlib import Path
 
 import pytest
@@ -14,15 +13,28 @@ from parity_plot.cli import cli
 def run(tmp_path: Path):
     runner = CliRunner()
 
-    def _run(*args: str, **kwargs):
+    def _run(*args, **kwargs):
         return runner.invoke(cli, [str(a) for a in args], **kwargs)
 
     return _run
 
 
+def _write_config(path: Path, wide_csv: Path, extra: str = "") -> Path:
+    path.write_text(
+        f'[data]\nfiles = ["{wide_csv.as_posix()}"]\n'
+        f'ref = "{wide_csv.name}:reference"\ntest = "{wide_csv.name}:test"\n'
+        f'join = "id"\n{extra}',
+        encoding="utf-8",
+    )
+    return path
+
+
+# --- example: the generator (kept) ---
+
 def test_example_writes_both_input_shapes(run, tmp_path):
     out = tmp_path / "data"
-    result = run("example", "--out-dir", out, "-n", "50", "--missing-y", "3", "--missing-x", "2", "--both-null", "1", "--no-plot")
+    result = run("example", "--out-dir", out, "-n", "50", "--missing-y", "3",
+                 "--missing-x", "2", "--both-null", "1", "--no-plot")
 
     assert result.exit_code == 0, result.output
     wide = out / "example.csv"
@@ -45,7 +57,7 @@ def test_example_is_reproducible_for_a_seed(run, tmp_path):
 
 
 def test_example_plots_by_default(run, tmp_path):
-    """Running `example` with no flags should show you something."""
+    """Running `example` should show you something."""
     out = tmp_path / "parity.html"
     result = run("example", "--out-dir", tmp_path / "d", "-n", "30",
                  "--missing-y", "2", "--missing-x", "2", "--both-null", "0", "-o", out)
@@ -53,44 +65,6 @@ def test_example_plots_by_default(run, tmp_path):
     assert result.exit_code == 0, result.output
     assert out.exists()
     assert "plot" in result.output
-
-
-@pytest.mark.parametrize("command", ["plot", "example"])
-def test_browser_opens_by_default(run, wide_csv, tmp_path, no_real_browser, command):
-    """The whole point of `example`: run it and see a plot, no extra flag."""
-    out = tmp_path / "p.html"
-    if command == "plot":
-        args = ("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
-                "wide.csv:test", "--join", "id", "-o", out)
-    else:
-        args = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-                "--missing-x", "1", "--both-null", "0", "-o", out)
-
-    assert run(*args).exit_code == 0
-    assert no_real_browser == [out.resolve().as_uri()]
-
-
-@pytest.mark.parametrize("command", ["plot", "example"])
-def test_no_open_browser_suppresses_the_launch(run, wide_csv, tmp_path, no_real_browser, command):
-    out = tmp_path / "p.html"
-    if command == "plot":
-        args = ("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
-                "wide.csv:test", "--join", "id", "-o", out, "--no-open-browser")
-    else:
-        args = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-                "--missing-x", "1", "--both-null", "0", "-o", out, "--no-open-browser")
-
-    assert run(*args).exit_code == 0
-    assert out.exists()
-    assert no_real_browser == []
-
-
-def test_no_plot_means_no_browser(run, tmp_path, no_real_browser):
-    """--no-plot writes no figure, so there is nothing to open."""
-    result = run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-                 "--missing-x", "1", "--both-null", "0", "--no-plot")
-    assert result.exit_code == 0
-    assert no_real_browser == []
 
 
 def test_example_can_skip_the_plot(run, tmp_path):
@@ -102,21 +76,34 @@ def test_example_can_skip_the_plot(run, tmp_path):
     assert not out.exists()
 
 
-@pytest.mark.parametrize("command", ["plot", "example"])
-def test_output_suffix_is_never_ignored(run, wide_csv, tmp_path, command):
-    """`-o plot.svg` must not write HTML into a .svg file."""
+def test_example_opens_browser_by_default(run, tmp_path, no_real_browser):
+    out = tmp_path / "p.html"
+    assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
+               "--missing-x", "1", "--both-null", "0", "-o", out).exit_code == 0
+    assert no_real_browser == [out.resolve().as_uri()]
+
+
+def test_example_no_open_browser_suppresses_launch(run, tmp_path, no_real_browser):
+    out = tmp_path / "p.html"
+    assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
+               "--missing-x", "1", "--both-null", "0", "-o", out,
+               "--no-open-browser").exit_code == 0
+    assert out.exists()
+    assert no_real_browser == []
+
+
+def test_no_plot_means_no_browser(run, tmp_path, no_real_browser):
+    result = run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
+                 "--missing-x", "1", "--both-null", "0", "--no-plot")
+    assert result.exit_code == 0
+    assert no_real_browser == []
+
+
+def test_example_output_suffix_is_never_ignored(run, tmp_path):
     out = tmp_path / "p.svg"
-    if command == "plot":
-        args = ("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
-                "wide.csv:test", "--join", "id", "-o", out)
-    else:
-        args = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-                "--missing-x", "1", "--both-null", "0", "-o", out)
-
-    result = run(*args)
-
+    result = run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
+                 "--missing-x", "1", "--both-null", "0", "-o", out)
     if result.exit_code != 0:
-        # Static export unavailable here; it must still have *tried* svg.
         assert "svg" in result.output
     else:
         assert out.read_bytes().lstrip()[:4] != b"<htm"
@@ -144,60 +131,6 @@ def test_example_shape_flags_change_the_data(run, tmp_path):
     unbiased = stats_for("unbiased", "--bias", "0", "--noise", "0.02", "--outliers", "0")
     skewed = stats_for("skewed", "--bias", "0.25", "--noise", "0.02", "--outliers", "0")
     assert skewed.bias > unbiased.bias * 10
-
-
-def _tolerance_labels(html: Path) -> set[str]:
-    """The distinct tolerance spec labels present in the rendered figure."""
-    found = re.findall(r'"name":"(\xb1[^"]*)"', html.read_text(encoding="utf-8"))
-    return set(found)
-
-
-def test_example_draws_a_10_percent_wedge_by_default(run, tmp_path):
-    out = tmp_path / "p.html"
-    assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-               "--missing-x", "1", "--both-null", "0", "-o", out).exit_code == 0
-    assert _tolerance_labels(out) == {"\u00b110%"}
-
-
-def test_example_tolerance_can_be_overridden_and_switched_off(run, tmp_path):
-    out = tmp_path / "p.html"
-    base = ("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-            "--missing-x", "1", "--both-null", "0", "-o", out)
-
-    assert run(*base, "--reltol", "25pct").exit_code == 0
-    assert _tolerance_labels(out) == {"\u00b125%"}
-
-    assert run(*base, "--abstol", "2", "--no-tolerance").exit_code == 0
-    assert _tolerance_labels(out) == set()
-
-
-def test_example_abstol_alone_gives_parallel_limits(run, tmp_path):
-    """--abstol on its own must not smuggle in the default relative wedge."""
-    out = tmp_path / "p.html"
-    assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-               "--missing-x", "1", "--both-null", "0", "-o", out,
-               "--abstol", "2", "--reltol", "0").exit_code != 0  # 0 is not positive
-
-    assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-               "--missing-x", "1", "--both-null", "0", "-o", out,
-               "--abstol", "2", "--no-tolerance").exit_code == 0
-    assert _tolerance_labels(out) == set()
-
-
-def test_example_both_tolerances_give_a_funnel(run, tmp_path):
-    out = tmp_path / "p.html"
-    assert run("example", "--out-dir", tmp_path / "d", "-n", "30", "--missing-y", "1",
-               "--missing-x", "1", "--both-null", "0", "-o", out,
-               "--abstol", "2", "--reltol", "10pct").exit_code == 0
-    assert _tolerance_labels(out) == {"\u00b1max(2, 10%)"}
-
-
-def test_plot_still_draws_no_limits_unless_asked(run, wide_csv, tmp_path):
-    """The default belongs to the demo, not to every plot anyone renders."""
-    out = tmp_path / "p.html"
-    assert run("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
-               "wide.csv:test", "--join", "id", "-o", out).exit_code == 0
-    assert _tolerance_labels(out) == set()
 
 
 def test_example_reports_the_shape_it_used(run, tmp_path):
@@ -231,11 +164,21 @@ def test_example_rejects_more_holes_than_records(run, tmp_path):
     assert "Traceback" not in result.output
 
 
-def test_plot_renders_from_a_wide_file(run, wide_csv, tmp_path):
-    out = tmp_path / "p.html"
-    result = run("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
-                 "wide.csv:test", "--join", "id", "-o", out)
+def test_example_help_drops_appearance_flags(run):
+    result = run("example", "--help")
+    assert result.exit_code == 0
+    assert "--noise" in result.output and "--bias" in result.output
+    for gone in ("--theme", "--legend", "--abstol", "--reltol", "--band-style",
+                 "--width", "--height", "--tol"):
+        assert gone not in result.output
 
+
+# --- plot: TOML-driven (new surface) ---
+
+def test_plot_reads_a_toml_and_writes(run, wide_csv, tmp_path):
+    cfg = _write_config(tmp_path / "parity.toml", wide_csv)
+    out = tmp_path / "out.html"
+    result = run("plot", cfg, "-o", out, "--no-open-browser")
     assert result.exit_code == 0, result.output
     assert out.exists()
     assert "2 paired" in result.output
@@ -243,44 +186,69 @@ def test_plot_renders_from_a_wide_file(run, wide_csv, tmp_path):
     assert "1 empty" in result.output
 
 
-def test_plot_joins_two_files(run, write_csv, tmp_path):
-    x = write_csv("ref.csv", "id,value\nA,1.0\nB,2.0\n")
-    y = write_csv("meas.csv", "id,value\nA,1.1\nC,3.0\n")
-    out = tmp_path / "p.html"
-
-    result = run("plot", x, y, "--ref", "ref.csv:value", "--test",
-                 "meas.csv:value", "--join", "id", "-o", out)
-
+def test_plot_defaults_to_parity_toml(run, wide_csv, tmp_path, monkeypatch):
+    _write_config(tmp_path / "parity.toml", wide_csv)
+    monkeypatch.chdir(tmp_path)
+    result = run("plot", "-o", tmp_path / "out.html", "--no-open-browser")
     assert result.exit_code == 0, result.output
-    assert "1 paired" in result.output
-    assert "2 unpaired" in result.output
+    assert (tmp_path / "out.html").exists()
 
 
-def test_plot_infers_the_format_from_the_output_suffix(run, wide_csv, tmp_path):
-    """`-o out.svg` should not also require `--format svg`."""
-    result = run("plot", wide_csv, "--ref", "wide.csv:reference", "--test",
-                 "wide.csv:test", "--join", "id", "-o", tmp_path / "p.svg")
-    # Static export may be unavailable in this environment; what matters is that
-    # it attempted svg rather than silently writing HTML into a .svg file.
+def test_plot_missing_config_points_at_init(run, tmp_path):
+    result = run("plot", tmp_path / "nope.toml", "--no-open-browser")
+    assert result.exit_code != 0
+    assert "init" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_plot_opens_browser_by_default(run, wide_csv, tmp_path, no_real_browser):
+    cfg = _write_config(tmp_path / "parity.toml", wide_csv)
+    out = tmp_path / "out.html"
+    assert run("plot", cfg, "-o", out).exit_code == 0
+    assert no_real_browser == [out.resolve().as_uri()]
+
+
+def test_plot_output_suffix_is_never_ignored(run, wide_csv, tmp_path):
+    cfg = _write_config(tmp_path / "parity.toml", wide_csv)
+    out = tmp_path / "p.svg"
+    result = run("plot", cfg, "-o", out, "--no-open-browser")
     if result.exit_code != 0:
         assert "svg" in result.output
     else:
-        assert (tmp_path / "p.svg").exists()
+        assert out.read_bytes().lstrip()[:4] != b"<htm"
 
 
 def test_plot_reports_a_bad_column_without_a_traceback(run, wide_csv, tmp_path):
-    result = run("plot", wide_csv, "--ref", "wide.csv:nope", "--test",
-                 "wide.csv:test", "-o", tmp_path / "p.html")
+    cfg = tmp_path / "parity.toml"
+    cfg.write_text(
+        f'[data]\nfiles = ["{wide_csv.as_posix()}"]\n'
+        f'ref = "{wide_csv.name}:nope"\ntest = "{wide_csv.name}:test"\njoin = "id"\n',
+        encoding="utf-8",
+    )
+    result = run("plot", cfg, "-o", tmp_path / "p.html", "--no-open-browser")
     assert result.exit_code != 0
     assert "nope" in result.output
     assert "Traceback" not in result.output
 
 
-def test_plot_reports_an_invalid_theme_as_a_usage_error(run, wide_csv, tmp_path):
-    result = run("plot", wide_csv, "--theme", "neon", "-o", tmp_path / "p.html")
+def test_plot_reports_unknown_toml_key_without_a_traceback(run, tmp_path):
+    cfg = tmp_path / "parity.toml"
+    cfg.write_text('[data]\nfiles = ["x.csv"]\ntheme = "neon"\n', encoding="utf-8")
+    result = run("plot", cfg, "--no-open-browser")
     assert result.exit_code != 0
-    assert "neon" in result.output
+    assert "Traceback" not in result.output
 
+
+def test_plot_help_has_no_appearance_flags(run):
+    result = run("plot", "--help")
+    assert result.exit_code == 0
+    for gone in ("--theme", "--ref", "--test", "--join", "--group", "--tol",
+                 "--legend", "--width", "--nulls", "--abstol"):
+        assert gone not in result.output
+    assert "init" in result.output  # docstring routes to init
+
+
+# --- init + top-level help ---
 
 def test_init_writes_a_config_that_loads(run, tmp_path):
     from parity_plot.config import ParityConfig
@@ -303,26 +271,8 @@ def test_init_refuses_to_clobber_without_force(run, tmp_path):
     assert "already exists" not in out.read_text(encoding="utf-8")
 
 
-def test_config_supplies_input_and_flags_override_it(run, wide_csv, tmp_path):
-    config = tmp_path / "parity.toml"
-    config.write_text(
-        f'[data]\nfiles = ["{wide_csv.as_posix()}"]\nref = "wide.csv:reference"\n'
-        f'test = "wide.csv:test"\njoin = "id"\n\n[plot]\ntheme = "light"\n',
-        encoding="utf-8",
-    )
-    out = tmp_path / "p.html"
-
-    # No paths given: they come from the config.
-    assert run("plot", "-c", config, "-o", out).exit_code == 0
-    assert out.exists()
-
-    # And a flag still beats the file.
-    result = run("plot", "-c", config, "--theme", "dark", "-o", out)
-    assert result.exit_code == 0, result.output
-
-
 def test_help_lists_every_subcommand(run):
     result = run("--help")
     assert result.exit_code == 0
-    for command in ("plot", "example", "init"):
+    for command in ("plot", "example", "init", "design"):
         assert command in result.output

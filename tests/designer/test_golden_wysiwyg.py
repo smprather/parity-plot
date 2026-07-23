@@ -133,7 +133,7 @@ def test_a_saved_config_reloads_into_an_identical_designer(csv, tmp_path: Path):
 
 
 def test_the_cli_plot_command_renders_a_designer_config(csv, tmp_path: Path):
-    """The end the user actually reaches: design, save, then `parity-plot plot -c`."""
+    """The end the user actually reaches: design, save, then `parity-plot plot`."""
     from click.testing import CliRunner
 
     from parity_plot.cli import cli
@@ -147,7 +147,7 @@ def test_the_cli_plot_command_renders_a_designer_config(csv, tmp_path: Path):
 
     html = tmp_path / "out.html"
     result = CliRunner().invoke(
-        cli, ["plot", "-c", str(toml_path), "-o", str(html), "--no-open-browser"]
+        cli, ["plot", str(toml_path), "-o", str(html), "--no-open-browser"]
     )
 
     assert result.exit_code == 0, result.output
