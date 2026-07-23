@@ -20,6 +20,8 @@ parity-plot = "parity_plot.cli:cli"
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
+    "ruff>=0.15",
+    "ty>=0.0.49",
 ]
 
 [build-system]
@@ -28,6 +30,24 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["parity_plot"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+# E/F/I: pycodestyle errors, pyflakes, isort. Line length (E501) is owned by
+# `ruff format`, so it is ignored here. C408 is deliberately NOT selected: the
+# plotly-heavy code uses dict(...) as a readable idiom, and rewriting it to
+# {...} literals everywhere would be a regression, not an improvement.
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ty.src]
+# Type-check the shipped library strictly. The tests exercise plotly / nicegui
+# objects whose attributes are resolved dynamically (fig.data[i].marker.*) and
+# which no type checker can follow, so tests are held to ruff but not to ty.
+exclude = ["tests"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
