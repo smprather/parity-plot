@@ -10,6 +10,7 @@ that walks the dataclass fields.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -18,7 +19,11 @@ from ...config import (
     NULL_MODES,
     OUTPUT_FORMATS,
     THEMES,
+    OutputConfig,
+    PlotConfig,
+    StatsConfig,
 )
+from ...data import ParityData
 from ..state import DesignerState
 
 
@@ -55,6 +60,29 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
 
 GROUPS = ("Appearance", "Statistics", "Output")
 
+_SECTION_CLASS = {"plot": PlotConfig, "stats": StatsConfig, "output": OutputConfig}
+
+
+def _placeholder(spec: ControlSpec, data: ParityData | None) -> str:
+    """The dimmed default shown in an empty text control.
+
+    x_label / y_label resolve to the actual column name (from the loaded data),
+    so an emptied label visibly falls back to it. Other fields show their
+    dataclass default when it is a meaningful non-empty value (title ->
+    "Parity Plot"); an all-None default shows nothing.
+    """
+    if spec.key in ("x_label", "y_label"):
+        if data is None:
+            return "column name"
+        return data.x_label if spec.key == "x_label" else data.y_label
+    cls = _SECTION_CLASS.get(spec.section)
+    if cls is not None:
+        for f in dataclasses.fields(cls):
+            if f.name == spec.key and f.default is not dataclasses.MISSING:
+                if f.default not in (None, ""):
+                    return str(f.default)
+    return ""
+
 
 def build_controls(state: DesignerState, on_change: Callable[[], None]) -> None:
     """Render every control, grouped, wired straight into ``state``."""
@@ -75,8 +103,13 @@ def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], 
     current = getattr(getattr(state.config, spec.section), spec.key)
 
     def apply(value: Any) -> None:
-        # A rejected update leaves state.last_error; the status bar surfaces it.
-        state.update(spec.section, **{spec.key: _clean(spec, value)})
+        cleaned = _clean(spec, value)
+        if cleaned is None:
+            # Blank means "revert to default" -- merge drops None, so route
+            # through reset_fields, which actually clears the field.
+            state.reset_fields(spec.section, spec.key)
+        else:
+            state.update(spec.section, **{spec.key: cleaned})
         on_change()
 
     if spec.kind == "switch":
@@ -88,8 +121,11 @@ def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], 
         ui.number(spec.label, value=current,
                   on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
     else:
-        ui.input(spec.label, value=_as_text(current),
-                 on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.input(
+            spec.label, value=_as_text(current),
+            placeholder=_placeholder(spec, state.data),
+            on_change=lambda e: apply(e.value),
+        ).classes("w-full").tooltip(spec.help)
 
 
 def _clean(spec: ControlSpec, value: Any) -> Any:

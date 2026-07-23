@@ -74,3 +74,25 @@ def test_no_retired_spec_remains():
     pointing a control at a deleted field would make the designer 500."""
     retired = {"abstol", "reltol", "band_style", "identity_line"}
     assert not {s.key for s in CONTROL_SPECS} & retired
+
+
+def test_placeholder_for_labels_is_the_column_name(tmp_path):
+    from parity_plot.data import ParityData
+    from parity_plot.designer.panels.controls import _placeholder
+
+    data = ParityData(x=[1.0], y=[1.0], x_label="reference", y_label="measured")
+    assert _placeholder(specs_for("plot")["x_label"], data) == "reference"
+    assert _placeholder(specs_for("plot")["y_label"], data) == "measured"
+
+
+def test_placeholder_for_labels_without_data_is_generic():
+    from parity_plot.designer.panels.controls import _placeholder
+
+    assert _placeholder(specs_for("plot")["x_label"], None) == "column name"
+
+
+def test_placeholder_falls_back_to_a_static_default():
+    from parity_plot.designer.panels.controls import _placeholder
+
+    # title's dataclass default is "Parity Plot"
+    assert _placeholder(specs_for("plot")["title"], None) == "Parity Plot"
