@@ -28,7 +28,7 @@ def column_options(files: tuple[Path, ...]) -> dict[str, list[str]]:
     unreadable file yields empty options rather than raising -- the panel must
     still render so a different file can be chosen.
     """
-    empty = {"ref": [], "test": [], "group": [], "join": []}
+    empty = {"ref": [], "test": [], "group": [], "join": [], "color_column": []}
     if not files:
         return empty
     try:
@@ -55,6 +55,9 @@ def column_options(files: tuple[Path, ...]) -> dict[str, list[str]]:
         "test": list(numeric),
         "group": distinct,
         "join": common,
+        # A single numeric file:column drives the colorscale channel (pinned to
+        # one file, unlike group); offer the same numeric set as ref/test.
+        "color_column": list(numeric),
     }
 
 
@@ -89,22 +92,29 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
             label="Join column (blank = pair by order)",
         ).classes("w-full")
         group_sel = ui.select(
-            [_NONE, *options["group"]],
-            value=state.config.data.group or _NONE,
-            label="Group by",
+            options["group"],
+            value=list(state.config.data.group),
+            multiple=True,
+            label="Group by (one or more columns)",
+        ).classes("w-full").props("use-chips")
+        color_sel = ui.select(
+            [_NONE, *options["color_column"]],
+            value=state.config.data.color_column or _NONE,
+            label="Colour column (numeric, for colorscale)",
         ).classes("w-full")
 
         def refresh_options() -> None:
             opts = column_options(tuple(files))
             ref_sel.options, test_sel.options = opts["ref"], opts["test"]
             join_sel.options = [_NONE, *opts["join"]]
-            group_sel.options = [_NONE, *opts["group"]]
+            group_sel.options = opts["group"]
+            color_sel.options = [_NONE, *opts["color_column"]]
             # Guess ref/test if unset and two numeric columns are available.
             if not ref_sel.value and len(opts["ref"]) >= 1:
                 ref_sel.value = opts["ref"][0]
             if not test_sel.value and len(opts["test"]) >= 2:
                 test_sel.value = opts["test"][1]
-            for s in (ref_sel, test_sel, join_sel, group_sel):
+            for s in (ref_sel, test_sel, join_sel, group_sel, color_sel):
                 s.update()
 
         def apply() -> None:
@@ -113,7 +123,8 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
                 ref=ref_sel.value or None,
                 test=test_sel.value or None,
                 join=None if join_sel.value == _NONE else join_sel.value,
-                group=None if group_sel.value == _NONE else group_sel.value,
+                group=tuple(group_sel.value or ()),
+                color_column=None if color_sel.value == _NONE else color_sel.value,
             )
             # On failure last_error is set; the status bar (painted by
             # on_change -> refresh) shows it persistently -- no toast.
