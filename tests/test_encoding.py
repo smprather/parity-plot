@@ -173,3 +173,13 @@ def test_colorscale_partitions_by_symbol_only():
         Encoding(color_by="colorscale", symbol_by="group"),
     )
     assert len(specs) == 2  # one trace per symbol group; colour does not split
+
+
+def test_colorscale_contributes_no_name_the_colorbar_does():
+    """Colour is shown by the colorbar, so a trace is named for its symbol group
+    only -- "BGA", never "colorscale · BGA"."""
+    specs = partition(
+        4, [True] * 4, ["BGA", "DIP", "BGA", "DIP"],
+        Encoding(color_by="colorscale", symbol_by="group"),
+    )
+    assert {s.name for s in specs} == {"BGA", "DIP"}

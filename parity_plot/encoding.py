@@ -244,9 +244,13 @@ def _channel_label(
 
     ``pass-fail`` labels by verdict ("pass"/"fail") even on the symbol channel,
     where the key is a symbol name ("circle"/"x") — the name should read as the
-    verdict, not the glyph. ``single`` contributes nothing.
+    verdict, not the glyph. ``single`` and ``colorscale`` contribute nothing:
+    ``single`` because every point shares the value, ``colorscale`` because the
+    per-point colour is shown by the colorbar, not the legend — so a trace under
+    ``color_by = "colorscale", symbol_by = "group"`` is named for the group
+    ("BGA"), never "colorscale · BGA".
     """
-    if channel == "single":
+    if channel in ("single", "colorscale"):
         return None
     if channel == "pass-fail":
         return "pass" if verdict else "fail"
