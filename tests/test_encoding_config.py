@@ -35,9 +35,7 @@ def test_encoding_table_parses_all_four_fields():
 
 def test_invalid_channel_value_raises_config_error():
     with pytest.raises(ConfigError):
-        ParityConfig.from_dict(
-            {"plot": {"encoding": {"color_by": "hue"}}}
-        )
+        ParityConfig.from_dict({"plot": {"encoding": {"color_by": "hue"}}})
 
 
 def test_symbol_sequence_parses_from_a_toml_list_into_a_tuple():
@@ -57,16 +55,12 @@ def test_symbol_sequence_parses_from_a_toml_list_into_a_tuple():
 
 def test_unknown_symbol_in_sequence_raises_config_error():
     with pytest.raises(ConfigError, match="unknown symbol"):
-        ParityConfig.from_dict(
-            {"plot": {"encoding": {"symbol_sequence": ["crcle"]}}}
-        )
+        ParityConfig.from_dict({"plot": {"encoding": {"symbol_sequence": ["crcle"]}}})
 
 
 def test_unknown_encoding_key_raises_config_error():
     with pytest.raises(ConfigError, match="unknown key"):
-        ParityConfig.from_dict(
-            {"plot": {"encoding": {"shape": "circle"}}}
-        )
+        ParityConfig.from_dict({"plot": {"encoding": {"shape": "circle"}}})
 
 
 def test_merge_with_an_encoding_object_works():
@@ -78,9 +72,7 @@ def test_merge_with_an_encoding_object_works():
 
 
 def test_example_toml_has_an_encoding_block():
-    cfg = ParityConfig.from_dict(
-        __import__("tomllib").loads(EXAMPLE_TOML)
-    )
+    cfg = ParityConfig.from_dict(__import__("tomllib").loads(EXAMPLE_TOML))
     assert cfg.plot.encoding == Encoding()
 
 
@@ -105,9 +97,9 @@ def test_pass_and_fail_colours_differ_from_identity(theme_name):
 
 
 def test_colorscale_key_loads():
-    cfg = ParityConfig.from_dict({
-        "plot": {"encoding": {"color_by": "colorscale", "colorscale": "plasma"}}
-    })
+    cfg = ParityConfig.from_dict(
+        {"plot": {"encoding": {"color_by": "colorscale", "colorscale": "plasma"}}}
+    )
     assert cfg.plot.encoding.color_by == "colorscale"
     assert cfg.plot.encoding.colorscale == "plasma"
 

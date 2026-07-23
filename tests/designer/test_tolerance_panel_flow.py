@@ -25,8 +25,12 @@ def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "w.csv"
     csv.write_text(WIDE, encoding="utf-8")
     config = ParityConfig().merge(
-        data={"files": (csv,), "ref": "w.csv:reference",
-              "test": "w.csv:test", "join": "id"}
+        data={
+            "files": (csv,),
+            "ref": "w.csv:reference",
+            "test": "w.csv:test",
+            "join": "id",
+        }
     )
     return DesignerState(config=config, data=load(config.data))
 
@@ -56,10 +60,13 @@ def test_editing_a_tolerance_changes_its_verdict(state):
     # A2 is 25% off: passes 10%? no. Confirm it fails, then loosen to 30%.
     failed = state.selected_record  # noqa: F841  (documents intent)
     tight = state.tolerances()
-    assert commit(state, ops.update(tight, "tolerance1",
-                                    NamedTolerance(name="tolerance1", reltol=0.30)))
+    assert commit(
+        state,
+        ops.update(tight, "tolerance1", NamedTolerance(name="tolerance1", reltol=0.30)),
+    )
 
     from parity_plot.designer.records import record_views
+
     views = {v.key: v for v in record_views(state.visible_data(), state.tolerances())}
     assert views["A2"].failed == ()  # now inside 30%
 
@@ -87,18 +94,32 @@ def test_the_verdict_column_populates_after_adding_a_criterion(state):
     from parity_plot.designer.records import record_views
 
     commit(state, ops.add(state.tolerances()))  # reltol 10%
-    rows = {r["key"]: r for r in to_rows(record_views(state.visible_data(), state.tolerances()))}
+    rows = {
+        r["key"]: r
+        for r in to_rows(record_views(state.visible_data(), state.tolerances()))
+    }
     assert rows["A2"]["verdict"] == "tolerance1"  # 25% off, fails 10%
-    assert rows["A1"]["verdict"] == "pass"        # 10% off exactly... boundary
+    assert rows["A1"]["verdict"] == "pass"  # 10% off exactly... boundary
 
 
 def test_edits_survive_a_save_and_reload(state, tmp_path):
     from parity_plot.designer.session import Session
 
     commit(state, ops.add(state.tolerances()))
-    commit(state, ops.update(state.tolerances(), "tolerance1",
-                             NamedTolerance(name="spec", reltol=0.25, color="purple",
-                                            style="shaded", label="customer limit")))
+    commit(
+        state,
+        ops.update(
+            state.tolerances(),
+            "tolerance1",
+            NamedTolerance(
+                name="spec",
+                reltol=0.25,
+                color="purple",
+                style="shaded",
+                label="customer limit",
+            ),
+        ),
+    )
 
     out = tmp_path / "parity.toml"
     Session().save(state.config, out)

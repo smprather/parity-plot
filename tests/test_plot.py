@@ -141,6 +141,7 @@ def test_parity_line_can_be_switched_off(data):
     """Disabling the parity entry replaces the old identity_line = false."""
     from dataclasses import replace
     from parity_plot.tolerances import parity
+
     fig = build_figure(data, PlotConfig(tolerances=(replace(parity(), enabled=False),)))
     assert trace_named(fig, "0% error") is None
 
@@ -285,17 +286,26 @@ def test_log_mode_places_the_identity_line_in_data_space():
 
 
 def test_stats_box_is_optional(data):
-    assert len(build_figure(data, PlotConfig(), StatsConfig(show=True)).layout.annotations) == 1
-    assert build_figure(data, PlotConfig(), StatsConfig(show=False)).layout.annotations == ()
+    assert (
+        len(build_figure(data, PlotConfig(), StatsConfig(show=True)).layout.annotations)
+        == 1
+    )
+    assert (
+        build_figure(data, PlotConfig(), StatsConfig(show=False)).layout.annotations
+        == ()
+    )
 
 
 def test_subtitle_reports_every_null_category():
     data = ParityData(
-        keys=["a"], x=[1.0], y=[1.0],
+        keys=["a"],
+        x=[1.0],
+        y=[1.0],
         missing_y=Unpaired(["b"], [2.0]),
         missing_x=Unpaired(["c"], [3.0]),
         n_dropped=4,
-        x_label="ref", y_label="meas",
+        x_label="ref",
+        y_label="meas",
     )
     subtitle = build_figure(data, PlotConfig()).layout.title.subtitle.text
     assert "1 paired" in subtitle
@@ -335,9 +345,7 @@ def test_symbol_sequence_assigns_symbols_in_first_seen_order():
     fig = build_figure(
         _grouped(),
         PlotConfig(
-            encoding=Encoding(
-                symbol_by="group", symbol_sequence=("square", "diamond")
-            )
+            encoding=Encoding(symbol_by="group", symbol_sequence=("square", "diamond"))
         ),
     )
     by_group = {t.name: t.marker.symbol for t in fig.data if t.name in ("r", "c")}
@@ -355,8 +363,9 @@ def test_public_api_accepts_sequences_and_paths(wide_csv):
     from_arrays = parity_plot(ref=[1.0, 2.0], test=[1.1, None], theme="light")
     assert from_arrays.layout.template.layout.paper_bgcolor == "#ffffff"
 
-    from_path = parity_plot(wide_csv, ref="wide.csv:reference",
-                           test="wide.csv:test", join="id")
+    from_path = parity_plot(
+        wide_csv, ref="wide.csv:reference", test="wide.csv:test", join="id"
+    )
     assert trace_named(from_path, "paired").x == (10.0, 30.0)
 
 
@@ -371,37 +380,62 @@ def test_public_api_rejects_mixed_and_unknown_arguments(wide_csv):
 
 def _scale_data():
     from parity_plot.data import ParityData
+
     return ParityData(
         keys=["a", "b", "c", "d"],
-        x=[1.0, 2.0, 3.0, 4.0], y=[1.1, 2.1, 2.9, 4.2],
+        x=[1.0, 2.0, 3.0, 4.0],
+        y=[1.1, 2.1, 2.9, 4.2],
         group=["r", "r", "c", "c"],
-        color_values=[10.0, 20.0, 30.0, 40.0], color_label="temp",
-        x_label="ref", y_label="test",
+        color_values=[10.0, 20.0, 30.0, 40.0],
+        color_label="temp",
+        x_label="ref",
+        y_label="test",
     )
+
 
 def test_colorscale_draws_one_colorbar():
     from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
-    fig = build_figure(_scale_data(),
-                       PlotConfig(encoding=Encoding(color_by="colorscale",
-                                                    symbol_by="group",
-                                                    colorscale="turbo")))
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(
+            encoding=Encoding(
+                color_by="colorscale", symbol_by="group", colorscale="turbo"
+            )
+        ),
+    )
     paired = [t for t in fig.data if t.mode == "markers" and t.marker.symbol]
     showscale = [t for t in paired if t.marker.showscale]
-    assert len(showscale) == 1                      # single shared colorbar
+    assert len(showscale) == 1  # single shared colorbar
     assert showscale[0].marker.colorbar.title.text == "temp"
-    cmins = {t.marker.cmin for t in paired if t.marker.color and not isinstance(t.marker.color, str)}
-    assert cmins == {10.0}                           # shared cmin across groups
+    cmins = {
+        t.marker.cmin
+        for t in paired
+        if t.marker.color and not isinstance(t.marker.color, str)
+    }
+    assert cmins == {10.0}  # shared cmin across groups
+
 
 def test_colorscale_partitions_by_symbol():
     from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
-    fig = build_figure(_scale_data(),
-                       PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group")))
-    paired = [t for t in fig.data if t.mode == "markers" and hasattr(t.marker, "colorscale") and t.marker.colorscale]
-    assert len(paired) == 2                           # one trace per symbol group
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group")),
+    )
+    paired = [
+        t
+        for t in fig.data
+        if t.mode == "markers"
+        and hasattr(t.marker, "colorscale")
+        and t.marker.colorscale
+    ]
+    assert len(paired) == 2  # one trace per symbol group
+
 
 def test_colorscale_without_column_raises():
     import pytest
@@ -409,18 +443,24 @@ def test_colorscale_without_column_raises():
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
     from parity_plot.data import ParityData
+
     d = ParityData(keys=["a"], x=[1.0], y=[1.0])
     with pytest.raises(ValueError, match="color_column"):
         build_figure(d, PlotConfig(encoding=Encoding(color_by="colorscale")))
+
 
 def test_colorbar_and_right_legend_do_not_overlap():
     from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
-    fig = build_figure(_scale_data(),
-                       PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group"),
-                                  legend="right"))
-    assert fig.layout.legend.x >= 1.15               # legend pushed right of the colorbar
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(
+            encoding=Encoding(color_by="colorscale", symbol_by="group"), legend="right"
+        ),
+    )
+    assert fig.layout.legend.x >= 1.15  # legend pushed right of the colorbar
     assert fig.layout.margin.r >= 260
 
 
@@ -435,8 +475,11 @@ def test_public_api_accepts_a_list_of_group_columns(tmp_path):
         encoding="utf-8",
     )
     fig = parity_plot(
-        str(f), ref=f"{f.name}:reference", test=f"{f.name}:test",
-        group=["package", "vendor"], encoding=Encoding(color_by="group"),
+        str(f),
+        ref=f"{f.name}:reference",
+        test=f"{f.name}:test",
+        group=["package", "vendor"],
+        encoding=Encoding(color_by="group"),
     )
     marker_names = {t.name for t in fig.data if t.mode == "markers"}
     assert marker_names == {"SMD, Acme", "DIP, Beta"}

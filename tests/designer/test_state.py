@@ -19,9 +19,10 @@ def test_figure_comes_from_the_cli_code_path(state):
     """The preview must be the CLI's own figure, or the two can drift."""
     from parity_plot.plot import build_figure
 
-    assert state.figure().to_dict() == build_figure(
-        state.data, state.config.plot, state.config.stats
-    ).to_dict()
+    assert (
+        state.figure().to_dict()
+        == build_figure(state.data, state.config.plot, state.config.stats).to_dict()
+    )
 
 
 def test_update_applies_a_setting(state):
@@ -92,8 +93,8 @@ def test_reset_fields_reverts_x_label_to_none():
     st = DesignerState(config=config)
     st.reset_fields("plot", "x_label")
 
-    assert st.config.plot.x_label is None      # back to default, not "custom"
-    assert st.config.plot.title == "Keep me"   # siblings untouched
+    assert st.config.plot.x_label is None  # back to default, not "custom"
+    assert st.config.plot.title == "Keep me"  # siblings untouched
 
 
 def test_reset_fields_reverts_join_to_none():
@@ -101,7 +102,14 @@ def test_reset_fields_reverts_join_to_none():
     from parity_plot.designer.state import DesignerState
 
     config = ParityConfig.from_dict(
-        {"data": {"files": ["d.csv"], "ref": "d.csv:a", "test": "d.csv:b", "join": "id"}}
+        {
+            "data": {
+                "files": ["d.csv"],
+                "ref": "d.csv:a",
+                "test": "d.csv:b",
+                "join": "id",
+            }
+        }
     )
     st = DesignerState(config=config)
     st.reset_fields("data", "join")

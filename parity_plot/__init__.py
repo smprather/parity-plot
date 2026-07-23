@@ -1,9 +1,9 @@
 """45-degree parity plots, as a Python package and a CLI.
 
-    from parity_plot import parity_plot
+from parity_plot import parity_plot
 
-    fig = parity_plot("data/example.csv", x="reference", y="measured")
-    fig.show()
+fig = parity_plot("data/example.csv", x="reference", y="measured")
+fig.show()
 """
 
 from __future__ import annotations

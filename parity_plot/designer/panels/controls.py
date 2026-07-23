@@ -44,18 +44,71 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
     ControlSpec("plot", "x_label", "X label", "text", "Defaults to the column name."),
     ControlSpec("plot", "y_label", "Y label", "text", "Defaults to the column name."),
     ControlSpec("plot", "theme", "Theme", "choice", "Colour theme.", THEMES),
-    ControlSpec("plot", "legend", "Legend", "choice", "Where the legend sits.", LEGEND_POSITIONS),
-    ControlSpec("plot", "nulls", "Unpaired records", "choice", "Rug ticks, or hidden.", NULL_MODES),
+    ControlSpec(
+        "plot", "legend", "Legend", "choice", "Where the legend sits.", LEGEND_POSITIONS
+    ),
+    ControlSpec(
+        "plot",
+        "nulls",
+        "Unpaired records",
+        "choice",
+        "Rug ticks, or hidden.",
+        NULL_MODES,
+    ),
     ControlSpec("plot", "log", "Log axes", "switch", "Logarithmic x and y."),
-    ControlSpec("plot", "equal_axes", "Lock 45°", "switch", "Share one range and a 1:1 pixel scale."),
+    ControlSpec(
+        "plot",
+        "equal_axes",
+        "Lock 45°",
+        "switch",
+        "Share one range and a 1:1 pixel scale.",
+    ),
     # --- Statistics -------------------------------------------------------
-    ControlSpec("stats", "show", "Show statistics", "switch", "Display the metrics box.", group="Statistics"),
-    ControlSpec("stats", "metrics", "Metrics", "text", "Comma-separated: n, r2, rmse, mae, bias.", group="Statistics"),
+    ControlSpec(
+        "stats",
+        "show",
+        "Show statistics",
+        "switch",
+        "Display the metrics box.",
+        group="Statistics",
+    ),
+    ControlSpec(
+        "stats",
+        "metrics",
+        "Metrics",
+        "text",
+        "Comma-separated: n, r2, rmse, mae, bias.",
+        group="Statistics",
+    ),
     # --- Output -----------------------------------------------------------
-    ControlSpec("output", "path", "Output file", "text", "Where `plot` writes to.", group="Output"),
-    ControlSpec("output", "format", "Format", "choice", "html needs nothing; the rest need kaleido.", OUTPUT_FORMATS, group="Output"),
-    ControlSpec("output", "width", "Width", "number", "Figure width in pixels.", group="Output"),
-    ControlSpec("output", "height", "Height", "number", "Figure height in pixels.", group="Output"),
+    ControlSpec(
+        "output",
+        "path",
+        "Output file",
+        "text",
+        "Where `plot` writes to.",
+        group="Output",
+    ),
+    ControlSpec(
+        "output",
+        "format",
+        "Format",
+        "choice",
+        "html needs nothing; the rest need kaleido.",
+        OUTPUT_FORMATS,
+        group="Output",
+    ),
+    ControlSpec(
+        "output", "width", "Width", "number", "Figure width in pixels.", group="Output"
+    ),
+    ControlSpec(
+        "output",
+        "height",
+        "Height",
+        "number",
+        "Figure height in pixels.",
+        group="Output",
+    ),
 )
 
 GROUPS = ("Appearance", "Statistics", "Output")
@@ -97,7 +150,9 @@ def build_controls(state: DesignerState, on_change: Callable[[], None]) -> None:
                 _build_one(state, spec, on_change)
 
 
-def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], None]) -> None:
+def _build_one(
+    state: DesignerState, spec: ControlSpec, on_change: Callable[[], None]
+) -> None:
     from nicegui import ui
 
     current = getattr(getattr(state.config, spec.section), spec.key)
@@ -113,16 +168,24 @@ def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], 
         on_change()
 
     if spec.kind == "switch":
-        ui.switch(spec.label, value=bool(current), on_change=lambda e: apply(e.value)).tooltip(spec.help)
+        ui.switch(
+            spec.label, value=bool(current), on_change=lambda e: apply(e.value)
+        ).tooltip(spec.help)
     elif spec.kind == "choice":
-        ui.select(list(spec.choices), value=current, label=spec.label,
-                  on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.select(
+            list(spec.choices),
+            value=current,
+            label=spec.label,
+            on_change=lambda e: apply(e.value),
+        ).classes("w-full").tooltip(spec.help)
     elif spec.kind == "number":
-        ui.number(spec.label, value=current,
-                  on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.number(
+            spec.label, value=current, on_change=lambda e: apply(e.value)
+        ).classes("w-full").tooltip(spec.help)
     else:
         ui.input(
-            spec.label, value=_as_text(current),
+            spec.label,
+            value=_as_text(current),
             placeholder=_placeholder(spec, state.data),
             on_change=lambda e: apply(e.value),
         ).classes("w-full").tooltip(spec.help)

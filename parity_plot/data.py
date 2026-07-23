@@ -116,7 +116,9 @@ def load(cfg: DataConfig) -> ParityData:
         color_label=color_col.name if color_col else "",
     )
     if cfg.join:
-        _load_joined(builder, src, ref_col, test_col, group_lookup, color_lookup, cfg.join, na)
+        _load_joined(
+            builder, src, ref_col, test_col, group_lookup, color_lookup, cfg.join, na
+        )
     else:
         _load_by_order(builder, ref_col, test_col, group_lookup, color_lookup, na)
     return builder.build()
@@ -253,8 +255,12 @@ def _load_by_order(
         tv = test_col.values[i] if i < len(test_col.values) else None
         builder.add(
             str(i),
-            _parse(rv, na, ref_col.file, i + 2, ref_col.name) if rv is not None else None,
-            _parse(tv, na, test_col.file, i + 2, test_col.name) if tv is not None else None,
+            _parse(rv, na, ref_col.file, i + 2, ref_col.name)
+            if rv is not None
+            else None,
+            _parse(tv, na, test_col.file, i + 2, test_col.name)
+            if tv is not None
+            else None,
             group=group_lookup(i) if group_lookup else None,
             color=color_lookup(i) if color_lookup else None,
         )
@@ -275,8 +281,12 @@ def _load_joined(
         tline, traw = test_by.get(key, (0, None))
         builder.add(
             key,
-            _parse(rraw, na, ref_col.file, rline, ref_col.name) if rraw is not None else None,
-            _parse(traw, na, test_col.file, tline, test_col.name) if traw is not None else None,
+            _parse(rraw, na, ref_col.file, rline, ref_col.name)
+            if rraw is not None
+            else None,
+            _parse(traw, na, test_col.file, tline, test_col.name)
+            if traw is not None
+            else None,
             group=group_lookup(key) if group_lookup else None,
             color=color_lookup(key) if color_lookup else None,
         )

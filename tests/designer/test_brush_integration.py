@@ -15,9 +15,7 @@ from parity_plot.designer.state import DesignerState
 from parity_plot.designer.table_rows import to_rows
 from parity_plot.tolerances import NamedTolerance
 
-WIDE = "".join(
-    f"A{i},{float(i)},{float(i) * 1.02}\n" for i in range(1, 101)
-)
+WIDE = "".join(f"A{i},{float(i)},{float(i) * 1.02}\n" for i in range(1, 101))
 
 
 @pytest.fixture
@@ -25,8 +23,12 @@ def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "ramp.csv"
     csv.write_text("id,reference,test\n" + WIDE, encoding="utf-8")
     config = ParityConfig().merge(
-        data={"files": (csv,), "ref": "ramp.csv:reference",
-              "test": "ramp.csv:test", "join": "id"}
+        data={
+            "files": (csv,),
+            "ref": "ramp.csv:reference",
+            "test": "ramp.csv:test",
+            "join": "id",
+        }
     )
     return DesignerState(config=config, data=load(config.data))
 
@@ -82,7 +84,10 @@ def test_brushing_composes_with_the_failure_filter(state):
     state.filters = FilterSet(outside_tolerance_only=True)
     assert state.counts() == (100, 100)
 
-    apply_brush(state, {"range": {"x": [40.0, 60.0]}},)
+    apply_brush(
+        state,
+        {"range": {"x": [40.0, 60.0]}},
+    )
 
     assert state.filters.outside_tolerance_only is True
     assert state.counts() == (21, 100)

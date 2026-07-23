@@ -15,7 +15,9 @@ def write(tmp_path: Path, name: str, text: str) -> Path:
 
 
 def test_peek_reads_headers_and_one_sample_row(tmp_path):
-    path = write(tmp_path, "a.csv", "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n")
+    path = write(
+        tmp_path, "a.csv", "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n"
+    )
 
     result = peek(path)
 
@@ -65,8 +67,14 @@ def test_peek_reports_an_empty_file(tmp_path):
 @pytest.mark.parametrize(
     "columns, expected",
     [
-        (["id", "reference", "measured"], {"key": "id", "x": "reference", "y": "measured"}),
-        (["name", "expected", "actual"], {"key": "name", "x": "expected", "y": "actual"}),
+        (
+            ["id", "reference", "measured"],
+            {"key": "id", "x": "reference", "y": "measured"},
+        ),
+        (
+            ["name", "expected", "actual"],
+            {"key": "name", "x": "expected", "y": "actual"},
+        ),
         (["part", "golden", "dut"], {"key": "part", "x": "golden", "y": "dut"}),
         (["serial", "ref", "meas"], {"key": "serial", "x": "ref", "y": "meas"}),
     ],

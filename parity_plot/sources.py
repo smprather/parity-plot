@@ -30,9 +30,13 @@ class Sources:
     tables: dict[Path, dict[str, list[str]]] = field(default_factory=dict)
 
     def columns(self) -> list[str]:
-        return [f"{path.name}:{col}" for path in self.order for col in self.tables[path]]
+        return [
+            f"{path.name}:{col}" for path in self.order for col in self.tables[path]
+        ]
 
-    def numeric_columns(self, na_values: Sequence[str] = DEFAULT_NA_VALUES) -> list[str]:
+    def numeric_columns(
+        self, na_values: Sequence[str] = DEFAULT_NA_VALUES
+    ) -> list[str]:
         na = _na_set(na_values)
         out = []
         for path in self.order:
@@ -87,7 +91,7 @@ def open_sources(
     order = tuple(Path(p) for p in paths)
     tables: dict[Path, dict[str, list[str]]] = {}
     for path in order:
-        rows = _read_rows(path)          # raises DataError for missing/unreadable
+        rows = _read_rows(path)  # raises DataError for missing/unreadable
         if not rows:
             raise DataError(f"{path}: file is empty")
         header = list(rows[0][1].keys())

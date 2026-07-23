@@ -52,15 +52,24 @@ def test_parses_the_new_shape(tmp_path: Path):
 
 def test_join_and_group_are_optional(tmp_path: Path):
     p = tmp_path / "c.toml"
-    p.write_text('[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n', encoding="utf-8")
+    p.write_text(
+        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n',
+        encoding="utf-8",
+    )
     d = ParityConfig.from_toml(p).data
     assert d.join is None and d.group == ()
 
 
-@pytest.mark.parametrize("key, value", [
-    ("paths", '["d.csv"]'), ("x", '"reference"'), ("y", '"measured"'),
-    ("key", '"id"'), ("value", '"value"'),
-])
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("paths", '["d.csv"]'),
+        ("x", '"reference"'),
+        ("y", '"measured"'),
+        ("key", '"id"'),
+        ("value", '"value"'),
+    ],
+)
 def test_retired_data_keys_error_with_guidance(tmp_path: Path, key, value):
     p = tmp_path / "c.toml"
     p.write_text(f"[data]\n{key} = {value}\n", encoding="utf-8")

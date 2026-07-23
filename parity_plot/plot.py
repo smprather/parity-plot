@@ -66,8 +66,7 @@ def build_figure(
     is_scale = plot.encoding.color_by == "colorscale"
     if is_scale and data.color_values is None:
         raise ValueError(
-            "color_by=colorscale needs a numeric colour column; set "
-            "[data].color_column"
+            "color_by=colorscale needs a numeric colour column; set [data].color_column"
         )
 
     if plot.log:
@@ -90,7 +89,9 @@ def build_figure(
 
 def _drop_non_positive(data: ParityData) -> ParityData:
     """Remove values a log axis cannot show, reporting how many were lost."""
-    colors = data.color_values if data.color_values is not None else [None] * data.n_paired
+    colors = (
+        data.color_values if data.color_values is not None else [None] * data.n_paired
+    )
     paired = [
         (k, xi, yi, ci)
         for k, xi, yi, ci in zip(data.keys, data.x, data.y, colors)
@@ -261,7 +262,9 @@ def _add_paired(
     """
     scatter = go.Scattergl if data.n_paired > _WEBGL_THRESHOLD else go.Scatter
     diffs = [yi - xi for xi, yi in zip(data.x, data.y)]
-    verdicts = [verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)]
+    verdicts = [
+        verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)
+    ]
     passes = [failures(tolerances, xi, yi) == () for xi, yi in zip(data.x, data.y)]
 
     specs = partition(data.n_paired, passes, data.group, encoding)
@@ -292,8 +295,12 @@ def _add_paired(
             if i == 0:
                 marker["colorbar"] = dict(
                     title=dict(text=data.color_label),
-                    x=1.02, xanchor="left",
-                    thickness=14, len=0.6, y=0.5, yanchor="middle",
+                    x=1.02,
+                    xanchor="left",
+                    thickness=14,
+                    len=0.6,
+                    y=0.5,
+                    yanchor="middle",
                 )
         else:
             marker = dict(
@@ -362,9 +369,7 @@ def _resolve_symbols(specs: Sequence, encoding: Encoding) -> dict[str, str]:
             if spec.symbol_key not in distinct:
                 distinct.append(spec.symbol_key)
         sequence = encoding.symbol_sequence or DEFAULT_SYMBOLS
-        return {
-            key: sequence[i % len(sequence)] for i, key in enumerate(distinct)
-        }
+        return {key: sequence[i % len(sequence)] for i, key in enumerate(distinct)}
     return {spec.symbol_key: spec.symbol_key for spec in specs}
 
 

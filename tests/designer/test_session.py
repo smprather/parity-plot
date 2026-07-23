@@ -102,10 +102,13 @@ def test_config_choices_returns_only_valid_parity_configs(tmp_path):
     from parity_plot.designer.session import config_choices
 
     (tmp_path / "good.toml").write_text(
-        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n', encoding="utf-8"
+        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n',
+        encoding="utf-8",
     )
     # parses but names no files -> not a parity-plot config
-    (tmp_path / "nofiles.toml").write_text('[plot]\ntheme = "light"\n', encoding="utf-8")
+    (tmp_path / "nofiles.toml").write_text(
+        '[plot]\ntheme = "light"\n', encoding="utf-8"
+    )
     # not even valid TOML
     (tmp_path / "broken.toml").write_text("this = = nonsense\n", encoding="utf-8")
     # unrelated extension
@@ -135,12 +138,13 @@ def test_autosave_writes_when_bound(csv, tmp_path):
 
     assert written == out
     from parity_plot.config import ParityConfig
+
     assert ParityConfig.from_toml(out).plot.theme == "light"
     assert not session.is_dirty(edited)  # disk now matches
 
 
 def test_autosave_is_a_noop_when_unbound(csv):
-    session, config, _ = Session.start((), None)   # no file bound
+    session, config, _ = Session.start((), None)  # no file bound
     assert session.autosave(config.merge(plot={"theme": "light"})) is None
 
 

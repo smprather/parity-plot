@@ -17,13 +17,7 @@ from parity_plot.tolerances import NamedTolerance
 SPEC_5PCT = [NamedTolerance(name="spec", reltol=0.05)]
 
 # A1 +10%, A2 +0.5%, A3 +25%, A4 unpaired
-WIDE = (
-    "id,reference,test\n"
-    "A1,10.0,11.0\n"
-    "A2,100.0,100.5\n"
-    "A3,40.0,50.0\n"
-    "A4,70.0,\n"
-)
+WIDE = "id,reference,test\nA1,10.0,11.0\nA2,100.0,100.5\nA3,40.0,50.0\nA4,70.0,\n"
 
 
 def with_spec(state: DesignerState) -> DesignerState:
@@ -42,8 +36,12 @@ def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "wide.csv"
     csv.write_text(WIDE, encoding="utf-8")
     config = ParityConfig().merge(
-        data={"files": (csv,), "ref": "wide.csv:reference",
-              "test": "wide.csv:test", "join": "id"}
+        data={
+            "files": (csv,),
+            "ref": "wide.csv:reference",
+            "test": "wide.csv:test",
+            "join": "id",
+        }
     )
     return DesignerState(config=config, data=load(config.data))
 

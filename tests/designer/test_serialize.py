@@ -84,7 +84,9 @@ def test_a_key_absent_from_the_file_is_written_even_at_its_default():
 def test_none_values_are_removed_not_written_as_null():
     # `abstol` lives on NamedTolerance now; a tolerance with only a reltol
     # writes no `abstol` key, and reloading fills it back to None.
-    existing = '[plot]\n[[plot.tolerances]]\nname = "spec"\nabstol = 2.0\nreltol = 0.1\n'
+    existing = (
+        '[plot]\n[[plot.tolerances]]\nname = "spec"\nabstol = 2.0\nreltol = 0.1\n'
+    )
     config = ParityConfig.from_dict(
         {"plot": {"tolerances": [{"name": "spec", "reltol": 0.1}]}}
     )
@@ -169,14 +171,18 @@ def test_only_non_default_fields_are_written_per_entry():
     assert len(aot) == 1
     assert set(aot[0].keys()) == {"name", "reltol"}
 
+
 def test_symbol_sequence_round_trips(tmp_path: Path):
     from parity_plot.encoding import Encoding
 
     config = ParityConfig().merge(
-        plot={"encoding": Encoding(
-            color_by="pass-fail", symbol_by="group",
-            symbol_sequence=("square", "diamond", "x"),
-        )}
+        plot={
+            "encoding": Encoding(
+                color_by="pass-fail",
+                symbol_by="group",
+                symbol_sequence=("square", "diamond", "x"),
+            )
+        }
     )
     path = tmp_path / "out.toml"
     path.write_text(config_to_toml(config), encoding="utf-8")
@@ -194,8 +200,11 @@ def test_colorscale_round_trips_when_non_default(tmp_path):
     from parity_plot.encoding import Encoding
 
     config = ParityConfig().merge(
-        plot={"encoding": Encoding(color_by="colorscale", symbol_by="group",
-                                   colorscale="turbo")}
+        plot={
+            "encoding": Encoding(
+                color_by="colorscale", symbol_by="group", colorscale="turbo"
+            )
+        }
     )
     text = config_to_toml(config)
     assert "colorscale" in text and "turbo" in text

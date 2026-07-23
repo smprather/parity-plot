@@ -85,9 +85,9 @@ def test_visible_records_are_judged_against_the_current_tolerances(state):
     with_spec(state, reltol=0.05)
     verdicts = {v.key: v.failed for v in state.visible_records()}
 
-    assert verdicts["a"] == ("spec",)   # 10% off
-    assert verdicts["b"] == ()          # 1% off, judged and passed
-    assert verdicts["d"] is None        # unpaired, never judged
+    assert verdicts["a"] == ("spec",)  # 10% off
+    assert verdicts["b"] == ()  # 1% off, judged and passed
+    assert verdicts["d"] is None  # unpaired, never judged
 
 
 def test_filters_do_not_touch_the_config(state):

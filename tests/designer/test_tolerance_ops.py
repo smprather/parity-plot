@@ -90,6 +90,7 @@ def test_normalise_keeps_a_customised_parity(tols):
 
 # --- the editor's percent-checkbox conversion (panel helpers) ---
 
+
 def test_reltol_percent_field_round_trips():
     from parity_plot.designer.panels.tolerances import (
         _reltol_display,

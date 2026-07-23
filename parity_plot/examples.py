@@ -147,10 +147,16 @@ def generate(spec: ExampleSpec | None = None, **overrides) -> list[Record]:
         package = rng.choice(_PACKAGES)
         vendor = rng.choice(_VENDORS)
         temperature = rng.uniform(-40.0, 125.0)
-        records.append(Record(
-            key=f"S{i:04d}", reference=x, measured=y,
-            package=package, vendor=vendor, temperature=temperature,
-        ))
+        records.append(
+            Record(
+                key=f"S{i:04d}",
+                reference=x,
+                measured=y,
+                package=package,
+                vendor=vendor,
+                temperature=temperature,
+            )
+        )
 
     # Carve the null records out of disjoint index sets so each case is
     # reachable independently.
@@ -161,7 +167,9 @@ def generate(spec: ExampleSpec | None = None, **overrides) -> list[Record]:
 
     for i in drop_y:
         r = records[i]
-        records[i] = Record(r.key, r.reference, None, r.package, r.vendor, r.temperature)
+        records[i] = Record(
+            r.key, r.reference, None, r.package, r.vendor, r.temperature
+        )
     for i in drop_x:
         r = records[i]
         records[i] = Record(r.key, None, r.measured, r.package, r.vendor, r.temperature)
@@ -195,10 +203,16 @@ def write_wide(records: list[Record], path: str | Path) -> Path:
         writer = csv.writer(fh, lineterminator="\n")
         writer.writerow(["id", "reference", "test", "package", "vendor", "temperature"])
         for rec in records:
-            writer.writerow([
-                rec.key, _fmt(rec.reference), _fmt(rec.measured),
-                rec.package, rec.vendor, _fmt(rec.temperature),
-            ])
+            writer.writerow(
+                [
+                    rec.key,
+                    _fmt(rec.reference),
+                    _fmt(rec.measured),
+                    rec.package,
+                    rec.vendor,
+                    _fmt(rec.temperature),
+                ]
+            )
     return path
 
 
@@ -224,7 +238,15 @@ def write_pair(
                 if value is None:
                     continue
                 if attr == "reference":
-                    writer.writerow([rec.key, _fmt(value), rec.package, rec.vendor, _fmt(rec.temperature)])
+                    writer.writerow(
+                        [
+                            rec.key,
+                            _fmt(value),
+                            rec.package,
+                            rec.vendor,
+                            _fmt(rec.temperature),
+                        ]
+                    )
                 else:
                     writer.writerow([rec.key, _fmt(value)])
     return x_path, y_path

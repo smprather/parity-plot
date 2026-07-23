@@ -46,18 +46,22 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
         with ui.row().classes("w-full items-center gap-2 no-wrap"):
             ui.label("Colour by").classes("w-24 text-sm")
             color_by = ui.select(
-                {c: _CHANNEL_LABELS[c] for c in COLOR_CHANNELS}, value=enc.color_by,
+                {c: _CHANNEL_LABELS[c] for c in COLOR_CHANNELS},
+                value=enc.color_by,
                 on_change=lambda: commit(),
             ).classes("grow")
             color_pick = ui.select(
-                list(COLOR_TOKENS), value=enc.color, on_change=lambda: commit(),
+                list(COLOR_TOKENS),
+                value=enc.color,
+                on_change=lambda: commit(),
             ).classes("w-28")
             # The fixed colour only matters when the channel is "single".
             color_pick.bind_visibility_from(color_by, "value", value="single")
             from plotly.colors import named_colorscales
 
             scale_pick = ui.select(
-                sorted(named_colorscales()), value=enc.colorscale,
+                sorted(named_colorscales()),
+                value=enc.colorscale,
                 on_change=lambda: commit(),
             ).classes("w-32")
             scale_pick.bind_visibility_from(color_by, "value", value="colorscale")
@@ -65,11 +69,14 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
         with ui.row().classes("w-full items-center gap-2 no-wrap"):
             ui.label("Symbol by").classes("w-24 text-sm")
             symbol_by = ui.select(
-                {c: _CHANNEL_LABELS[c] for c in SYMBOL_CHANNELS}, value=enc.symbol_by,
+                {c: _CHANNEL_LABELS[c] for c in SYMBOL_CHANNELS},
+                value=enc.symbol_by,
                 on_change=lambda: commit(),
             ).classes("grow")
             symbol_pick = ui.select(
-                list(SYMBOL_CATALOG), value=enc.symbol, on_change=lambda: commit(),
+                list(SYMBOL_CATALOG),
+                value=enc.symbol,
+                on_change=lambda: commit(),
             ).classes("w-28")
             symbol_pick.bind_visibility_from(symbol_by, "value", value="single")
 
@@ -77,13 +84,17 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
         # an empty selection falls back to the built-in default cycle.
         with ui.row().classes("w-full items-center gap-2 no-wrap"):
             ui.label("Symbols").classes("w-24 text-sm")
-            seq_pick = ui.select(
-                list(SYMBOL_CATALOG),
-                value=list(enc.symbol_sequence),
-                multiple=True,
-                label="cycle for groups (blank = default)",
-                on_change=lambda: commit(),
-            ).classes("grow").props("use-chips")
+            seq_pick = (
+                ui.select(
+                    list(SYMBOL_CATALOG),
+                    value=list(enc.symbol_sequence),
+                    multiple=True,
+                    label="cycle for groups (blank = default)",
+                    on_change=lambda: commit(),
+                )
+                .classes("grow")
+                .props("use-chips")
+            )
             seq_pick.bind_visibility_from(symbol_by, "value", value="group")
 
         ui.label(

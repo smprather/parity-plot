@@ -22,7 +22,7 @@ def config_choices(directory: Path) -> list[Path]:
     for path in sorted(Path(directory).glob("*.toml")):
         try:
             config = ParityConfig.from_toml(path)
-        except (ConfigError, ValueError, OSError):
+        except ConfigError, ValueError, OSError:
             continue
         if config.data.files:
             out.append(path)

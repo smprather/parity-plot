@@ -40,9 +40,15 @@ def _state_with(csv: Path, plot: dict) -> DesignerState:
     they build the config directly through `from_dict`.
     """
     config = ParityConfig.from_dict(
-        {"data": {"files": [str(csv)], "ref": "wide.csv:reference",
-                  "test": "wide.csv:test", "join": "id"},
-         "plot": plot}
+        {
+            "data": {
+                "files": [str(csv)],
+                "ref": "wide.csv:reference",
+                "test": "wide.csv:test",
+                "join": "id",
+            },
+            "plot": plot,
+        }
     )
     state = DesignerState(config=config, data=load(config.data))
     return state
@@ -257,6 +263,7 @@ def test_colorscale_multigroup_designer_matches_cli(tmp_path: Path):
 
     assert rendered.to_dict() == preview.to_dict()
 
+
 def test_autosave_output_round_trips_identically(csv, tmp_path: Path):
     """What auto-save writes must reload to an identical render."""
     out = tmp_path / "parity.toml"
@@ -265,10 +272,10 @@ def test_autosave_output_round_trips_identically(csv, tmp_path: Path):
         f'ref = "wide.csv:reference"\ntest = "wide.csv:test"\n',
         encoding="utf-8",
     )
-    session, config, data = Session.start((), out)   # bound to the file
+    session, config, data = Session.start((), out)  # bound to the file
     state = DesignerState(config=config, data=data)
     edited = state.config.merge(plot={"theme": "light"})
-    written = session.autosave(edited)               # writes to the bound file
+    written = session.autosave(edited)  # writes to the bound file
 
     from_disk = ParityConfig.from_toml(written)
     preview = build_figure(load(edited.data), edited.plot, edited.stats)

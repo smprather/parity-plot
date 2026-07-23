@@ -68,7 +68,11 @@ class DesignerState:
         # An incomplete source -- no files, or no ref/test yet -- is the empty
         # state, not an error: the user removed the last file or has not finished
         # picking columns. Go blank cleanly rather than keeping stale data.
-        if not candidate.data.files or not candidate.data.ref or not candidate.data.test:
+        if (
+            not candidate.data.files
+            or not candidate.data.ref
+            or not candidate.data.test
+        ):
             self.config = candidate
             self.data = None
             self.selection = None
@@ -86,7 +90,10 @@ class DesignerState:
         self.config = candidate
         self.data = data
         self.last_error = None
-        if self.selection is not None and find_record(record_views(data), self.selection) is None:
+        if (
+            self.selection is not None
+            and find_record(record_views(data), self.selection) is None
+        ):
             # The pinned record does not exist in the new dataset.
             self.selection = None
         return True
@@ -171,7 +178,9 @@ class DesignerState:
         against.
         """
         try:
-            figure = build_figure(self.visible_data(), self.config.plot, self.config.stats)
+            figure = build_figure(
+                self.visible_data(), self.config.plot, self.config.stats
+            )
         except (ConfigError, ValueError) as exc:
             self.last_error = str(exc)
             if self._last_figure is None:

@@ -84,10 +84,14 @@ def build_tolerances(
 
     if abstol is not None or reltol is not None:
         try:
-            built.append(NamedTolerance(
-                name=next_name(), abstol=abstol, reltol=reltol,
-                style=band_style or "lines",
-            ))
+            built.append(
+                NamedTolerance(
+                    name=next_name(),
+                    abstol=abstol,
+                    reltol=reltol,
+                    style=band_style or "lines",
+                )
+            )
         except ToleranceError as exc:
             raise TolSpecError(str(exc)) from None
 

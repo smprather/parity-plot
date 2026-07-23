@@ -55,7 +55,9 @@ def apply_brush(state: DesignerState, args: dict | None, *refreshers) -> None:
             refresh()
 
 
-def build_app(session: Session, config: ParityConfig, data: ParityData | None) -> DesignerState:
+def build_app(
+    session: Session, config: ParityConfig, data: ParityData | None
+) -> DesignerState:
     """Register the designer page and return the state it drives."""
     from nicegui import ui
 
@@ -97,10 +99,14 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
             ui.label("parity-plot designer").classes("text-lg font-medium")
             with ui.row().classes("items-center gap-2"):
                 config_pick = ui.select(
-                    choice_options(), value=current_choice(), label="Config",
+                    choice_options(),
+                    value=current_choice(),
+                    label="Config",
                     on_change=lambda e: open_named(e.value),
                 ).classes("w-56")
-                save_as_btn = ui.button("Save As…", on_click=lambda: ask_where_to_save())
+                save_as_btn = ui.button(
+                    "Save As…", on_click=lambda: ask_where_to_save()
+                )
                 ui.button("New Design", on_click=lambda: new_design())
 
         with ui.row().classes("w-full no-wrap gap-4"):
@@ -136,7 +142,9 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
                     apply_brush(state, event.args, refresh)
 
                 plot_view.on("plotly_selected", on_brush)
-                plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
+                plot_view.on(
+                    "plotly_deselect", lambda _: apply_brush(state, None, refresh)
+                )
 
         def set_status(message: str, kind: str = "info") -> None:
             """Write the persistent status bar. kind: error | warn | ok | info."""
@@ -234,7 +242,10 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
                 with ui.row():
                     ui.button(
                         "Cancel",
-                        on_click=lambda: (dialog.close(), on_cancel() if on_cancel else None),
+                        on_click=lambda: (
+                            dialog.close(),
+                            on_cancel() if on_cancel else None,
+                        ),
                     )
                     ui.button(
                         "Discard",
@@ -259,7 +270,9 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
         def ask_where_to_save() -> None:
             with ui.dialog() as dialog, ui.card():
                 ui.label("Save configuration as")
-                target = ui.input("Path", value=str(sess["session"].config_path or "parity.toml"))
+                target = ui.input(
+                    "Path", value=str(sess["session"].config_path or "parity.toml")
+                )
                 with ui.row():
                     ui.button("Cancel", on_click=dialog.close)
                     ui.button(

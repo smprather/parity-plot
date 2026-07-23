@@ -140,21 +140,105 @@ def plot(config: Path, output: Path | None, open_browser: bool) -> None:
 
 
 @cli.command()
-@click.option("--out-dir", type=click.Path(file_okay=False, path_type=Path), default=Path("data"), show_default=True, help="Directory to write the CSVs into.")
-@click.option("-n", "--count", type=int, default=1000, show_default=True, help="Number of records.")
-@click.option("--seed", type=int, default=17, show_default=True, help="Random seed. The same seed always gives the same data.")
-@click.option("--x-min", type=float, default=10.0, show_default=True, help="Low end of the reference range (central 95% of draws).")
-@click.option("--x-max", type=float, default=100.0, show_default=True, help="High end of the reference range.")
-@click.option("--bias", type=float, default=0.015, show_default=True, help="Systematic slope error as a fraction, e.g. `0.015` reads 1.5% high.")
-@click.option("--noise", type=float, default=0.06, show_default=True, help="Gaussian scatter proportional to the value, as a fraction.")
-@click.option("--noise-floor", type=float, default=0.4, show_default=True, help="Gaussian scatter in absolute units, which dominates near zero.")
-@click.option("--outliers", type=float, default=0.01, show_default=True, help="Fraction of records thrown far off the line.  Use `0` for none.")
-@click.option("--missing-y", type=int, help="Records with no measured value.  [default: 1.5% of -n]")
-@click.option("--missing-x", type=int, help="Records with no reference value.  [default: 1.2% of -n]")
-@click.option("--both-null", type=int, help="Records missing from both datasets.  [default: 0.2% of -n]")
-@click.option("--plot/--no-plot", default=True, show_default=True, help="Also render the generated data.")
-@click.option("-o", "--output", type=click.Path(dir_okay=False, path_type=Path), default=Path("parity.html"), show_default=True, help="Where to write the plot.")
-@click.option("--open-browser/--no-open-browser", "open_browser", default=True, help="Open the plot in the default browser after writing.  [default: open]")
+@click.option(
+    "--out-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    default=Path("data"),
+    show_default=True,
+    help="Directory to write the CSVs into.",
+)
+@click.option(
+    "-n",
+    "--count",
+    type=int,
+    default=1000,
+    show_default=True,
+    help="Number of records.",
+)
+@click.option(
+    "--seed",
+    type=int,
+    default=17,
+    show_default=True,
+    help="Random seed. The same seed always gives the same data.",
+)
+@click.option(
+    "--x-min",
+    type=float,
+    default=10.0,
+    show_default=True,
+    help="Low end of the reference range (central 95% of draws).",
+)
+@click.option(
+    "--x-max",
+    type=float,
+    default=100.0,
+    show_default=True,
+    help="High end of the reference range.",
+)
+@click.option(
+    "--bias",
+    type=float,
+    default=0.015,
+    show_default=True,
+    help="Systematic slope error as a fraction, e.g. `0.015` reads 1.5% high.",
+)
+@click.option(
+    "--noise",
+    type=float,
+    default=0.06,
+    show_default=True,
+    help="Gaussian scatter proportional to the value, as a fraction.",
+)
+@click.option(
+    "--noise-floor",
+    type=float,
+    default=0.4,
+    show_default=True,
+    help="Gaussian scatter in absolute units, which dominates near zero.",
+)
+@click.option(
+    "--outliers",
+    type=float,
+    default=0.01,
+    show_default=True,
+    help="Fraction of records thrown far off the line.  Use `0` for none.",
+)
+@click.option(
+    "--missing-y",
+    type=int,
+    help="Records with no measured value.  [default: 1.5% of -n]",
+)
+@click.option(
+    "--missing-x",
+    type=int,
+    help="Records with no reference value.  [default: 1.2% of -n]",
+)
+@click.option(
+    "--both-null",
+    type=int,
+    help="Records missing from both datasets.  [default: 0.2% of -n]",
+)
+@click.option(
+    "--plot/--no-plot",
+    default=True,
+    show_default=True,
+    help="Also render the generated data.",
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("parity.html"),
+    show_default=True,
+    help="Where to write the plot.",
+)
+@click.option(
+    "--open-browser/--no-open-browser",
+    "open_browser",
+    default=True,
+    help="Open the plot in the default browser after writing.  [default: open]",
+)
 def example(
     out_dir: Path,
     count: int,
@@ -244,7 +328,14 @@ def example(
 
 
 @cli.command(name="init")
-@click.option("-o", "--output", type=click.Path(dir_okay=False, path_type=Path), default=Path("parity.toml"), show_default=True, help="Where to write the config.")
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=Path("parity.toml"),
+    show_default=True,
+    help="Where to write the config.",
+)
 @click.option("--force", is_flag=True, help="Overwrite an existing file.")
 def init_config(output: Path, force: bool) -> None:
     """Write a starter `parity.toml` with every option documented."""
@@ -264,9 +355,25 @@ def init_config(output: Path, force: bool) -> None:
     nargs=-1,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option("-c", "--config", type=click.Path(dir_okay=False, path_type=Path), help="TOML config file to open and save back to.")
-@click.option("--port", type=int, default=8080, show_default=True, help="Port to serve on.  Falls back to a free port if taken.")
-@click.option("--open-browser/--no-open-browser", "open_browser", default=True, help="Open the designer in the default browser.  [default: open]")
+@click.option(
+    "-c",
+    "--config",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="TOML config file to open and save back to.",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8080,
+    show_default=True,
+    help="Port to serve on.  Falls back to a free port if taken.",
+)
+@click.option(
+    "--open-browser/--no-open-browser",
+    "open_browser",
+    default=True,
+    help="Open the designer in the default browser.  [default: open]",
+)
 def design(
     paths: tuple[Path, ...],
     config: Path | None,

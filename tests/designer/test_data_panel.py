@@ -51,12 +51,22 @@ def test_ref_test_span_all_open_files(tmp_path):
 
 
 def test_no_files_offers_nothing():
-    assert column_options(()) == {"ref": [], "test": [], "group": [], "join": [], "color_column": []}
+    assert column_options(()) == {
+        "ref": [],
+        "test": [],
+        "group": [],
+        "join": [],
+        "color_column": [],
+    }
 
 
 def test_an_unreadable_file_yields_empty_rather_than_raising(tmp_path):
     assert column_options((tmp_path / "ghost.csv",)) == {
-        "ref": [], "test": [], "group": [], "join": [], "color_column": [],
+        "ref": [],
+        "test": [],
+        "group": [],
+        "join": [],
+        "color_column": [],
     }
 
 
@@ -64,7 +74,7 @@ def test_options_include_numeric_colour_column(tmp_path):
     f = write(tmp_path, "d.csv", "id,voltage,batch\nA1,10,x\nA2,20,y\n")
     opts = column_options((f,))
     assert "color_column" in opts
-    assert opts["color_column"] == ["d.csv:voltage"]   # numeric only (id is text)
+    assert opts["color_column"] == ["d.csv:voltage"]  # numeric only (id is text)
 
 
 def test_group_excludes_the_ref_and_test_columns(tmp_path):

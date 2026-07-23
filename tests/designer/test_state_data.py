@@ -33,8 +33,12 @@ def second(tmp_path: Path) -> Path:
 @pytest.fixture
 def state(first) -> DesignerState:
     config = ParityConfig().merge(
-        data={"files": (first,), "ref": "first.csv:reference",
-              "test": "first.csv:test", "join": "id"}
+        data={
+            "files": (first,),
+            "ref": "first.csv:reference",
+            "test": "first.csv:test",
+            "join": "id",
+        }
     )
     return DesignerState(config=config, data=load(config.data))
 

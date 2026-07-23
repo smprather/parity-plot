@@ -21,7 +21,14 @@ def test_every_token_resolves_in_every_theme(theme_name):
 
 def test_the_offered_tokens_are_the_curated_set():
     assert themes.COLOR_TOKENS == (
-        "red", "yellow", "orange", "green", "blue", "purple", "magenta", "grey",
+        "red",
+        "yellow",
+        "orange",
+        "green",
+        "blue",
+        "purple",
+        "magenta",
+        "grey",
     )
 
 

@@ -105,8 +105,16 @@ def test_the_server_actually_serves_the_page(tmp_path: Path):
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST")}
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "parity_plot.cli", "design", str(csv),
-         "--port", str(port), "--no-open-browser"],
+        [
+            sys.executable,
+            "-m",
+            "parity_plot.cli",
+            "design",
+            str(csv),
+            "--port",
+            str(port),
+            "--no-open-browser",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -118,11 +126,13 @@ def test_the_server_actually_serves_the_page(tmp_path: Path):
             if proc.poll() is not None:
                 pytest.fail(f"server exited early:\n{proc.stdout.read()}")
             try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as r:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{port}/", timeout=1
+                ) as r:
                     if r.status == 200:
                         body = r.read().decode("utf-8", "replace")
                         break
-            except (urllib.error.URLError, ConnectionError, OSError):
+            except urllib.error.URLError, ConnectionError, OSError:
                 time.sleep(0.2)
         else:
             pytest.fail("server never became reachable")

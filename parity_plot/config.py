@@ -55,9 +55,9 @@ class DataConfig:
     """
 
     files: tuple[Path, ...] = ()
-    ref: str | None = None       # "file:column", a numeric column
-    test: str | None = None      # "file:column", a numeric column
-    join: str | None = None      # column name in both files, or None -> pair by order
+    ref: str | None = None  # "file:column", a numeric column
+    test: str | None = None  # "file:column", a numeric column
+    join: str | None = None  # column name in both files, or None -> pair by order
     # Zero or more bare, file-independent column names. A paired point's group
     # label joins the per-column values with ", " (see data._group_lookup).
     group: tuple[str, ...] = ()
@@ -262,9 +262,7 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         return _coerce_encoding(value, where)
     if key in _CHOICES:
         if value not in _CHOICES[key]:
-            raise ConfigError(
-                f"{where}: {value!r} is not one of {list(_CHOICES[key])}"
-            )
+            raise ConfigError(f"{where}: {value!r} is not one of {list(_CHOICES[key])}")
         return value
     if key in {"width", "height"}:
         size = int(value)
@@ -349,8 +347,7 @@ def _coerce_encoding(value: Any, where: str) -> Encoding:
     unknown = set(value) - known
     if unknown:
         raise ConfigError(
-            f"{where}: unknown key(s) {sorted(unknown)}; "
-            f"valid keys are {sorted(known)}"
+            f"{where}: unknown key(s) {sorted(unknown)}; valid keys are {sorted(known)}"
         )
     try:
         return Encoding(**value)
@@ -388,8 +385,7 @@ def _register_tomlkit_encoding_encoder() -> None:
         return table
 
     if not any(
-        getattr(enc, "__name__", None) == "_encode_encoding"
-        for enc in CUSTOM_ENCODERS
+        getattr(enc, "__name__", None) == "_encode_encoding" for enc in CUSTOM_ENCODERS
     ):
         CUSTOM_ENCODERS.append(_encode_encoding)
 

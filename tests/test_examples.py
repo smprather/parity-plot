@@ -9,7 +9,9 @@ from parity_plot.examples import ExampleSpec, SpecError, generate, write_all
 
 
 def counts(records):
-    paired = sum(1 for r in records if r.reference is not None and r.measured is not None)
+    paired = sum(
+        1 for r in records if r.reference is not None and r.measured is not None
+    )
     miss_y = sum(1 for r in records if r.reference is not None and r.measured is None)
     miss_x = sum(1 for r in records if r.reference is None and r.measured is not None)
     both = sum(1 for r in records if r.reference is None and r.measured is None)
@@ -31,8 +33,15 @@ def test_different_seeds_give_different_data():
 
 def test_reference_values_land_mostly_inside_the_requested_range():
     """The bounds describe the central 95% of draws, not hard limits."""
-    records = generate(n=2000, seed=4, x_min=10, x_max=1000,
-                       n_missing_x=0, n_missing_y=0, n_both_null=0)
+    records = generate(
+        n=2000,
+        seed=4,
+        x_min=10,
+        x_max=1000,
+        n_missing_x=0,
+        n_missing_y=0,
+        n_both_null=0,
+    )
     values = [r.reference for r in records]
 
     inside = sum(1 for v in values if 10 <= v <= 1000)
@@ -42,8 +51,16 @@ def test_reference_values_land_mostly_inside_the_requested_range():
 
 def test_more_noise_widens_the_scatter():
     def spread(noise):
-        recs = generate(n=500, seed=8, noise=noise, outlier_rate=0, bias=0,
-                        n_missing_x=0, n_missing_y=0, n_both_null=0)
+        recs = generate(
+            n=500,
+            seed=8,
+            noise=noise,
+            outlier_rate=0,
+            bias=0,
+            n_missing_x=0,
+            n_missing_y=0,
+            n_both_null=0,
+        )
         return sum((r.measured - r.reference) ** 2 for r in recs)
 
     assert spread(0.30) > spread(0.02) * 10
@@ -51,8 +68,16 @@ def test_more_noise_widens_the_scatter():
 
 def test_bias_shifts_measurements_upward():
     def mean_error(bias):
-        recs = generate(n=500, seed=8, bias=bias, noise=0.01, outlier_rate=0,
-                        n_missing_x=0, n_missing_y=0, n_both_null=0)
+        recs = generate(
+            n=500,
+            seed=8,
+            bias=bias,
+            noise=0.01,
+            outlier_rate=0,
+            n_missing_x=0,
+            n_missing_y=0,
+            n_both_null=0,
+        )
         return sum(r.measured - r.reference for r in recs) / len(recs)
 
     assert mean_error(0.0) < mean_error(0.05) < mean_error(0.20)
@@ -60,8 +85,17 @@ def test_bias_shifts_measurements_upward():
 
 def test_zero_outlier_rate_produces_none():
     """With no outliers and tiny noise, nothing should sit far off the line."""
-    recs = generate(n=1000, seed=11, noise=0.01, noise_floor=0.0, bias=0,
-                    outlier_rate=0, n_missing_x=0, n_missing_y=0, n_both_null=0)
+    recs = generate(
+        n=1000,
+        seed=11,
+        noise=0.01,
+        noise_floor=0.0,
+        bias=0,
+        outlier_rate=0,
+        n_missing_x=0,
+        n_missing_y=0,
+        n_both_null=0,
+    )
     worst = max(abs(r.measured - r.reference) / r.reference for r in recs)
     assert worst < 0.10
 
@@ -69,8 +103,17 @@ def test_zero_outlier_rate_produces_none():
 def test_outliers_appear_when_requested():
     # An outlier is `outlier_scale * noise` off the line: 9 * 0.02 = 18%, so a
     # 10% threshold separates them cleanly from the 2% ordinary scatter.
-    recs = generate(n=1000, seed=11, noise=0.02, noise_floor=0.0, bias=0,
-                    outlier_rate=0.05, n_missing_x=0, n_missing_y=0, n_both_null=0)
+    recs = generate(
+        n=1000,
+        seed=11,
+        noise=0.02,
+        noise_floor=0.0,
+        bias=0,
+        outlier_rate=0.05,
+        n_missing_x=0,
+        n_missing_y=0,
+        n_both_null=0,
+    )
     far = [r for r in recs if abs(r.measured - r.reference) / r.reference > 0.10]
     assert 25 < len(far) < 80  # ~5% of 1000, allowing for sampling spread
 
@@ -82,7 +125,9 @@ def test_keyword_overrides_apply_to_a_spec():
 
 def test_none_overrides_are_ignored():
     """A CLI passes every flag, so unset ones arrive as None."""
-    assert generate(ExampleSpec(n=10, seed=3), n=None, noise=None) == generate(n=10, seed=3)
+    assert generate(ExampleSpec(n=10, seed=3), n=None, noise=None) == generate(
+        n=10, seed=3
+    )
 
 
 def test_unknown_override_is_rejected():
@@ -118,7 +163,7 @@ def test_null_counts_scale_with_n_by_default():
 
     small = ExampleSpec(n=10)
     assert small.n_nulls <= small.n
-    assert counts(generate(n=10)) [0] > 0  # and it actually generates
+    assert counts(generate(n=10))[0] > 0  # and it actually generates
 
 
 def test_explicit_null_counts_are_left_alone():
@@ -135,7 +180,9 @@ def test_log_parameters_bracket_the_requested_range():
 
 
 def test_write_all_emits_both_shapes_from_the_same_draws(tmp_path):
-    written = write_all(tmp_path, n=100, seed=6, n_missing_y=4, n_missing_x=3, n_both_null=2)
+    written = write_all(
+        tmp_path, n=100, seed=6, n_missing_y=4, n_missing_x=3, n_both_null=2
+    )
 
     wide = list(csv.DictReader(written["wide"].open()))
     reference = list(csv.DictReader(written["reference"].open()))
@@ -160,6 +207,7 @@ def test_written_files_use_unix_line_endings(tmp_path):
 
 def test_wide_file_has_rich_columns(tmp_path):
     from parity_plot import examples
+
     out = examples.write_all(tmp_path, examples.ExampleSpec(n=20, seed=3))
     header = out["wide"].read_text().splitlines()[0].split(",")
     assert header == ["id", "reference", "test", "package", "vendor", "temperature"]
@@ -167,6 +215,7 @@ def test_wide_file_has_rich_columns(tmp_path):
 
 def test_pair_reference_carries_group_and_colour(tmp_path):
     from parity_plot import examples
+
     out = examples.write_all(tmp_path, examples.ExampleSpec(n=20, seed=3))
     header = out["reference"].read_text().splitlines()[0].split(",")
     assert header == ["id", "value", "package", "vendor", "temperature"]
@@ -174,6 +223,7 @@ def test_pair_reference_carries_group_and_colour(tmp_path):
 
 def test_categoricals_come_from_a_small_vocabulary(tmp_path):
     from parity_plot import examples
+
     recs = examples.generate(examples.ExampleSpec(n=200, seed=3))
     assert {r.package for r in recs} <= {"SMD", "DIP", "BGA", "QFN"}
     assert {r.vendor for r in recs} <= {"Acme", "Beta", "Ceres"}

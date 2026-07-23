@@ -63,7 +63,9 @@ def test_design_starts_a_session_without_running_a_server(csv, monkeypatch):
 
     monkeypatch.setattr("parity_plot.designer.launch.run", fake_run)
 
-    result = CliRunner().invoke(cli, ["design", str(csv), "--port", "9123", "--no-open-browser"])
+    result = CliRunner().invoke(
+        cli, ["design", str(csv), "--port", "9123", "--no-open-browser"]
+    )
 
     assert result.exit_code == 0, result.output
     assert captured["data_paths"] == (csv,)

@@ -48,9 +48,7 @@ class Stats:
         return self.n_paired
 
 
-def compute(
-    data: ParityData, tolerances: Sequence[NamedTolerance] = ()
-) -> Stats:
+def compute(data: ParityData, tolerances: Sequence[NamedTolerance] = ()) -> Stats:
     """Summarise how well the two datasets agree.
 
     ``r2`` is measured about the identity line, not about a least-squares fit.
@@ -82,9 +80,7 @@ def compute(
         mae=sum(abs(r) for r in residuals) / n,
         bias=sum(residuals) / n,
         max_abs_err=max(abs(r) for r in residuals),
-        within={
-            tol.name: _within(x, y, tol) for tol in pass_fail(tolerances)
-        },
+        within={tol.name: _within(x, y, tol) for tol in pass_fail(tolerances)},
     )
 
 

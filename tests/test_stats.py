@@ -10,7 +10,9 @@ from parity_plot.stats import compute, format_lines, summarize_nulls
 
 
 def make(x, y, **kwargs):
-    return ParityData(keys=[str(i) for i in range(len(x))], x=list(x), y=list(y), **kwargs)
+    return ParityData(
+        keys=[str(i) for i in range(len(x))], x=list(x), y=list(y), **kwargs
+    )
 
 
 def tol(**kwargs):
@@ -88,9 +90,13 @@ def test_funnel_scores_against_whichever_spec_is_looser():
     # x=1: relative allows 0.1, absolute allows 2.0 -> the looser (2.0) wins.
     assert compute(make([1.0, 1.0], [2.5, 2.5]), (t,)).within["t"] == pytest.approx(1.0)
     # x=100: absolute allows 2.0, relative allows 10.0 -> relative wins.
-    assert compute(make([100.0, 100.0], [105.0, 105.0]), (t,)).within["t"] == pytest.approx(1.0)
+    assert compute(make([100.0, 100.0], [105.0, 105.0]), (t,)).within[
+        "t"
+    ] == pytest.approx(1.0)
     # x=100 with an error of 12 exceeds both.
-    assert compute(make([100.0, 100.0], [112.0, 112.0]), (t,)).within["t"] == pytest.approx(0.0)
+    assert compute(make([100.0, 100.0], [112.0, 112.0]), (t,)).within[
+        "t"
+    ] == pytest.approx(0.0)
 
 
 def test_counts_carry_the_unpaired_records():

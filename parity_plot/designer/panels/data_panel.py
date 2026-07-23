@@ -85,7 +85,9 @@ def build_data_panel(
 
     with ui.expansion("Data", value=True).classes("w-full"):
         files = list(state.config.data.files)
-        options = column_options(tuple(files), state.config.data.ref, state.config.data.test)
+        options = column_options(
+            tuple(files), state.config.data.ref, state.config.data.test
+        )
 
         file_list = ui.column().classes("w-full gap-0")
 
@@ -103,11 +105,15 @@ def build_data_panel(
                         ).props("flat dense round size=sm")
 
         ref_sel = ui.select(
-            options["ref"], value=state.config.data.ref, label="Reference",
+            options["ref"],
+            value=state.config.data.ref,
+            label="Reference",
             on_change=lambda: refresh_group(),
         ).classes("w-full")
         test_sel = ui.select(
-            options["test"], value=state.config.data.test, label="Test",
+            options["test"],
+            value=state.config.data.test,
+            label="Test",
             on_change=lambda: refresh_group(),
         ).classes("w-full")
         join_sel = ui.select(
@@ -115,12 +121,16 @@ def build_data_panel(
             value=state.config.data.join or _NONE,
             label="Join column (blank = pair by order)",
         ).classes("w-full")
-        group_sel = ui.select(
-            options["group"],
-            value=list(state.config.data.group),
-            multiple=True,
-            label="Group by (one or more columns)",
-        ).classes("w-full").props("use-chips")
+        group_sel = (
+            ui.select(
+                options["group"],
+                value=list(state.config.data.group),
+                multiple=True,
+                label="Group by (one or more columns)",
+            )
+            .classes("w-full")
+            .props("use-chips")
+        )
         color_sel = ui.select(
             [_NONE, *options["color_column"]],
             value=state.config.data.color_column or _NONE,
@@ -175,8 +185,9 @@ def build_data_panel(
 
         render_files()
         with ui.row().classes("w-full gap-2"):
-            ui.button("Open file…", icon="folder_open",
-                      on_click=lambda: _browse(_add)).props("flat")
+            ui.button(
+                "Open file…", icon="folder_open", on_click=lambda: _browse(_add)
+            ).props("flat")
             ui.button("Apply", on_click=apply)
 
         def mark_problems(problems) -> None:
@@ -212,12 +223,18 @@ def _browse(on_pick: Callable[[Path], None]) -> None:
             listing.clear()
             with listing:
                 if result.parent is not None:
-                    ui.button("⬆ up", on_click=lambda: go(result.parent)).props("flat dense align=left").classes("w-full")
+                    ui.button("⬆ up", on_click=lambda: go(result.parent)).props(
+                        "flat dense align=left"
+                    ).classes("w-full")
                 for entry in result.entries:
                     if entry.is_dir:
-                        ui.button(f"📁 {entry.name}", on_click=lambda _, p=entry.path: go(p)).props("flat dense align=left").classes("w-full")
+                        ui.button(
+                            f"📁 {entry.name}", on_click=lambda _, p=entry.path: go(p)
+                        ).props("flat dense align=left").classes("w-full")
                     else:
-                        ui.button(f"📄 {entry.name}", on_click=lambda _, p=entry.path: pick(p)).props("flat dense align=left").classes("w-full")
+                        ui.button(
+                            f"📄 {entry.name}", on_click=lambda _, p=entry.path: pick(p)
+                        ).props("flat dense align=left").classes("w-full")
 
         def go(path: Path) -> None:
             cwd["path"] = path
