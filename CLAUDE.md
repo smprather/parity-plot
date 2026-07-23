@@ -193,8 +193,8 @@ good news; the status bar also shows a green `✅ Saved` and reverts to the live
 error/idle state on the next `refresh()`. Do not reintroduce negative toasts.
 
 Plotly click payloads carry `customdata` in **two shapes**: the paired trace carries
-`(key, diff)`, the rug traces a bare key. `key_from_customdata` normalises both —
-never index into it directly.
+`(key, diff, verdict)` (the verdict text feeds the hover), the rug traces a bare key.
+`key_from_customdata` normalises both — never index into it directly.
 
 `build_inspector` takes the tolerance as a **callable**, since the user can change it
 after the panel is built and the verdict must follow.
@@ -280,3 +280,42 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   through `cli._infer_format`. Without it `-o out.png` silently writes HTML into
   a `.png` file — that bug shipped once already on `example`.
 - `data/` and rendered plots are gitignored; regenerate with `parity-plot example`.
+- **Tolerance band shading is the per-tolerance `style` key** (`"lines"` |
+  `"shaded"`), living inside a `[[plot.tolerances]]` table. `band_style` is a
+  **retired `[plot]` key** (`RETIRED_PLOT_KEYS`) and setting it raises "moved into
+  a tolerance list in 0.2.0". So does `abstol`/`reltol`/`identity_line` at
+  `[plot]` scope. `RETIRED_DATA_KEYS` (`paths`/`x`/`y`/`key`/`value`) is the
+  `[data]` equivalent from the multi-file rework.
+- **The `example` shape knobs are fractions, not counts.** `--outliers`,
+  `--noise`, `--bias` are ratios in `[0, 1]` (`--outliers 0.01` = 1%); passing a
+  count like `--outliers 6` fails `ExampleSpec.__post_init__`. Only the
+  `--missing-*` null knobs accept explicit counts (else a fraction of `n`).
+- **Encoding has no CLI flags.** `color_by` / `symbol_by` / `color` / `symbol` /
+  `symbol_sequence` are set only via TOML or the designer — `cli.py` has `--group`
+  (the column) but no `--color-by` etc. The README's "every key has a matching CLI
+  flag" is about the `[data]` / `[plot]` scalars, not the encoding table.
+- **kaleido prints `Resorting to unclean kill browser.` on static export** — it is
+  benign noise from the headless-Chrome teardown; the image is written fine. Do not
+  chase it as an error.
+- **README screenshots are committed under `docs/images/`.** PNG/SVG/PDF are
+  gitignored globally, so `.gitignore` carries an explicit `!docs/images/` +
+  `!docs/images/*.png` negation. Regenerate them by rendering small TOML configs
+  through the CLI (`plot --config … -o docs/images/<name>.png`); use `theme =
+  "light"`, which reads best on GitHub. Static export needs
+  `uv run plotly_get_chrome` first.
+
+## Releases
+
+Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
+GitHub Releases. Current line: **0.5.0** (`main`). History: 0.1.0 → multi-file
+data model & encoding (0.3.0) → file-independent group + persistent designer
+status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
+value (0.5.0). Tags `v0.1.0`–`v0.3.0` predate the GitHub Releases; `v0.4.0`
+onward have them.
+
+The ship flow (only when the user asks): branch off `main`, commit, bump the
+version on the branch, `git checkout main && git merge --no-ff`, `git tag -a`,
+`git push origin main && git push origin <tag>`, then `gh release create <tag>
+--verify-tag --title … --notes …`. Bump policy in use: an additive feature is a
+**minor** bump, and even a breaking config change (the 0.4.0 group-syntax change)
+has been treated as **minor** while pre-1.0.
