@@ -11,7 +11,27 @@ from parity_plot.config import ConfigError, DataConfig, ParityConfig
 def test_defaults_are_empty():
     d = DataConfig()
     assert d.files == () and d.ref is None and d.test is None
-    assert d.join is None and d.group is None
+    assert d.join is None and d.group == () and d.color_column is None
+
+
+def test_group_defaults_to_empty_tuple():
+    d = DataConfig()
+    assert d.join is None and d.group == () and d.color_column is None
+
+
+def test_group_string_normalises_to_one_tuple():
+    d = DataConfig(group="batch")
+    assert d.group == ("batch",)
+
+
+def test_group_list_normalises_to_tuple():
+    d = DataConfig(group=["package", "vendor"])
+    assert d.group == ("package", "vendor")
+
+
+def test_color_column_is_a_plain_ref():
+    d = DataConfig(color_column="d.csv:temperature")
+    assert d.color_column == "d.csv:temperature"
 
 
 def test_parses_the_new_shape(tmp_path: Path):
@@ -27,14 +47,14 @@ def test_parses_the_new_shape(tmp_path: Path):
     assert d.ref == "meas.csv:voltage"
     assert d.test == "sim.csv:voltage"
     assert d.join == "id"
-    assert d.group == "batch"
+    assert d.group == ("batch",)
 
 
 def test_join_and_group_are_optional(tmp_path: Path):
     p = tmp_path / "c.toml"
     p.write_text('[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n', encoding="utf-8")
     d = ParityConfig.from_toml(p).data
-    assert d.join is None and d.group is None
+    assert d.join is None and d.group == ()
 
 
 @pytest.mark.parametrize("key, value", [

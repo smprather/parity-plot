@@ -58,8 +58,25 @@ class DataConfig:
     ref: str | None = None       # "file:column", a numeric column
     test: str | None = None      # "file:column", a numeric column
     join: str | None = None      # column name in both files, or None -> pair by order
-    group: str | None = None     # "file:column", any column, or None
+    # Zero or more bare, file-independent column names. A paired point's group
+    # label joins the per-column values with ", " (see data._group_lookup).
+    group: tuple[str, ...] = ()
+    # A single file:column numeric ref driving the colorscale channel. Pinned to
+    # one file (unlike group) because the same column can differ across files.
+    color_column: str | None = None
     na_values: tuple[str, ...] = DEFAULT_NA_VALUES
+
+    def __post_init__(self) -> None:
+        # Accept None / "col" / ["a","b"] and store a tuple of column names, so
+        # both direct construction and TOML/CLI merging converge on one shape.
+        group = self.group
+        if group is None:
+            normalised: tuple[str, ...] = ()
+        elif isinstance(group, str):
+            normalised = (group,)
+        else:
+            normalised = tuple(str(g) for g in group)
+        object.__setattr__(self, "group", normalised)
 
 
 @dataclass(frozen=True)
