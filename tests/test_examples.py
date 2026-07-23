@@ -156,3 +156,24 @@ def test_write_all_emits_both_shapes_from_the_same_draws(tmp_path):
 def test_written_files_use_unix_line_endings(tmp_path):
     written = write_all(tmp_path, n=10, n_missing_y=1, n_missing_x=1, n_both_null=0)
     assert b"\r\n" not in written["wide"].read_bytes()
+
+
+def test_wide_file_has_rich_columns(tmp_path):
+    from parity_plot import examples
+    out = examples.write_all(tmp_path, examples.ExampleSpec(n=20, seed=3))
+    header = out["wide"].read_text().splitlines()[0].split(",")
+    assert header == ["id", "reference", "test", "package", "vendor", "temperature"]
+
+
+def test_pair_reference_carries_group_and_colour(tmp_path):
+    from parity_plot import examples
+    out = examples.write_all(tmp_path, examples.ExampleSpec(n=20, seed=3))
+    header = out["reference"].read_text().splitlines()[0].split(",")
+    assert header == ["id", "value", "package", "vendor", "temperature"]
+
+
+def test_categoricals_come_from_a_small_vocabulary(tmp_path):
+    from parity_plot import examples
+    recs = examples.generate(examples.ExampleSpec(n=200, seed=3))
+    assert {r.package for r in recs} <= {"SMD", "DIP", "BGA", "QFN"}
+    assert {r.vendor for r in recs} <= {"Acme", "Beta", "Ceres"}
