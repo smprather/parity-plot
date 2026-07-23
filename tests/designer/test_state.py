@@ -82,3 +82,41 @@ def test_none_values_are_ignored_by_update(state):
 
 def test_selection_defaults_to_nothing(state):
     assert state.selection is None
+
+
+def test_reset_fields_reverts_x_label_to_none():
+    from parity_plot.config import ParityConfig
+    from parity_plot.designer.state import DesignerState
+
+    config = ParityConfig.from_dict({"plot": {"x_label": "custom", "title": "Keep me"}})
+    st = DesignerState(config=config)
+    st.reset_fields("plot", "x_label")
+
+    assert st.config.plot.x_label is None      # back to default, not "custom"
+    assert st.config.plot.title == "Keep me"   # siblings untouched
+
+
+def test_reset_fields_reverts_join_to_none():
+    from parity_plot.config import ParityConfig
+    from parity_plot.designer.state import DesignerState
+
+    config = ParityConfig.from_dict(
+        {"data": {"files": ["d.csv"], "ref": "d.csv:a", "test": "d.csv:b", "join": "id"}}
+    )
+    st = DesignerState(config=config)
+    st.reset_fields("data", "join")
+    assert st.config.data.join is None
+
+
+def test_load_session_config_swaps_and_clears_selection():
+    from parity_plot.config import ParityConfig
+    from parity_plot.designer.state import DesignerState
+
+    st = DesignerState(config=ParityConfig(), selection="A1", last_error="boom")
+    new = ParityConfig.from_dict({"plot": {"theme": "light"}})
+    st.load_session_config(new, None)
+
+    assert st.config.plot.theme == "light"
+    assert st.data is None
+    assert st.selection is None
+    assert st.last_error is None

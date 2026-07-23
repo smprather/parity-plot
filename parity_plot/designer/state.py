@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
@@ -89,6 +90,42 @@ class DesignerState:
             # The pinned record does not exist in the new dataset.
             self.selection = None
         return True
+
+    def reset_fields(self, section: str, *keys: str) -> None:
+        """Reset the named fields of one section to their dataclass defaults.
+
+        Needed because ``ParityConfig.merge`` drops ``None`` overrides (a
+        deliberate CLI convenience), so it cannot clear an optional field back
+        to its default. Blanking a text control routes here instead, so an
+        emptied ``x_label`` truly reverts to the column name rather than keeping
+        its stale value.
+        """
+        current = getattr(self.config, section)
+        defaults: dict[str, object] = {}
+        for f in dataclasses.fields(current):
+            if f.name in keys:
+                if f.default is not dataclasses.MISSING:
+                    defaults[f.name] = f.default
+                elif f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+                    defaults[f.name] = f.default_factory()  # type: ignore[misc]
+        new_section = dataclasses.replace(current, **defaults)
+        self.config = dataclasses.replace(self.config, **{section: new_section})
+        self.last_error = None
+
+    def load_session_config(
+        self, config: ParityConfig, data: ParityData | None
+    ) -> None:
+        """Swap in a freshly opened config (and its data), clearing view state.
+
+        Used when the toolbar opens a different config or starts a New Design:
+        the whole config changes, so a pinned selection and any prior error are
+        no longer meaningful. Filters reset to their default (a no-op) view.
+        """
+        self.config = config
+        self.data = data
+        self.selection = None
+        self.filters = FilterSet()
+        self.last_error = None
 
     def selected_record(
         self, tolerances: Sequence[NamedTolerance] = ()
