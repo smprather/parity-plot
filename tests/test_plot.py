@@ -422,3 +422,21 @@ def test_colorbar_and_right_legend_do_not_overlap():
                                   legend="right"))
     assert fig.layout.legend.x >= 1.15               # legend pushed right of the colorbar
     assert fig.layout.margin.r >= 260
+
+
+def test_public_api_accepts_a_list_of_group_columns(tmp_path):
+    """A list `group=` in the file branch composes a multi-column label, not None."""
+    from parity_plot import parity_plot
+    from parity_plot.encoding import Encoding
+
+    f = tmp_path / "d.csv"
+    f.write_text(
+        "reference,test,package,vendor\n10,11,SMD,Acme\n20,22,DIP,Beta\n",
+        encoding="utf-8",
+    )
+    fig = parity_plot(
+        str(f), ref=f"{f.name}:reference", test=f"{f.name}:test",
+        group=["package", "vendor"], encoding=Encoding(color_by="group"),
+    )
+    marker_names = {t.name for t in fig.data if t.mode == "markers"}
+    assert marker_names == {"SMD, Acme", "DIP, Beta"}

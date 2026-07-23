@@ -113,8 +113,11 @@ def parity_plot(
             "ref": ref,
             "test": test,
             "join": join,
-            "group": group if isinstance(group, str) else None,
         }
+        # In the file branch a str or list/tuple of column names selects group
+        # columns; DataConfig.__post_init__ normalises either to a tuple.
+        if isinstance(group, (str, list, tuple)):
+            data_overrides["group"] = group
         if paths:
             data_overrides["files"] = tuple(Path(p) for p in paths)
         cfg = cfg.merge(data=data_overrides)
