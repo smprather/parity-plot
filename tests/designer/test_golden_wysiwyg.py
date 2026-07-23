@@ -256,3 +256,21 @@ def test_colorscale_multigroup_designer_matches_cli(tmp_path: Path):
     rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
 
     assert rendered.to_dict() == preview.to_dict()
+
+def test_autosave_output_round_trips_identically(csv, tmp_path: Path):
+    """What auto-save writes must reload to an identical render."""
+    out = tmp_path / "parity.toml"
+    out.write_text(
+        f'[data]\nfiles = ["{csv.as_posix()}"]\n'
+        f'ref = "wide.csv:reference"\ntest = "wide.csv:test"\n',
+        encoding="utf-8",
+    )
+    session, config, data = Session.start((), out)   # bound to the file
+    state = DesignerState(config=config, data=data)
+    edited = state.config.merge(plot={"theme": "light"})
+    written = session.autosave(edited)               # writes to the bound file
+
+    from_disk = ParityConfig.from_toml(written)
+    preview = build_figure(load(edited.data), edited.plot, edited.stats)
+    rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
+    assert rendered.to_dict() == preview.to_dict()

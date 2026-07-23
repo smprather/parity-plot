@@ -23,6 +23,7 @@ from .records import key_from_customdata
 from .selection import range_from_selection
 from .session import Session, config_choices
 from .state import DesignerState
+from .validation import problems as config_problems
 
 # The dropdown entry standing in for a working config not yet bound to a file
 # (a New Design, or a data-only launch). Save As binds it to a name.
@@ -78,12 +79,16 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
             # The unbound sentinel is offered only while unbound.
             return ([UNSAVED] if sess["session"].config_path is None else []) + names
 
+        # The data panel returns a hook that marks its join field; held here so
+        # refresh() can call it after each change. Rebuilt with the column.
+        marks = {"join": lambda problems: None}
+
         # settings_column is defined before the layout that calls it; its panels'
         # on_change callbacks reference refresh/reload_everything, which are
         # defined further down and only fire on later user interaction.
         @ui.refreshable
         def settings_column() -> None:
-            build_data_panel(state, lambda: reload_everything())
+            marks["join"] = build_data_panel(state, lambda: reload_everything())
             build_tolerances_panel(state, lambda: refresh())
             build_encoding_panel(state, lambda: refresh())
             build_controls(state, lambda: refresh())
@@ -145,10 +150,24 @@ def build_app(session: Session, config: ParityConfig, data: ParityData | None) -
 
         def refresh() -> None:
             plot_view.update_figure(state.figure())
-            if state.last_error:
-                set_status(f"⛔  {state.last_error}", "error")
+
+            probs = config_problems(state.config)
+            blocking = state.last_error or (probs[0].message if probs else None)
+
+            if blocking:
+                set_status(f"⛔  {blocking}", "error")
             else:
                 set_status("Ready", "info")
+
+            marks["join"](probs)
+            save_as_btn.set_enabled(not blocking)
+
+            # Auto-save: only a clean, bound config is written; autosave no-ops
+            # when unbound. The bound file thus always holds the last valid
+            # config -- a broken edit is withheld until it is fixed.
+            if not blocking:
+                sess["session"].autosave(state.config)
+
             refresh_inspector()
             refresh_table()
 

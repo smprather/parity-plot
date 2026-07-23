@@ -61,8 +61,14 @@ def column_options(files: tuple[Path, ...]) -> dict[str, list[str]]:
     }
 
 
-def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
-    """The open-file list, an Open-file browser, and the ref/test/join/group maps."""
+def build_data_panel(
+    state: DesignerState, on_change: Callable[[], None]
+) -> Callable[[list], None]:
+    """The open-file list, an Open-file browser, and the ref/test/join/group maps.
+
+    Returns a ``mark_problems(problems)`` hook so ``app.refresh`` can redden the
+    exact widget a validation problem names -- today just the ``join`` select.
+    """
     from nicegui import ui
 
     with ui.expansion("Data", value=True).classes("w-full"):
@@ -149,6 +155,17 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
             ui.button("Open file…", icon="folder_open",
                       on_click=lambda: _browse(_add)).props("flat")
             ui.button("Apply", on_click=apply)
+
+        def mark_problems(problems) -> None:
+            """Redden the join select while a `data.join` problem stands."""
+            has_join_problem = any(
+                getattr(p, "field", None) == "data.join" for p in problems
+            )
+            join_sel.props(remove="error")
+            if has_join_problem:
+                join_sel.props("error")
+
+        return mark_problems
 
 
 def _browse(on_pick: Callable[[Path], None]) -> None:

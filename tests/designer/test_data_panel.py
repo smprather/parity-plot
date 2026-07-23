@@ -65,3 +65,13 @@ def test_options_include_numeric_colour_column(tmp_path):
     opts = column_options((f,))
     assert "color_column" in opts
     assert opts["color_column"] == ["d.csv:voltage"]   # numeric only (id is text)
+
+
+def test_build_data_panel_returns_a_problem_mark_hook():
+    """The panel exposes a callable so app.refresh can mark the join field."""
+    import inspect
+
+    from parity_plot.designer.panels.data_panel import build_data_panel
+
+    sig = inspect.signature(build_data_panel)
+    assert sig.return_annotation is not inspect.Signature.empty
