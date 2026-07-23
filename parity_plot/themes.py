@@ -18,16 +18,9 @@ import plotly.io as pio
 # olive and a true blue rather than the mint and cyan those reserved roles use.
 COLOR_TOKENS = ("red", "yellow", "orange", "green", "blue", "purple", "magenta", "grey")
 
-# Symbol cycle used when a symbol channel is driven by group. Plotly symbol names.
-SYMBOL_CYCLE: tuple[str, ...] = (
-    "circle",
-    "x",
-    "diamond",
-    "square",
-    "triangle-up",
-    "cross",
-    "star",
-)
+# Marker symbols are not theme data (a symbol is the same on light and dark), so
+# the symbol cycle and catalog live in ``encoding`` alongside the rest of the
+# marker-encoding logic. See ``encoding.DEFAULT_SYMBOLS`` / ``SYMBOL_CATALOG``.
 
 # Qualitative colour tokens cycled for group colours. Reuse COLOR_TOKENS: they
 # already resolve per theme and sit apart from the reserved identity/marker/rug

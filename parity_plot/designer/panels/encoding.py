@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Callable
 
-from ...encoding import CHANNELS, Encoding
-from ...themes import COLOR_TOKENS, SYMBOL_CYCLE
+from ...encoding import CHANNELS, SYMBOL_CATALOG, Encoding
+from ...themes import COLOR_TOKENS
 from ..state import DesignerState
 
 _CHANNEL_LABELS = {"single": "one value", "pass-fail": "pass / fail", "group": "group"}
@@ -31,6 +31,7 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
                 symbol_by=symbol_by.value,
                 color=color_pick.value or "blue",
                 symbol=symbol_pick.value or "circle",
+                symbol_sequence=tuple(seq_pick.value or ()),
             )
             # A rejected update leaves state.last_error; the status bar shows it.
             state.update("plot", encoding=new)
@@ -55,9 +56,22 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
                 on_change=lambda: commit(),
             ).classes("grow")
             symbol_pick = ui.select(
-                list(SYMBOL_CYCLE), value=enc.symbol, on_change=lambda: commit(),
+                list(SYMBOL_CATALOG), value=enc.symbol, on_change=lambda: commit(),
             ).classes("w-28")
             symbol_pick.bind_visibility_from(symbol_by, "value", value="single")
+
+        # The per-group symbol cycle. Only meaningful when symbol_by = "group";
+        # an empty selection falls back to the built-in default cycle.
+        with ui.row().classes("w-full items-center gap-2 no-wrap"):
+            ui.label("Symbols").classes("w-24 text-sm")
+            seq_pick = ui.select(
+                list(SYMBOL_CATALOG),
+                value=list(enc.symbol_sequence),
+                multiple=True,
+                label="cycle for groups (blank = default)",
+                on_change=lambda: commit(),
+            ).classes("grow").props("use-chips")
+            seq_pick.bind_visibility_from(symbol_by, "value", value="group")
 
         ui.label(
             "pass/fail colours a point by its verdict; group uses the group column."

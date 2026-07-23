@@ -24,7 +24,7 @@ from . import stats as stats_mod
 from . import themes
 from .config import OutputConfig, PlotConfig, StatsConfig
 from .data import ParityData, Unpaired
-from .encoding import Encoding, partition
+from .encoding import DEFAULT_SYMBOLS, Encoding, partition
 from .tolerances import (
     NamedTolerance,
     draw_order,
@@ -255,6 +255,7 @@ def _add_paired(
 
     specs = partition(data.n_paired, passes, data.group, encoding)
     colours = _resolve_colours(specs, encoding, theme)
+    symbols = _resolve_symbols(specs, encoding)
 
     for spec in specs:
         idx = spec.indices
@@ -268,7 +269,7 @@ def _add_paired(
                 customdata=[(data.keys[i], diffs[i], verdicts[i]) for i in idx],
                 marker=dict(
                     color=colours[spec.color_key],
-                    symbol=spec.symbol_key,
+                    symbol=symbols[spec.symbol_key],
                     opacity=theme.marker_opacity,
                     size=7,
                     line=dict(color=theme.marker_line, width=0.5),
@@ -307,6 +308,27 @@ def _resolve_colours(
         }
     # single: the colour key is a token (or hex) the theme resolves directly.
     return {spec.color_key: theme.resolve_color(spec.color_key) for spec in specs}
+
+
+def _resolve_symbols(specs: Sequence, encoding: Encoding) -> dict[str, str]:
+    """Map each trace's symbol key to a real Plotly symbol name.
+
+    Symmetric with :func:`_resolve_colours`, minus the theme: a symbol does not
+    depend on light/dark. For ``symbol_by = "group"`` the symbol keys are group
+    *values*, assigned symbols from ``encoding.symbol_sequence`` (or the built-in
+    :data:`DEFAULT_SYMBOLS`) in first-seen order, wrapping when groups outnumber
+    symbols. For every other channel the key is already a symbol name.
+    """
+    if encoding.symbol_by == "group":
+        distinct: list[str] = []
+        for spec in specs:
+            if spec.symbol_key not in distinct:
+                distinct.append(spec.symbol_key)
+        sequence = encoding.symbol_sequence or DEFAULT_SYMBOLS
+        return {
+            key: sequence[i % len(sequence)] for i, key in enumerate(distinct)
+        }
+    return {spec.symbol_key: spec.symbol_key for spec in specs}
 
 
 def _add_rugs(

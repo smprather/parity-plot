@@ -168,3 +168,23 @@ def test_only_non_default_fields_are_written_per_entry():
     assert isinstance(aot, AoT)
     assert len(aot) == 1
     assert set(aot[0].keys()) == {"name", "reltol"}
+
+def test_symbol_sequence_round_trips(tmp_path: Path):
+    from parity_plot.encoding import Encoding
+
+    config = ParityConfig().merge(
+        plot={"encoding": Encoding(
+            color_by="pass-fail", symbol_by="group",
+            symbol_sequence=("square", "diamond", "x"),
+        )}
+    )
+    path = tmp_path / "out.toml"
+    path.write_text(config_to_toml(config), encoding="utf-8")
+    assert ParityConfig.from_toml(path) == config
+
+
+def test_default_encoding_does_not_emit_symbol_sequence():
+    """An unused default must not litter the file with `symbol_sequence = []`."""
+    text = config_to_toml(ParityConfig())
+    lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    assert not any("symbol_sequence" in ln for ln in lines)

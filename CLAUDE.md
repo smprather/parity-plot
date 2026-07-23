@@ -67,6 +67,21 @@ and `plot._resolve_colours` turns colour keys into real colours via the theme, s
 one encoding renders on both themes. The default (single blue circle) is one
 trace, keeping the golden test behaviour-preserving.
 
+**Colour and symbol resolution are symmetric.** For the group channel both
+`color_key_of` and `symbol_key_of` emit the **group value** (not a resolved
+colour/glyph); `plot._resolve_colours` maps group→colour via the theme palette
+and `plot._resolve_symbols` maps group→symbol via `Encoding.symbol_sequence`
+(or `encoding.DEFAULT_SYMBOLS`), both in first-seen order. Emitting the group
+*value* as the symbol key — rather than the glyph — is what lets a trace be named
+`pass · inductor` instead of `pass · square` when `color_by=pass-fail,
+symbol_by=group`. Symbols live in `encoding.py`, not `themes.py`: a symbol is
+theme-independent. `DEFAULT_SYMBOLS` is the fallback cycle, `SYMBOL_CATALOG`
+backs the designer pickers, and `Encoding.__post_init__` validates every symbol
+(the single one and each `symbol_sequence` entry) against `_BASE_SYMBOLS` after
+stripping a `-open`/`-dot`/`-open-dot` variant suffix — a typo raises, it does
+not render blank. `symbol_sequence` is normalised list→tuple so the frozen
+dataclass stays hashable; the tomlkit encoder writes it only when non-empty.
+
 **Unpaired records are the reason this tool is not fifteen lines.** A record
 present in one dataset but not the other has only one coordinate and cannot be
 a scatter point. It is kept in `ParityData.missing_x` / `missing_y` and rendered

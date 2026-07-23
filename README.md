@@ -106,25 +106,32 @@ while still reporting the counts.
 ## Encoding
 
 Marker **colour** and **symbol** are driven independently, each by one of
-`single | pass-fail | group`. Below, colour is the part family and the symbol is
-the verdict (`○` pass, `✕` fail):
+`single | pass-fail | group`. Below, **colour is the pass/fail verdict** (green =
+pass, red = fail) and **each part family gets its own symbol** — so you read
+whether a part is in spec from its colour and which family it belongs to from its
+shape:
 
-![A parity plot with points coloured by part family — resistor, capacitor, inductor, diode — and shaped by pass/fail verdict, showing the diode family running high and out of spec.](docs/images/groups.png)
+![A parity plot where points are coloured green for pass and red for fail, and each part family — inductor, diode, capacitor, resistor — has a distinct marker shape, showing the diode family (squares) running high and out of spec.](docs/images/groups.png)
 
 ```toml
 [plot.encoding]
-color_by  = "group"       # single | pass-fail | group
-symbol_by = "pass-fail"
+color_by  = "pass-fail"   # single | pass-fail | group
+symbol_by = "group"
+# the symbols the groups cycle through (first-seen order, wraps if needed);
+# omit for a built-in default cycle.
+symbol_sequence = ["circle", "square", "diamond", "triangle-up"]
 color     = "blue"        # the token used when color_by = single
 symbol    = "circle"      # the symbol used when symbol_by = single
 ```
 
 - **single** — every point the same colour/symbol.
-- **pass-fail** — the overall verdict: pass = green circle, fail = red ✕.
-- **group** — by the group column: a colour palette / a symbol cycle.
+- **pass-fail** — the overall verdict: pass = green, fail = red (or `○`/`✕`).
+- **group** — by the group column: a colour palette, or a symbol cycle you can
+  set with `symbol_sequence` (any Plotly symbol name, including `-open`/`-dot`
+  variants; an unknown name is rejected with a named error).
 
-So "colour by batch, `✕` for failures, `○` for passes" is `color_by = group`,
-`symbol_by = pass-fail` — one legend entry per `(batch, verdict)`.
+Each distinct trace is one legend entry named for its meaningful dimensions —
+`pass · inductor`, `fail · diode` — never for the raw glyph.
 
 ## Tolerances
 
