@@ -382,6 +382,9 @@ def _register_tomlkit_encoding_encoder() -> None:
         # litter every config with `symbol_sequence = []`.
         if value.symbol_sequence:
             table["symbol_sequence"] = list(value.symbol_sequence)
+        # Only emit a non-default scale, matching symbol_sequence's treatment.
+        if value.colorscale and value.colorscale != "viridis":
+            table["colorscale"] = value.colorscale
         return table
 
     if not any(

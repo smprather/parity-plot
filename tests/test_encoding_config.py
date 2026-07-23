@@ -102,3 +102,21 @@ def test_pass_and_fail_colours_differ_from_identity(theme_name):
     theme = themes.get(theme_name)
     assert theme.pass_color.lower() != theme.identity.lower()
     assert theme.fail_color.lower() != theme.identity.lower()
+
+
+def test_colorscale_key_loads():
+    cfg = ParityConfig.from_dict({
+        "plot": {"encoding": {"color_by": "colorscale", "colorscale": "plasma"}}
+    })
+    assert cfg.plot.encoding.color_by == "colorscale"
+    assert cfg.plot.encoding.colorscale == "plasma"
+
+
+def test_bad_colorscale_raises_configerror():
+    with pytest.raises(ConfigError):
+        ParityConfig.from_dict({"plot": {"encoding": {"colorscale": "nope"}}})
+
+
+def test_color_column_loads_in_data_section():
+    cfg = ParityConfig.from_dict({"data": {"color_column": "d.csv:temp"}})
+    assert cfg.data.color_column == "d.csv:temp"

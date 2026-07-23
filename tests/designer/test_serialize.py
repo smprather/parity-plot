@@ -188,3 +188,26 @@ def test_default_encoding_does_not_emit_symbol_sequence():
     text = config_to_toml(ParityConfig())
     lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
     assert not any("symbol_sequence" in ln for ln in lines)
+
+
+def test_colorscale_round_trips_when_non_default(tmp_path):
+    from parity_plot.encoding import Encoding
+
+    config = ParityConfig().merge(
+        plot={"encoding": Encoding(color_by="colorscale", symbol_by="group",
+                                   colorscale="turbo")}
+    )
+    text = config_to_toml(config)
+    assert "colorscale" in text and "turbo" in text
+    # And it round-trips to an equal config.
+    path = tmp_path / "out.toml"
+    path.write_text(text, encoding="utf-8")
+    assert ParityConfig.from_toml(path) == config
+
+
+def test_default_colorscale_is_not_written():
+    from parity_plot.encoding import Encoding
+
+    text = config_to_toml(ParityConfig().merge(plot={"encoding": Encoding()}))
+    lines = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    assert not any("colorscale =" in ln for ln in lines)
