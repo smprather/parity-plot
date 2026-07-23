@@ -94,7 +94,7 @@ def test_pass_fail_symbol_uses_circle_and_x():
 
 def test_group_colour_makes_one_trace_per_group_in_first_seen_order():
     specs = partition(4, [True] * 4, ["b", "a", "b", "a"], Encoding(color_by="group"))
-    assert [s.color_key for s in specs] == ["b", "a"]     # first-seen order
+    assert [s.color_key for s in specs] == ["b", "a"]  # first-seen order
     assert specs[0].indices == [0, 2]
     assert specs[1].indices == [1, 3]
 
@@ -102,7 +102,9 @@ def test_group_colour_makes_one_trace_per_group_in_first_seen_order():
 def test_colour_by_group_and_symbol_by_pass_fail_cross():
     """The headline case: batch colour, verdict symbol -- one trace per pair."""
     specs = partition(
-        4, [True, False, True, False], ["a", "a", "b", "b"],
+        4,
+        [True, False, True, False],
+        ["a", "a", "b", "b"],
         Encoding(color_by="group", symbol_by="pass-fail"),
     )
     got = {(s.color_key, s.symbol_key): s.indices for s in specs}
@@ -120,7 +122,9 @@ def test_trace_name_reflects_the_meaningful_dimensions():
     assert {s.name for s in pf} == {"pass", "fail"}
 
     crossed = partition(
-        2, [True, False], ["a", "a"],
+        2,
+        [True, False],
+        ["a", "a"],
         Encoding(color_by="group", symbol_by="pass-fail"),
     )
     assert {s.name for s in crossed} == {"a · pass", "a · fail"}
@@ -137,12 +141,14 @@ def test_a_none_group_value_is_its_own_bucket():
     specs = partition(3, [True] * 3, ["a", None, "a"], Encoding(color_by="group"))
     by = {s.color_key: s.indices for s in specs}
     assert by["a"] == [0, 2]
-    assert set(by) - {"a"}                       # a bucket for the None too
+    assert set(by) - {"a"}  # a bucket for the None too
 
 
 def test_every_point_lands_in_exactly_one_trace():
     specs = partition(
-        5, [True, False, True, False, True], ["a", "b", "a", "c", "b"],
+        5,
+        [True, False, True, False, True],
+        ["a", "b", "a", "c", "b"],
         Encoding(color_by="group", symbol_by="pass-fail"),
     )
     seen = sorted(i for s in specs for i in s.indices)

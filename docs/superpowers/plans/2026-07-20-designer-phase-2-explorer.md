@@ -54,7 +54,9 @@ def write(tmp_path: Path, name: str, text: str) -> Path:
 
 
 def test_peek_reads_headers_and_one_sample_row(tmp_path):
-    path = write(tmp_path, "a.csv", "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n")
+    path = write(
+        tmp_path, "a.csv", "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n"
+    )
 
     result = peek(path)
 
@@ -104,8 +106,14 @@ def test_peek_reports_an_empty_file(tmp_path):
 @pytest.mark.parametrize(
     "columns, expected",
     [
-        (["id", "reference", "measured"], {"key": "id", "x": "reference", "y": "measured"}),
-        (["name", "expected", "actual"], {"key": "name", "x": "expected", "y": "actual"}),
+        (
+            ["id", "reference", "measured"],
+            {"key": "id", "x": "reference", "y": "measured"},
+        ),
+        (
+            ["name", "expected", "actual"],
+            {"key": "name", "x": "expected", "y": "actual"},
+        ),
         (["part", "golden", "dut"], {"key": "part", "x": "golden", "y": "dut"}),
         (["serial", "ref", "meas"], {"key": "serial", "x": "ref", "y": "meas"}),
     ],
@@ -370,9 +378,9 @@ def test_find_record_returns_none_for_an_unknown_key(data):
 @pytest.mark.parametrize(
     "customdata, expected",
     [
-        (["a1", 0.5], "a1"),          # paired trace: (key, diff)
+        (["a1", 0.5], "a1"),  # paired trace: (key, diff)
         (("a1", 0.5), "a1"),
-        ("a1", "a1"),                  # rug trace: bare key
+        ("a1", "a1"),  # rug trace: bare key
         ([], None),
         (None, None),
     ],
@@ -416,10 +424,10 @@ class RecordView:
     key: str
     x: float | None
     y: float | None
-    error: float | None       # y - x, undefined unless both are present
-    rel_error: float | None   # error / x, undefined at x = 0
+    error: float | None  # y - x, undefined unless both are present
+    rel_error: float | None  # error / x, undefined at x = 0
     status: str
-    within: bool | None       # None when unpaired or no tolerance was given
+    within: bool | None  # None when unpaired or no tolerance was given
 
 
 def record_views(data: ParityData, tol: Tolerance | None = None) -> list[RecordView]:
@@ -617,33 +625,37 @@ from .records import RecordView, find_record, record_views
 Add these two methods to `DesignerState`, after `update`:
 
 ```python
-    def set_data_source(self, **values: Any) -> bool:
-        """Point at a different file or column mapping. Returns whether it worked.
+def set_data_source(self, **values: Any) -> bool:
+    """Point at a different file or column mapping. Returns whether it worked.
 
-        On failure the previously loaded dataset and the config are both left
-        untouched: losing a working dataset because of a typo in a column name
-        would be far worse than the error message.
-        """
-        try:
-            candidate = self.config.merge(data=values)
-            data = load(candidate.data)
-        except (ConfigError, DataError, ValueError) as exc:
-            self.last_error = str(exc)
-            return False
+    On failure the previously loaded dataset and the config are both left
+    untouched: losing a working dataset because of a typo in a column name
+    would be far worse than the error message.
+    """
+    try:
+        candidate = self.config.merge(data=values)
+        data = load(candidate.data)
+    except (ConfigError, DataError, ValueError) as exc:
+        self.last_error = str(exc)
+        return False
 
-        self.config = candidate
-        self.data = data
-        self.last_error = None
-        if self.selection is not None and find_record(record_views(data), self.selection) is None:
-            # The pinned record does not exist in the new dataset.
-            self.selection = None
-        return True
+    self.config = candidate
+    self.data = data
+    self.last_error = None
+    if (
+        self.selection is not None
+        and find_record(record_views(data), self.selection) is None
+    ):
+        # The pinned record does not exist in the new dataset.
+        self.selection = None
+    return True
 
-    def selected_record(self, tol: Tolerance | None = None) -> RecordView | None:
-        """The pinned record, judged against ``tol`` if one is given."""
-        if self.selection is None:
-            return None
-        return find_record(record_views(self.data, tol), self.selection)
+
+def selected_record(self, tol: Tolerance | None = None) -> RecordView | None:
+    """The pinned record, judged against ``tol`` if one is given."""
+    if self.selection is None:
+        return None
+    return find_record(record_views(self.data, tol), self.selection)
 ```
 
 Add `DataError` to the config/data imports at the top:
@@ -789,21 +801,33 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
     from nicegui import ui
 
     with ui.expansion("Data", value=False).classes("w-full"):
-        paths_input = ui.input(
-            "Paths",
-            value=", ".join(str(p) for p in state.config.data.paths),
-        ).classes("w-full").tooltip(
-            "One path for a wide file, or two to outer-join on the key column."
+        paths_input = (
+            ui.input(
+                "Paths",
+                value=", ".join(str(p) for p in state.config.data.paths),
+            )
+            .classes("w-full")
+            .tooltip(
+                "One path for a wide file, or two to outer-join on the key column."
+            )
         )
 
         options = mapping_options(state.config.data.paths)
-        key_select = ui.select(options["key"], value=state.config.data.key, label="Key column").classes("w-full")
-        x_select = ui.select(options["x"], value=state.config.data.x, label="Reference column").classes("w-full")
-        y_select = ui.select(options["y"], value=state.config.data.y, label="Measured column").classes("w-full")
+        key_select = ui.select(
+            options["key"], value=state.config.data.key, label="Key column"
+        ).classes("w-full")
+        x_select = ui.select(
+            options["x"], value=state.config.data.x, label="Reference column"
+        ).classes("w-full")
+        y_select = ui.select(
+            options["y"], value=state.config.data.y, label="Measured column"
+        ).classes("w-full")
 
         def parse_paths() -> tuple[Path, ...]:
             return tuple(
-                Path(part.strip()) for part in paths_input.value.split(",") if part.strip()
+                Path(part.strip())
+                for part in paths_input.value.split(",")
+                if part.strip()
             )
 
         def refresh_options() -> None:
@@ -815,7 +839,9 @@ def build_data_panel(state: DesignerState, on_change: Callable[[], None]) -> Non
             paths = parse_paths()
             opts = mapping_options(paths)
             key_select.options, x_select.options, y_select.options = (
-                opts["key"], opts["x"], opts["y"],
+                opts["key"],
+                opts["x"],
+                opts["y"],
             )
             if paths:
                 try:
@@ -1064,15 +1090,16 @@ click handler:
 And extend `refresh` so the inspector follows, plus add `reload_everything`:
 
 ```python
-        def refresh() -> None:
-            plot_view.update_figure(state.figure())
-            error_banner.text = state.last_error or ""
-            status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
-            refresh_inspector()
+def refresh() -> None:
+    plot_view.update_figure(state.figure())
+    error_banner.text = state.last_error or ""
+    status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
+    refresh_inspector()
 
-        def reload_everything() -> None:
-            """After a dataset swap the whole view is stale, selection included."""
-            refresh()
+
+def reload_everything() -> None:
+    """After a dataset swap the whole view is stale, selection included."""
+    refresh()
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**

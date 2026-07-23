@@ -55,13 +55,16 @@ def test_group_defaults_to_empty_tuple():
     d = DataConfig()
     assert d.join is None and d.group == () and d.color_column is None
 
+
 def test_group_string_normalises_to_one_tuple():
     d = DataConfig(group="batch")
     assert d.group == ("batch",)
 
+
 def test_group_list_normalises_to_tuple():
     d = DataConfig(group=["package", "vendor"])
     assert d.group == ("package", "vendor")
+
 
 def test_color_column_is_a_plain_ref():
     d = DataConfig(color_column="d.csv:temperature")
@@ -137,30 +140,59 @@ Append to `tests/test_data_load.py`:
 
 ```python
 def test_two_group_columns_join_with_comma(tmp_path):
-    f = write(tmp_path, "d.csv",
-              "reference,test,package,vendor\n10,11,SMD,Acme\n20,22,DIP,Beta\n")
-    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           group=("package", "vendor")))
+    f = write(
+        tmp_path,
+        "d.csv",
+        "reference,test,package,vendor\n10,11,SMD,Acme\n20,22,DIP,Beta\n",
+    )
+    data = load(
+        DataConfig(
+            files=(f,),
+            ref="d.csv:reference",
+            test="d.csv:test",
+            group=("package", "vendor"),
+        )
+    )
     assert data.group == ["SMD, Acme", "DIP, Beta"]
 
+
 def test_one_blank_slot_shows_none_token(tmp_path):
-    f = write(tmp_path, "d.csv",
-              "reference,test,package,vendor\n10,11,SMD,\n20,22,,Beta\n")
-    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           group=("package", "vendor")))
+    f = write(
+        tmp_path, "d.csv", "reference,test,package,vendor\n10,11,SMD,\n20,22,,Beta\n"
+    )
+    data = load(
+        DataConfig(
+            files=(f,),
+            ref="d.csv:reference",
+            test="d.csv:test",
+            group=("package", "vendor"),
+        )
+    )
     assert data.group == ["SMD, (none)", "(none), Beta"]
 
+
 def test_all_blank_slots_is_none(tmp_path):
-    f = write(tmp_path, "d.csv",
-              "reference,test,package,vendor\n10,11,,\n20,22,DIP,Beta\n")
-    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           group=("package", "vendor")))
+    f = write(
+        tmp_path, "d.csv", "reference,test,package,vendor\n10,11,,\n20,22,DIP,Beta\n"
+    )
+    data = load(
+        DataConfig(
+            files=(f,),
+            ref="d.csv:reference",
+            test="d.csv:test",
+            group=("package", "vendor"),
+        )
+    )
     assert data.group == [None, "DIP, Beta"]
+
 
 def test_single_group_column_keeps_bare_value(tmp_path):
     f = write(tmp_path, "d.csv", "reference,test,batch\n10,11,x\n20,22,y\n")
-    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           group=("batch",)))
+    data = load(
+        DataConfig(
+            files=(f,), ref="d.csv:reference", test="d.csv:test", group=("batch",)
+        )
+    )
     assert data.group == ["x", "y"]  # no separator for a single column
 ```
 
@@ -256,35 +288,63 @@ Append to `tests/test_data_load.py`:
 
 ```python
 def test_color_column_values_align_to_paired_points(tmp_path):
-    f = write(tmp_path, "d.csv",
-              "reference,test,temp\n10,11,25\n20,22,80\n30,29,-40\n")
-    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           color_column="d.csv:temp"))
+    f = write(tmp_path, "d.csv", "reference,test,temp\n10,11,25\n20,22,80\n30,29,-40\n")
+    data = load(
+        DataConfig(
+            files=(f,),
+            ref="d.csv:reference",
+            test="d.csv:test",
+            color_column="d.csv:temp",
+        )
+    )
     assert data.color_values == [25.0, 80.0, -40.0]
     assert data.color_label == "temp"
+
 
 def test_color_column_none_without_setting(tmp_path):
     f = write(tmp_path, "d.csv", "reference,test\n10,11\n")
     data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test"))
     assert data.color_values is None
 
+
 def test_color_column_blank_cell_is_none(tmp_path):
     f = write(tmp_path, "d.csv", "reference,test,temp\n10,11,25\n20,22,\n")
-    data = load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                           color_column="d.csv:temp"))
+    data = load(
+        DataConfig(
+            files=(f,),
+            ref="d.csv:reference",
+            test="d.csv:test",
+            color_column="d.csv:temp",
+        )
+    )
     assert data.color_values == [25.0, None]
+
 
 def test_color_column_must_be_numeric(tmp_path):
     f = write(tmp_path, "d.csv", "reference,test,temp\n10,11,hot\n")
     with pytest.raises(DataError, match="non-numeric"):
-        load(DataConfig(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                        color_column="d.csv:temp"))
+        load(
+            DataConfig(
+                files=(f,),
+                ref="d.csv:reference",
+                test="d.csv:test",
+                color_column="d.csv:temp",
+            )
+        )
+
 
 def test_color_column_aligns_through_join(tmp_path):
     a = write(tmp_path, "a.csv", "id,v,temp\nA1,10,25\nA2,20,80\n")
     b = write(tmp_path, "b.csv", "id,v\nA1,11\nA2,22\n")
-    data = load(DataConfig(files=(a, b), ref="a.csv:v", test="b.csv:v", join="id",
-                           color_column="a.csv:temp"))
+    data = load(
+        DataConfig(
+            files=(a, b),
+            ref="a.csv:v",
+            test="b.csv:v",
+            join="id",
+            color_column="a.csv:temp",
+        )
+    )
     assert dict(zip(data.keys, data.color_values)) == {"A1": 25.0, "A2": 80.0}
 ```
 
@@ -347,21 +407,23 @@ Add a `color_label` argument to `_Builder.__init__` (default `""`) stored as `se
 In `load`, resolve the colour column and thread it through:
 
 ```python
-    color_col = src.resolve(cfg.color_column) if cfg.color_column else None
-    if color_col is not None:
-        _require_numeric(color_col, na, "color_column")
-    color_lookup = _color_lookup(src, color_col, cfg.join, na) if color_col else None
+color_col = src.resolve(cfg.color_column) if cfg.color_column else None
+if color_col is not None:
+    _require_numeric(color_col, na, "color_column")
+color_lookup = _color_lookup(src, color_col, cfg.join, na) if color_col else None
 
-    builder = _Builder(
-        x_label=ref_col.name,
-        y_label=test_col.name,
-        color_label=color_col.name if color_col else "",
+builder = _Builder(
+    x_label=ref_col.name,
+    y_label=test_col.name,
+    color_label=color_col.name if color_col else "",
+)
+if cfg.join:
+    _load_joined(
+        builder, src, ref_col, test_col, group_lookup, color_lookup, cfg.join, na
     )
-    if cfg.join:
-        _load_joined(builder, src, ref_col, test_col, group_lookup, color_lookup, cfg.join, na)
-    else:
-        _load_by_order(builder, ref_col, test_col, group_lookup, color_lookup, na)
-    return builder.build()
+else:
+    _load_by_order(builder, ref_col, test_col, group_lookup, color_lookup, na)
+return builder.build()
 ```
 
 Update `_load_by_order` / `_load_joined` signatures to take `color_lookup` and pass `color=color_lookup(point) if color_lookup else None` into `builder.add(...)` (the point is the row index `i` in order mode, the join `key` in join mode — mirroring `group_lookup`).
@@ -442,32 +504,48 @@ Append to `tests/test_encoding.py`:
 ```python
 import pytest
 from parity_plot.encoding import (
-    Encoding, EncodingError, color_key_of, partition, COLOR_CHANNELS, SYMBOL_CHANNELS,
+    Encoding,
+    EncodingError,
+    color_key_of,
+    partition,
+    COLOR_CHANNELS,
+    SYMBOL_CHANNELS,
 )
+
 
 def test_colorscale_is_a_colour_channel_only():
     assert "colorscale" in COLOR_CHANNELS
     assert "colorscale" not in SYMBOL_CHANNELS
 
+
 def test_symbol_by_rejects_colorscale():
     with pytest.raises(EncodingError):
         Encoding(symbol_by="colorscale")
 
+
 def test_colorscale_name_validates_and_strips_reverse_suffix():
-    Encoding(color_by="colorscale", colorscale="Viridis")   # case-insensitive
-    Encoding(color_by="colorscale", colorscale="viridis_r") # reverse suffix ok
+    Encoding(color_by="colorscale", colorscale="Viridis")  # case-insensitive
+    Encoding(color_by="colorscale", colorscale="viridis_r")  # reverse suffix ok
     with pytest.raises(EncodingError):
         Encoding(color_by="colorscale", colorscale="notascale")
 
+
 def test_colorscale_color_key_is_constant():
     # colour must not split traces under colorscale.
-    k0 = color_key_of(0, True, "a", Encoding(color_by="colorscale"), has_group_column=True)
-    k1 = color_key_of(1, False, "b", Encoding(color_by="colorscale"), has_group_column=True)
+    k0 = color_key_of(
+        0, True, "a", Encoding(color_by="colorscale"), has_group_column=True
+    )
+    k1 = color_key_of(
+        1, False, "b", Encoding(color_by="colorscale"), has_group_column=True
+    )
     assert k0 == k1 == "colorscale"
+
 
 def test_colorscale_partitions_by_symbol_only():
     specs = partition(
-        4, [True] * 4, ["a", "b", "a", "b"],
+        4,
+        [True] * 4,
+        ["a", "b", "a", "b"],
         Encoding(color_by="colorscale", symbol_by="group"),
     )
     assert len(specs) == 2  # one trace per symbol group, colour does not split
@@ -564,17 +642,20 @@ Append to `tests/test_encoding_config.py`:
 
 ```python
 def test_colorscale_key_loads():
-    cfg = ParityConfig.from_dict({
-        "plot": {"encoding": {"color_by": "colorscale", "colorscale": "plasma"}}
-    })
+    cfg = ParityConfig.from_dict(
+        {"plot": {"encoding": {"color_by": "colorscale", "colorscale": "plasma"}}}
+    )
     assert cfg.plot.encoding.color_by == "colorscale"
     assert cfg.plot.encoding.colorscale == "plasma"
+
 
 def test_bad_colorscale_raises_configerror():
     import pytest
     from parity_plot.config import ConfigError
+
     with pytest.raises(ConfigError):
         ParityConfig.from_dict({"plot": {"encoding": {"colorscale": "nope"}}})
+
 
 def test_color_column_loads_in_data_section():
     cfg = ParityConfig.from_dict({"data": {"color_column": "d.csv:temp"}})
@@ -588,8 +669,11 @@ def test_colorscale_round_trips_when_non_default():
     from parity_plot.encoding import Encoding
     from parity_plot.designer.serialize import config_to_toml
     from parity_plot.config import ParityConfig
+
     cfg = ParityConfig()
-    cfg = cfg.merge(plot={"encoding": Encoding(color_by="colorscale", colorscale="turbo")})
+    cfg = cfg.merge(
+        plot={"encoding": Encoding(color_by="colorscale", colorscale="turbo")}
+    )
     text = config_to_toml(cfg)
     assert "colorscale" in text and "turbo" in text
     # A default scale is not written.
@@ -645,37 +729,62 @@ Append to `tests/test_plot.py` (mirror the existing group-plot test style around
 ```python
 def _scale_data():
     from parity_plot.data import ParityData
+
     return ParityData(
         keys=["a", "b", "c", "d"],
-        x=[1.0, 2.0, 3.0, 4.0], y=[1.1, 2.1, 2.9, 4.2],
+        x=[1.0, 2.0, 3.0, 4.0],
+        y=[1.1, 2.1, 2.9, 4.2],
         group=["r", "r", "c", "c"],
-        color_values=[10.0, 20.0, 30.0, 40.0], color_label="temp",
-        x_label="ref", y_label="test",
+        color_values=[10.0, 20.0, 30.0, 40.0],
+        color_label="temp",
+        x_label="ref",
+        y_label="test",
     )
+
 
 def test_colorscale_draws_one_colorbar():
     from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
-    fig = build_figure(_scale_data(),
-                       PlotConfig(encoding=Encoding(color_by="colorscale",
-                                                    symbol_by="group",
-                                                    colorscale="turbo")))
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(
+            encoding=Encoding(
+                color_by="colorscale", symbol_by="group", colorscale="turbo"
+            )
+        ),
+    )
     paired = [t for t in fig.data if t.mode == "markers" and t.marker.symbol]
     showscale = [t for t in paired if t.marker.showscale]
-    assert len(showscale) == 1                      # single shared colorbar
+    assert len(showscale) == 1  # single shared colorbar
     assert showscale[0].marker.colorbar.title.text == "temp"
-    cmins = {t.marker.cmin for t in paired if t.marker.color and not isinstance(t.marker.color, str)}
-    assert cmins == {10.0}                           # shared cmin across groups
+    cmins = {
+        t.marker.cmin
+        for t in paired
+        if t.marker.color and not isinstance(t.marker.color, str)
+    }
+    assert cmins == {10.0}  # shared cmin across groups
+
 
 def test_colorscale_partitions_by_symbol():
     from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
-    fig = build_figure(_scale_data(),
-                       PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group")))
-    paired = [t for t in fig.data if t.mode == "markers" and hasattr(t.marker, "colorscale") and t.marker.colorscale]
-    assert len(paired) == 2                           # one trace per symbol group
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group")),
+    )
+    paired = [
+        t
+        for t in fig.data
+        if t.mode == "markers"
+        and hasattr(t.marker, "colorscale")
+        and t.marker.colorscale
+    ]
+    assert len(paired) == 2  # one trace per symbol group
+
 
 def test_colorscale_without_column_raises():
     import pytest
@@ -683,18 +792,24 @@ def test_colorscale_without_column_raises():
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
     from parity_plot.data import ParityData
+
     d = ParityData(keys=["a"], x=[1.0], y=[1.0])
     with pytest.raises(ValueError, match="color_column"):
         build_figure(d, PlotConfig(encoding=Encoding(color_by="colorscale")))
+
 
 def test_colorbar_and_right_legend_do_not_overlap():
     from parity_plot.plot import build_figure
     from parity_plot.config import PlotConfig
     from parity_plot.encoding import Encoding
-    fig = build_figure(_scale_data(),
-                       PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group"),
-                                  legend="right"))
-    assert fig.layout.legend.x >= 1.15               # legend pushed right of the colorbar
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(
+            encoding=Encoding(color_by="colorscale", symbol_by="group"), legend="right"
+        ),
+    )
+    assert fig.layout.legend.x >= 1.15  # legend pushed right of the colorbar
     assert fig.layout.margin.r >= 260
 ```
 
@@ -710,16 +825,15 @@ In `parity_plot/plot.py`:
 `build_figure` — compute the guard + flag and pass through:
 
 ```python
-    is_scale = plot.encoding.color_by == "colorscale"
-    if is_scale and data.color_values is None:
-        raise ValueError(
-            "color_by=colorscale needs a numeric colour column; set "
-            "[data].color_column"
-        )
-    ...
-    _add_paired(fig, data, plot.tolerances, plot.encoding, theme)
-    ...
-    _apply_layout(fig, data, plot, theme, summary, lo, hi, has_colorbar=is_scale)
+is_scale = plot.encoding.color_by == "colorscale"
+if is_scale and data.color_values is None:
+    raise ValueError(
+        "color_by=colorscale needs a numeric colour column; set [data].color_column"
+    )
+...
+_add_paired(fig, data, plot.tolerances, plot.encoding, theme)
+...
+_apply_layout(fig, data, plot, theme, summary, lo, hi, has_colorbar=is_scale)
 ```
 
 `_add_paired` — branch on colorscale:
@@ -728,7 +842,9 @@ In `parity_plot/plot.py`:
 def _add_paired(fig, data, tolerances, encoding, theme):
     scatter = go.Scattergl if data.n_paired > _WEBGL_THRESHOLD else go.Scatter
     diffs = [yi - xi for xi, yi in zip(data.x, data.y)]
-    verdicts = [verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)]
+    verdicts = [
+        verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)
+    ]
     passes = [failures(tolerances, xi, yi) == () for xi, yi in zip(data.x, data.y)]
 
     specs = partition(data.n_paired, passes, data.group, encoding)
@@ -747,36 +863,50 @@ def _add_paired(fig, data, tolerances, encoding, theme):
             marker = dict(
                 color=[data.color_values[j] for j in idx],
                 colorscale=encoding.colorscale,
-                cmin=cmin, cmax=cmax,
+                cmin=cmin,
+                cmax=cmax,
                 showscale=(i == 0),
                 colorbar=dict(
-                    title=data.color_label, x=1.02, xanchor="left",
-                    thickness=14, len=0.6, y=0.5, yanchor="middle",
-                ) if i == 0 else None,
+                    title=data.color_label,
+                    x=1.02,
+                    xanchor="left",
+                    thickness=14,
+                    len=0.6,
+                    y=0.5,
+                    yanchor="middle",
+                )
+                if i == 0
+                else None,
                 symbol=symbols[spec.symbol_key],
-                opacity=theme.marker_opacity, size=7,
+                opacity=theme.marker_opacity,
+                size=7,
                 line=dict(color=theme.marker_line, width=0.5),
             )
         else:
             marker = dict(
                 color=colours[spec.color_key],
                 symbol=symbols[spec.symbol_key],
-                opacity=theme.marker_opacity, size=7,
+                opacity=theme.marker_opacity,
+                size=7,
                 line=dict(color=theme.marker_line, width=0.5),
             )
-        fig.add_trace(scatter(
-            x=[data.x[j] for j in idx], y=[data.y[j] for j in idx],
-            mode="markers", name=name,
-            customdata=[(data.keys[j], diffs[j], verdicts[j]) for j in idx],
-            marker=marker,
-            hovertemplate=(
-                "<b>%{customdata[0]}</b><br>"
-                f"{data.x_label}: %{{x:.4g}}<br>"
-                f"{data.y_label}: %{{y:.4g}}<br>"
-                "difference: %{customdata[1]:+.4g}<br>"
-                "%{customdata[2]}<extra></extra>"
-            ),
-        ))
+        fig.add_trace(
+            scatter(
+                x=[data.x[j] for j in idx],
+                y=[data.y[j] for j in idx],
+                mode="markers",
+                name=name,
+                customdata=[(data.keys[j], diffs[j], verdicts[j]) for j in idx],
+                marker=marker,
+                hovertemplate=(
+                    "<b>%{customdata[0]}</b><br>"
+                    f"{data.x_label}: %{{x:.4g}}<br>"
+                    f"{data.y_label}: %{{y:.4g}}<br>"
+                    "difference: %{customdata[1]:+.4g}<br>"
+                    "%{customdata[2]}<extra></extra>"
+                ),
+            )
+        )
 ```
 
 `_apply_layout` — accept `has_colorbar` and clear the colorbar:
@@ -801,7 +931,9 @@ def _apply_layout(fig, data, plot, theme, summary, lo, hi, has_colorbar=False):
 
 ```python
 def _drop_non_positive(data):
-    colors = data.color_values if data.color_values is not None else [None] * data.n_paired
+    colors = (
+        data.color_values if data.color_values is not None else [None] * data.n_paired
+    )
     paired = [
         (k, xi, yi, ci)
         for k, xi, yi, ci in zip(data.keys, data.x, data.y, colors)
@@ -816,7 +948,8 @@ def _drop_non_positive(data):
         color_values=(
             [ci for _, _, _, ci in paired] if data.color_values is not None else None
         ),
-        missing_y=missing_y, missing_x=missing_x,
+        missing_y=missing_y,
+        missing_x=missing_x,
     )
 ```
 
@@ -852,18 +985,23 @@ Append to `tests/test_examples.py`:
 ```python
 def test_wide_file_has_rich_columns(tmp_path):
     from parity_plot import examples
+
     out = examples.write_all(tmp_path, examples.ExampleSpec(n=20, seed=3))
     header = out["wide"].read_text().splitlines()[0].split(",")
     assert header == ["id", "reference", "test", "package", "vendor", "temperature"]
 
+
 def test_pair_reference_carries_group_and_colour(tmp_path):
     from parity_plot import examples
+
     out = examples.write_all(tmp_path, examples.ExampleSpec(n=20, seed=3))
     header = out["reference"].read_text().splitlines()[0].split(",")
     assert header == ["id", "value", "package", "vendor", "temperature"]
 
+
 def test_categoricals_come_from_a_small_vocabulary(tmp_path):
     from parity_plot import examples
+
     recs = examples.generate(examples.ExampleSpec(n=200, seed=3))
     assert {r.package for r in recs} <= {"SMD", "DIP", "BGA", "QFN"}
     assert {r.vendor for r in recs} <= {"Acme", "Beta", "Ceres"}
@@ -896,13 +1034,19 @@ class Record:
 In `generate`, inside the build loop, draw the extra fields from the same `rng` (temperature spans a realistic range; light coupling to disparity keeps the colorbar meaningful):
 
 ```python
-        package = rng.choice(_PACKAGES)
-        vendor = rng.choice(_VENDORS)
-        temperature = rng.uniform(-40.0, 125.0)
-        records.append(Record(
-            key=f"S{i:04d}", reference=x, measured=y,
-            package=package, vendor=vendor, temperature=temperature,
-        ))
+package = rng.choice(_PACKAGES)
+vendor = rng.choice(_VENDORS)
+temperature = rng.uniform(-40.0, 125.0)
+records.append(
+    Record(
+        key=f"S{i:04d}",
+        reference=x,
+        measured=y,
+        package=package,
+        vendor=vendor,
+        temperature=temperature,
+    )
+)
 ```
 
 Preserve the categorical/temperature fields when carving nulls (the `Record(...)` rewrites in the null loops must copy `package`/`vendor`/`temperature`):
@@ -922,32 +1066,46 @@ Preserve the categorical/temperature fields when carving nulls (the `Record(...)
 `write_wide` — extend header and rows:
 
 ```python
-        writer.writerow(["id", "reference", "test", "package", "vendor", "temperature"])
-        for rec in records:
-            writer.writerow([
-                rec.key, _fmt(rec.reference), _fmt(rec.measured),
-                rec.package, rec.vendor, _fmt(rec.temperature),
-            ])
+writer.writerow(["id", "reference", "test", "package", "vendor", "temperature"])
+for rec in records:
+    writer.writerow(
+        [
+            rec.key,
+            _fmt(rec.reference),
+            _fmt(rec.measured),
+            rec.package,
+            rec.vendor,
+            _fmt(rec.temperature),
+        ]
+    )
 ```
 
 `write_pair` — put the group + colour columns in `reference.csv` (they resolve for paired points; unpaired rows are simply absent). Keep `measured.csv` as `id,value` only:
 
 ```python
-    for path, attr in ((x_path, "reference"), (y_path, "measured")):
-        with path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh, lineterminator="\n")
+for path, attr in ((x_path, "reference"), (y_path, "measured")):
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, lineterminator="\n")
+        if attr == "reference":
+            writer.writerow(["id", "value", "package", "vendor", "temperature"])
+        else:
+            writer.writerow(["id", "value"])
+        for rec in records:
+            value = getattr(rec, attr)
+            if value is None:
+                continue
             if attr == "reference":
-                writer.writerow(["id", "value", "package", "vendor", "temperature"])
+                writer.writerow(
+                    [
+                        rec.key,
+                        _fmt(value),
+                        rec.package,
+                        rec.vendor,
+                        _fmt(rec.temperature),
+                    ]
+                )
             else:
-                writer.writerow(["id", "value"])
-            for rec in records:
-                value = getattr(rec, attr)
-                if value is None:
-                    continue
-                if attr == "reference":
-                    writer.writerow([rec.key, _fmt(value), rec.package, rec.vendor, _fmt(rec.temperature)])
-                else:
-                    writer.writerow([rec.key, _fmt(value)])
+                writer.writerow([rec.key, _fmt(value)])
 ```
 
 - [ ] **Step 4: Run to verify pass**
@@ -981,26 +1139,34 @@ Rewrite `tests/test_cli.py` around the new surface. Representative tests (use Cl
 from click.testing import CliRunner
 from parity_plot.cli import cli
 
+
 def test_plot_reads_a_toml_and_writes(tmp_path):
     (tmp_path / "d.csv").write_text("reference,test\n10,11\n20,22\n", encoding="utf-8")
     cfg = tmp_path / "p.toml"
     cfg.write_text(
         '[data]\nfiles=["d.csv"]\nref="d.csv:reference"\ntest="d.csv:test"\n'
-        '[output]\npath="out.html"\n', encoding="utf-8")
+        '[output]\npath="out.html"\n',
+        encoding="utf-8",
+    )
     runner = CliRunner()
     with runner.isolated_filesystem(temp_dir=tmp_path):
         # run inside tmp_path so relative paths resolve
         pass
-    result = runner.invoke(cli, ["plot", str(cfg), "-o", str(tmp_path / "out.html"),
-                                 "--no-open-browser"])
+    result = runner.invoke(
+        cli, ["plot", str(cfg), "-o", str(tmp_path / "out.html"), "--no-open-browser"]
+    )
     assert result.exit_code == 0, result.output
     assert (tmp_path / "out.html").exists()
 
+
 def test_plot_missing_config_points_at_init(tmp_path):
     runner = CliRunner()
-    result = runner.invoke(cli, ["plot", str(tmp_path / "nope.toml"), "--no-open-browser"])
+    result = runner.invoke(
+        cli, ["plot", str(tmp_path / "nope.toml"), "--no-open-browser"]
+    )
     assert result.exit_code != 0
     assert "init" in result.output
+
 
 def test_plot_help_has_no_appearance_flags():
     runner = CliRunner()
@@ -1008,6 +1174,7 @@ def test_plot_help_has_no_appearance_flags():
     for gone in ("--theme", "--ref", "--tol", "--legend", "--width"):
         assert gone not in result.output
     assert "init" in result.output  # epilog routes to init
+
 
 def test_example_keeps_generator_flags_drops_appearance():
     runner = CliRunner()
@@ -1033,12 +1200,24 @@ In `parity_plot/cli.py`:
 
 ```python
 @cli.command()
-@click.argument("config", required=False, default="parity.toml",
-                type=click.Path(dir_okay=False, path_type=Path))
-@click.option("-o", "--output", type=click.Path(dir_okay=False, path_type=Path),
-              help="Override where the plot is written (path only).")
-@click.option("--open-browser/--no-open-browser", "open_browser", default=True,
-              help="Open the result in the default browser after writing.  [default: open]")
+@click.argument(
+    "config",
+    required=False,
+    default="parity.toml",
+    type=click.Path(dir_okay=False, path_type=Path),
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Override where the plot is written (path only).",
+)
+@click.option(
+    "--open-browser/--no-open-browser",
+    "open_browser",
+    default=True,
+    help="Open the result in the default browser after writing.  [default: open]",
+)
 def plot(config: Path, output: Path | None, open_browser: bool) -> None:
     """Render a parity plot from a TOML **CONFIG** (default `parity.toml`).
 
@@ -1073,14 +1252,17 @@ def plot(config: Path, output: Path | None, open_browser: bool) -> None:
 - Trim the `example` command: remove the options `--theme --abstol --reltol --tol --no-tolerance --band-style --legend --width --height` and their parameters. Its auto-plot builds the config without them:
 
 ```python
-        wide = written["wide"]
-        cfg = ParityConfig().merge(
-            data={"files": (wide,), "ref": f"{wide.name}:reference",
-                  "test": f"{wide.name}:test"},
-            output={"path": output, "format": _infer_format(output, None)},
-        )
-        data = load(cfg.data)
-        written_plot = save(build_figure(data, cfg.plot, cfg.stats), cfg.output)
+wide = written["wide"]
+cfg = ParityConfig().merge(
+    data={
+        "files": (wide,),
+        "ref": f"{wide.name}:reference",
+        "test": f"{wide.name}:test",
+    },
+    output={"path": output, "format": _infer_format(output, None)},
+)
+data = load(cfg.data)
+written_plot = save(build_figure(data, cfg.plot, cfg.stats), cfg.output)
 ```
 
 - Update `HELP_CONFIG.option_groups`: for `parity-plot plot` keep only `["CONFIG", "--output", "--open-browser", "--help"]`; for `parity-plot example` drop the removed flags from the "Plot" group (keep `--plot`, `--output`, `--open-browser`). Remove now-unused imports (`build_tolerances`, `TolSpecError`, `parse_reltol`, `RELTOL`, `BAND_STYLES`, `LEGEND_POSITIONS`, `NULL_MODES`, `THEMES` if no longer referenced — verify before deleting).
@@ -1117,11 +1299,18 @@ Add to the API test module:
 ```python
 def test_api_accepts_multiple_group_columns(tmp_path):
     from parity_plot import parity_plot
+
     f = tmp_path / "d.csv"
-    f.write_text("reference,test,package,vendor\n10,11,SMD,Acme\n20,22,DIP,Beta\n",
-                 encoding="utf-8")
-    fig = parity_plot(str(f), ref=f"{f.name}:reference", test=f"{f.name}:test",
-                      group=["package", "vendor"])
+    f.write_text(
+        "reference,test,package,vendor\n10,11,SMD,Acme\n20,22,DIP,Beta\n",
+        encoding="utf-8",
+    )
+    fig = parity_plot(
+        str(f),
+        ref=f"{f.name}:reference",
+        test=f"{f.name}:test",
+        group=["package", "vendor"],
+    )
     # one trace per composite group when colour-by-group is on by default? No:
     # default encoding is single; just assert it builds and groups resolved.
     assert fig is not None
@@ -1181,11 +1370,12 @@ In `tests/designer/test_data_panel.py`, extend the options expectations:
 ```python
 def test_options_include_numeric_colour_column(tmp_path):
     from parity_plot.designer.panels.data_panel import column_options
+
     f = tmp_path / "d.csv"
     f.write_text("id,voltage,batch\n1,10,x\n2,20,y\n", encoding="utf-8")
     opts = column_options((f,))
     assert "color_column" in opts
-    assert opts["color_column"] == ["d.csv:voltage"]   # numeric only
+    assert opts["color_column"] == ["d.csv:voltage"]  # numeric only
 ```
 
 Update the existing `column_options` assertions (`== {"ref": ..., "group": ..., "join": ...}`) to include the new `"color_column"` key so the empty-options tests still match.
@@ -1202,10 +1392,16 @@ In `column_options`, add `"color_column": list(numeric)` to the returned dict an
 - Make the group select multiple, bound to the tuple:
 
 ```python
-        group_sel = ui.select(
-            options["group"], value=list(state.config.data.group), multiple=True,
-            label="Group by (one or more columns)",
-        ).classes("w-full").props("use-chips")
+group_sel = (
+    ui.select(
+        options["group"],
+        value=list(state.config.data.group),
+        multiple=True,
+        label="Group by (one or more columns)",
+    )
+    .classes("w-full")
+    .props("use-chips")
+)
 ```
 
 - Add a colour-column select:
@@ -1284,12 +1480,14 @@ In `parity_plot/designer/panels/encoding.py`:
 - Add a colorscale dropdown, visible only when `color_by == "colorscale"`:
 
 ```python
-        from plotly.colors import named_colorscales
-        scale_pick = ui.select(
-            sorted(named_colorscales()), value=enc.colorscale,
-            on_change=lambda: commit(),
-        ).classes("w-40")
-        scale_pick.bind_visibility_from(color_by, "value", value="colorscale")
+from plotly.colors import named_colorscales
+
+scale_pick = ui.select(
+    sorted(named_colorscales()),
+    value=enc.colorscale,
+    on_change=lambda: commit(),
+).classes("w-40")
+scale_pick.bind_visibility_from(color_by, "value", value="colorscale")
 ```
 
 - Include `colorscale=scale_pick.value or "viridis"` in the `Encoding(...)` built by `commit()`.

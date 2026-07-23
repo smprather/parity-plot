@@ -224,7 +224,9 @@ fig = parity_plot(ref=[1.0, 2.0, 3.0], test=[1.1, None, 2.9], theme="light")
 
 # group takes one or more column names; keyword options are PlotConfig fields
 fig = parity_plot(
-    "parts.csv", ref="parts.csv:sim", test="parts.csv:measured",
+    "parts.csv",
+    ref="parts.csv:sim",
+    test="parts.csv:measured",
     group=["package", "vendor"],
     encoding=Encoding(color_by="pass-fail", symbol_by="group"),
 )

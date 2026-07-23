@@ -181,10 +181,13 @@ def test_config_choices_returns_only_valid_parity_configs(tmp_path):
     from parity_plot.designer.session import config_choices
 
     (tmp_path / "good.toml").write_text(
-        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n', encoding="utf-8"
+        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n',
+        encoding="utf-8",
     )
     # parses but names no files -> not a parity-plot config
-    (tmp_path / "nofiles.toml").write_text('[plot]\ntheme = "light"\n', encoding="utf-8")
+    (tmp_path / "nofiles.toml").write_text(
+        '[plot]\ntheme = "light"\n', encoding="utf-8"
+    )
     # not even valid TOML
     (tmp_path / "broken.toml").write_text("this = = nonsense\n", encoding="utf-8")
     # unrelated extension
@@ -221,7 +224,7 @@ def config_choices(directory: Path) -> list[Path]:
     for path in sorted(Path(directory).glob("*.toml")):
         try:
             config = ParityConfig.from_toml(path)
-        except (ConfigError, ValueError, OSError):
+        except ConfigError, ValueError, OSError:
             continue
         if config.data.files:
             out.append(path)
@@ -267,7 +270,9 @@ Then append:
 ```python
 def test_autosave_writes_when_bound(csv, tmp_path):
     out = tmp_path / "bound.toml"
-    out.write_text('[data]\nfiles = ["x.csv"]\nref="x.csv:a"\ntest="x.csv:b"\n', encoding="utf-8")
+    out.write_text(
+        '[data]\nfiles = ["x.csv"]\nref="x.csv:a"\ntest="x.csv:b"\n', encoding="utf-8"
+    )
     session, config, _ = Session.start((), out)
 
     edited = config.merge(plot={"theme": "light"})
@@ -275,12 +280,13 @@ def test_autosave_writes_when_bound(csv, tmp_path):
 
     assert written == out
     from parity_plot.config import ParityConfig
+
     assert ParityConfig.from_toml(out).plot.theme == "light"
     assert not session.is_dirty(edited)  # disk now matches
 
 
 def test_autosave_is_a_noop_when_unbound(csv):
-    session, config, _ = Session.start((), None)   # no file bound
+    session, config, _ = Session.start((), None)  # no file bound
     assert session.autosave(config.merge(plot={"theme": "light"})) is None
 
 
@@ -305,31 +311,32 @@ In `parity_plot/designer/session.py`:
 Remove the `is_stale` method entirely. Rewrite `save` to drop the stale check and `force`:
 
 ```python
-    def save(self, config: ParityConfig, path: Path | None = None) -> Path:
-        target = Path(path) if path is not None else self.config_path
-        if target is None:
-            raise ValueError("no config path to save to; choose one with Save As")
+def save(self, config: ParityConfig, path: Path | None = None) -> Path:
+    target = Path(path) if path is not None else self.config_path
+    if target is None:
+        raise ValueError("no config path to save to; choose one with Save As")
 
-        existing = target.read_text(encoding="utf-8") if target.exists() else None
-        text = config_to_toml(config, existing=existing)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
+    existing = target.read_text(encoding="utf-8") if target.exists() else None
+    text = config_to_toml(config, existing=existing)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
 
-        self.config_path = target
-        self.disk_text = text
-        self.saved_config = config
-        return target
+    self.config_path = target
+    self.disk_text = text
+    self.saved_config = config
+    return target
 
-    def autosave(self, config: ParityConfig) -> Path | None:
-        """Write ``config`` to the bound file, or nothing when unbound.
 
-        The auto-save path: `app.refresh()` calls this after every change that
-        leaves the config valid. Unbound (no file yet) is a no-op — a New Design
-        or data-only launch has nowhere to write until Save As binds a name.
-        """
-        if self.config_path is None:
-            return None
-        return self.save(config, self.config_path)
+def autosave(self, config: ParityConfig) -> Path | None:
+    """Write ``config`` to the bound file, or nothing when unbound.
+
+    The auto-save path: `app.refresh()` calls this after every change that
+    leaves the config valid. Unbound (no file yet) is a no-op — a New Design
+    or data-only launch has nowhere to write until Save As binds a name.
+    """
+    if self.config_path is None:
+        return None
+    return self.save(config, self.config_path)
 ```
 
 Leave the `StaleFileError` class defined for now (its last consumer, `app.py`, is cleaned up in Task 6).
@@ -371,8 +378,8 @@ def test_reset_fields_reverts_x_label_to_none():
     st = DesignerState(config=config)
     st.reset_fields("plot", "x_label")
 
-    assert st.config.plot.x_label is None      # back to default, not "custom"
-    assert st.config.plot.title == "Keep me"   # siblings untouched
+    assert st.config.plot.x_label is None  # back to default, not "custom"
+    assert st.config.plot.title == "Keep me"  # siblings untouched
 
 
 def test_reset_fields_reverts_join_to_none():
@@ -380,7 +387,14 @@ def test_reset_fields_reverts_join_to_none():
     from parity_plot.designer.state import DesignerState
 
     config = ParityConfig.from_dict(
-        {"data": {"files": ["d.csv"], "ref": "d.csv:a", "test": "d.csv:b", "join": "id"}}
+        {
+            "data": {
+                "files": ["d.csv"],
+                "ref": "d.csv:a",
+                "test": "d.csv:b",
+                "join": "id",
+            }
+        }
     )
     st = DesignerState(config=config)
     st.reset_fields("data", "join")
@@ -411,41 +425,40 @@ Expected: FAIL (methods undefined).
 In `parity_plot/designer/state.py`, add `import dataclasses` at the top (alongside the existing `from dataclasses import ...`), then add these methods to `DesignerState`:
 
 ```python
-    def reset_fields(self, section: str, *keys: str) -> None:
-        """Reset the named fields of one section to their dataclass defaults.
+def reset_fields(self, section: str, *keys: str) -> None:
+    """Reset the named fields of one section to their dataclass defaults.
 
-        Needed because ``ParityConfig.merge`` drops ``None`` overrides (a
-        deliberate CLI convenience), so it cannot clear an optional field back
-        to its default. Blanking a text control routes here instead, so an
-        emptied ``x_label`` truly reverts to the column name rather than keeping
-        its stale value.
-        """
-        current = getattr(self.config, section)
-        defaults: dict[str, object] = {}
-        for f in dataclasses.fields(current):
-            if f.name in keys:
-                if f.default is not dataclasses.MISSING:
-                    defaults[f.name] = f.default
-                elif f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
-                    defaults[f.name] = f.default_factory()  # type: ignore[misc]
-        new_section = dataclasses.replace(current, **defaults)
-        self.config = dataclasses.replace(self.config, **{section: new_section})
-        self.last_error = None
+    Needed because ``ParityConfig.merge`` drops ``None`` overrides (a
+    deliberate CLI convenience), so it cannot clear an optional field back
+    to its default. Blanking a text control routes here instead, so an
+    emptied ``x_label`` truly reverts to the column name rather than keeping
+    its stale value.
+    """
+    current = getattr(self.config, section)
+    defaults: dict[str, object] = {}
+    for f in dataclasses.fields(current):
+        if f.name in keys:
+            if f.default is not dataclasses.MISSING:
+                defaults[f.name] = f.default
+            elif f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+                defaults[f.name] = f.default_factory()  # type: ignore[misc]
+    new_section = dataclasses.replace(current, **defaults)
+    self.config = dataclasses.replace(self.config, **{section: new_section})
+    self.last_error = None
 
-    def load_session_config(
-        self, config: ParityConfig, data: ParityData | None
-    ) -> None:
-        """Swap in a freshly opened config (and its data), clearing view state.
 
-        Used when the toolbar opens a different config or starts a New Design:
-        the whole config changes, so a pinned selection and any prior error are
-        no longer meaningful. Filters reset to their default (a no-op) view.
-        """
-        self.config = config
-        self.data = data
-        self.selection = None
-        self.filters = FilterSet()
-        self.last_error = None
+def load_session_config(self, config: ParityConfig, data: ParityData | None) -> None:
+    """Swap in a freshly opened config (and its data), clearing view state.
+
+    Used when the toolbar opens a different config or starts a New Design:
+    the whole config changes, so a pinned selection and any prior error are
+    no longer meaningful. Filters reset to their default (a no-op) view.
+    """
+    self.config = config
+    self.data = data
+    self.selection = None
+    self.filters = FilterSet()
+    self.last_error = None
 ```
 
 (`FilterSet` is already imported at the top of `state.py`.)
@@ -554,7 +567,9 @@ Rewrite `_build_one` so a blanked text field resets to default and text inputs c
 placeholder:
 
 ```python
-def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], None]) -> None:
+def _build_one(
+    state: DesignerState, spec: ControlSpec, on_change: Callable[[], None]
+) -> None:
     from nicegui import ui
 
     current = getattr(getattr(state.config, spec.section), spec.key)
@@ -570,16 +585,24 @@ def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], 
         on_change()
 
     if spec.kind == "switch":
-        ui.switch(spec.label, value=bool(current), on_change=lambda e: apply(e.value)).tooltip(spec.help)
+        ui.switch(
+            spec.label, value=bool(current), on_change=lambda e: apply(e.value)
+        ).tooltip(spec.help)
     elif spec.kind == "choice":
-        ui.select(list(spec.choices), value=current, label=spec.label,
-                  on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.select(
+            list(spec.choices),
+            value=current,
+            label=spec.label,
+            on_change=lambda e: apply(e.value),
+        ).classes("w-full").tooltip(spec.help)
     elif spec.kind == "number":
-        ui.number(spec.label, value=current,
-                  on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.number(
+            spec.label, value=current, on_change=lambda e: apply(e.value)
+        ).classes("w-full").tooltip(spec.help)
     else:
         ui.input(
-            spec.label, value=_as_text(current),
+            spec.label,
+            value=_as_text(current),
             placeholder=_placeholder(spec, state.data),
             on_change=lambda e: apply(e.value),
         ).classes("w-full").tooltip(spec.help)
@@ -642,60 +665,65 @@ from .session import Session, config_choices
 2. In `build_app`, the launch directory is the CWD at build time. Inside `page()`, replace the header + settings-column + bottom-buttons region with a toolbar and a refreshable column. The session is now mutable across handlers, so hold it in a one-element list:
 
 ```python
-    state = DesignerState(config=config, data=data)
-    sess = {"session": session}
-    launch_dir = Path.cwd()
-    UNSAVED = "‹unsaved›"
+state = DesignerState(config=config, data=data)
+sess = {"session": session}
+launch_dir = Path.cwd()
+UNSAVED = "‹unsaved›"
 
-    @ui.page("/")
-    def page() -> None:
-        ui.dark_mode(True)
 
-        def current_choice() -> str:
-            s = sess["session"]
-            return s.config_path.name if s.config_path is not None else UNSAVED
+@ui.page("/")
+def page() -> None:
+    ui.dark_mode(True)
 
-        def choice_options() -> list[str]:
-            names = [p.name for p in config_choices(launch_dir)]
-            # Show the unbound sentinel only while unbound.
-            return ([UNSAVED] if sess["session"].config_path is None else []) + names
+    def current_choice() -> str:
+        s = sess["session"]
+        return s.config_path.name if s.config_path is not None else UNSAVED
 
-        with ui.header().classes("items-center justify-between"):
-            ui.label("parity-plot designer").classes("text-lg font-medium")
-            with ui.row().classes("items-center gap-2"):
-                config_pick = ui.select(
-                    choice_options(), value=current_choice(), label="Config",
-                    on_change=lambda e: open_named(e.value),
-                ).classes("w-56")
-                save_as_btn = ui.button("Save As…", on_click=lambda: ask_where_to_save())
-                ui.button("New Design", on_click=lambda: new_design())
+    def choice_options() -> list[str]:
+        names = [p.name for p in config_choices(launch_dir)]
+        # Show the unbound sentinel only while unbound.
+        return ([UNSAVED] if sess["session"].config_path is None else []) + names
 
-        with ui.row().classes("w-full no-wrap gap-4"):
-            with ui.column().classes("w-80 shrink-0"):
-                settings_column()   # the @ui.refreshable below
+    with ui.header().classes("items-center justify-between"):
+        ui.label("parity-plot designer").classes("text-lg font-medium")
+        with ui.row().classes("items-center gap-2"):
+            config_pick = ui.select(
+                choice_options(),
+                value=current_choice(),
+                label="Config",
+                on_change=lambda e: open_named(e.value),
+            ).classes("w-56")
+            save_as_btn = ui.button("Save As…", on_click=lambda: ask_where_to_save())
+            ui.button("New Design", on_click=lambda: new_design())
 
-            with ui.column().classes("grow"):
-                plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
-                status_bar = ui.label("Ready").classes(
-                    "w-full text-sm px-2 py-1 rounded opacity-70"
-                )
-                refresh_inspector = build_inspector(state, state.tolerances)
-                refresh_table = build_table(
-                    state,
-                    on_select=lambda key: select_record(state, key, refresh_inspector),
-                    on_filter_change=lambda: refresh(),
-                )
+    with ui.row().classes("w-full no-wrap gap-4"):
+        with ui.column().classes("w-80 shrink-0"):
+            settings_column()  # the @ui.refreshable below
 
-                def on_point_click(event) -> None:
-                    points = (event.args or {}).get("points") or []
-                    if not points:
-                        return
-                    key = key_from_customdata(points[0].get("customdata"))
-                    select_record(state, key, refresh_inspector, refresh_table)
+        with ui.column().classes("grow"):
+            plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
+            status_bar = ui.label("Ready").classes(
+                "w-full text-sm px-2 py-1 rounded opacity-70"
+            )
+            refresh_inspector = build_inspector(state, state.tolerances)
+            refresh_table = build_table(
+                state,
+                on_select=lambda key: select_record(state, key, refresh_inspector),
+                on_filter_change=lambda: refresh(),
+            )
 
-                plot_view.on("plotly_click", on_point_click)
-                plot_view.on("plotly_selected", lambda e: apply_brush(state, e.args, refresh))
-                plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
+            def on_point_click(event) -> None:
+                points = (event.args or {}).get("points") or []
+                if not points:
+                    return
+                key = key_from_customdata(points[0].get("customdata"))
+                select_record(state, key, refresh_inspector, refresh_table)
+
+            plot_view.on("plotly_click", on_point_click)
+            plot_view.on(
+                "plotly_selected", lambda e: apply_brush(state, e.args, refresh)
+            )
+            plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
 ```
 
 3. The settings column becomes a refreshable that rebuilds panels from the current `state`:
@@ -713,101 +741,123 @@ from .session import Session, config_choices
 discard); `new_design` starts blank; both swap via `load_session_config` and rebuild:
 
 ```python
-        def _has_unsaved_unbound_edits() -> bool:
-            s = sess["session"]
-            return s.config_path is None and s.is_dirty(state.config)
+def _has_unsaved_unbound_edits() -> bool:
+    s = sess["session"]
+    return s.config_path is None and s.is_dirty(state.config)
 
-        def _swap(new_session: Session, cfg: ParityConfig, new_data) -> None:
-            sess["session"] = new_session
-            state.load_session_config(cfg, new_data)
-            settings_column.refresh()
-            config_pick.options = choice_options()
+
+def _swap(new_session: Session, cfg: ParityConfig, new_data) -> None:
+    sess["session"] = new_session
+    state.load_session_config(cfg, new_data)
+    settings_column.refresh()
+    config_pick.options = choice_options()
+    config_pick.value = current_choice()
+    config_pick.update()
+    refresh()
+
+
+def open_named(name: str) -> None:
+    if name == UNSAVED or name == current_choice():
+        return
+
+    def do_open() -> None:
+        try:
+            new_session, cfg, new_data = Session.start((), launch_dir / name)
+        except (ConfigError, DataError, ValueError, OSError) as exc:
+            set_status(f"⛔  {exc}", "error")
             config_pick.value = current_choice()
             config_pick.update()
-            refresh()
+            return
+        _swap(new_session, cfg, new_data)
 
-        def open_named(name: str) -> None:
-            if name == UNSAVED or name == current_choice():
-                return
-            def do_open() -> None:
-                try:
-                    new_session, cfg, new_data = Session.start((), launch_dir / name)
-                except (ConfigError, DataError, ValueError, OSError) as exc:
-                    set_status(f"⛔  {exc}", "error")
-                    config_pick.value = current_choice()
-                    config_pick.update()
-                    return
-                _swap(new_session, cfg, new_data)
-            if _has_unsaved_unbound_edits():
-                confirm_discard(do_open, revert=lambda: (
-                    setattr(config_pick, "value", current_choice()), config_pick.update()))
-            else:
-                do_open()
+    if _has_unsaved_unbound_edits():
+        confirm_discard(
+            do_open,
+            revert=lambda: (
+                setattr(config_pick, "value", current_choice()),
+                config_pick.update(),
+            ),
+        )
+    else:
+        do_open()
 
-        def new_design() -> None:
-            def do_new() -> None:
-                new_session, cfg, new_data = Session.start((), None)
-                _swap(new_session, cfg, new_data)
-            if _has_unsaved_unbound_edits():
-                confirm_discard(do_new)
-            else:
-                do_new()
 
-        def confirm_discard(proceed, revert=None) -> None:
-            with ui.dialog() as dialog, ui.card():
-                ui.label("Discard unsaved changes?")
-                with ui.row():
-                    ui.button("Cancel", on_click=lambda: (dialog.close(),
-                                                          revert() if revert else None))
-                    ui.button("Discard", on_click=lambda: (dialog.close(), proceed())
-                              ).props("color=negative")
-            dialog.open()
+def new_design() -> None:
+    def do_new() -> None:
+        new_session, cfg, new_data = Session.start((), None)
+        _swap(new_session, cfg, new_data)
+
+    if _has_unsaved_unbound_edits():
+        confirm_discard(do_new)
+    else:
+        do_new()
+
+
+def confirm_discard(proceed, revert=None) -> None:
+    with ui.dialog() as dialog, ui.card():
+        ui.label("Discard unsaved changes?")
+        with ui.row():
+            ui.button(
+                "Cancel",
+                on_click=lambda: (dialog.close(), revert() if revert else None),
+            )
+            ui.button("Discard", on_click=lambda: (dialog.close(), proceed())).props(
+                "color=negative"
+            )
+    dialog.open()
 ```
 
 5. Replace the old `save(...)`/`confirm_overwrite(...)` with a Save-As-only flow (auto-save
 arrives in Task 7). Keep the positive toast:
 
 ```python
-        def save_as(path: Path) -> None:
-            try:
-                written = sess["session"].save(state.config, path)
-            except (ValueError, OSError) as exc:
-                set_status(f"⛔  {exc}", "error")
-                return
-            ui.notify(f"Saved {written}", type="positive")
-            set_status(f"✅  Saved {written}", "ok")
-            config_pick.options = choice_options()
-            config_pick.value = current_choice()
-            config_pick.update()
-            refresh()
+def save_as(path: Path) -> None:
+    try:
+        written = sess["session"].save(state.config, path)
+    except (ValueError, OSError) as exc:
+        set_status(f"⛔  {exc}", "error")
+        return
+    ui.notify(f"Saved {written}", type="positive")
+    set_status(f"✅  Saved {written}", "ok")
+    config_pick.options = choice_options()
+    config_pick.value = current_choice()
+    config_pick.update()
+    refresh()
 
-        def ask_where_to_save() -> None:
-            with ui.dialog() as dialog, ui.card():
-                ui.label("Save configuration as")
-                target = ui.input("Path", value=str(sess["session"].config_path or "parity.toml"))
-                with ui.row():
-                    ui.button("Cancel", on_click=dialog.close)
-                    ui.button("Save", on_click=lambda: (dialog.close(), save_as(Path(target.value))))
-            dialog.open()
+
+def ask_where_to_save() -> None:
+    with ui.dialog() as dialog, ui.card():
+        ui.label("Save configuration as")
+        target = ui.input(
+            "Path", value=str(sess["session"].config_path or "parity.toml")
+        )
+        with ui.row():
+            ui.button("Cancel", on_click=dialog.close)
+            ui.button(
+                "Save", on_click=lambda: (dialog.close(), save_as(Path(target.value)))
+            )
+    dialog.open()
 ```
 
 6. `set_status`, `refresh`, `reload_everything` stay as they were, except `refresh` should
 also keep the toolbar's config selection current (the saved/unsaved label is gone):
 
 ```python
-        def refresh() -> None:
-            plot_view.update_figure(state.figure())
-            if state.last_error:
-                set_status(f"⛔  {state.last_error}", "error")
-            else:
-                set_status("Ready", "info")
-            refresh_inspector()
-            refresh_table()
+def refresh() -> None:
+    plot_view.update_figure(state.figure())
+    if state.last_error:
+        set_status(f"⛔  {state.last_error}", "error")
+    else:
+        set_status("Ready", "info")
+    refresh_inspector()
+    refresh_table()
 
-        def reload_everything() -> None:
-            refresh()
 
-        refresh()
+def reload_everything() -> None:
+    refresh()
+
+
+refresh()
 ```
 
 Add the needed imports at the top of `app.py`: `from ..config import ParityConfig, ConfigError` and `from ..data import ParityData, DataError` (extend the existing lines).
@@ -866,7 +916,7 @@ def test_autosave_output_round_trips_identically(csv, tmp_path: Path):
     session, config, data = Session.start((csv,), tmp_path / "parity.toml")
     state = DesignerState(config=config, data=data)
     edited = state.config.merge(plot={"theme": "light"})
-    written = session.autosave(edited)          # writes to the bound file
+    written = session.autosave(edited)  # writes to the bound file
 
     from_disk = ParityConfig.from_toml(written)
     preview = build_figure(load(edited.data), edited.plot, edited.stats)
@@ -885,13 +935,14 @@ In `parity_plot/designer/panels/data_panel.py`, return a mark hook. At the end o
 `build_data_panel`, after the widgets are built, add:
 
 ```python
-        def mark_problems(problems) -> None:
-            has_join_problem = any(getattr(p, "field", None) == "data.join" for p in problems)
-            join_sel.props(remove="error")
-            if has_join_problem:
-                join_sel.props("error")
+def mark_problems(problems) -> None:
+    has_join_problem = any(getattr(p, "field", None) == "data.join" for p in problems)
+    join_sel.props(remove="error")
+    if has_join_problem:
+        join_sel.props("error")
 
-        return mark_problems
+
+return mark_problems
 ```
 
 and change the function's signature/annotation to `-> Callable[[list], None]` (import
@@ -907,14 +958,15 @@ from .validation import problems as config_problems
 2. Capture the data panel's hook in the refreshable column, and hold it so `refresh` can call
 it:
 ```python
-        marks = {"join": lambda problems: None}
+marks = {"join": lambda problems: None}
 
-        @ui.refreshable
-        def settings_column() -> None:
-            marks["join"] = build_data_panel(state, lambda: reload_everything())
-            build_tolerances_panel(state, lambda: refresh())
-            build_encoding_panel(state, lambda: refresh())
-            build_controls(state, lambda: refresh())
+
+@ui.refreshable
+def settings_column() -> None:
+    marks["join"] = build_data_panel(state, lambda: reload_everything())
+    build_tolerances_panel(state, lambda: refresh())
+    build_encoding_panel(state, lambda: refresh())
+    build_controls(state, lambda: refresh())
 ```
 
 3. Rewrite `refresh` to surface validation, gate persistence, mark the field, and auto-save:

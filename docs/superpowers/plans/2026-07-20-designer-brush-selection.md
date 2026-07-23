@@ -183,11 +183,7 @@ from parity_plot.designer.filters import FilterSet
 from parity_plot.designer.state import DesignerState
 
 WIDE = (
-    "id,reference,measured\n"
-    "A1,10.0,11.0\n"
-    "A2,50.0,51.0\n"
-    "A3,90.0,95.0\n"
-    "A4,200.0,201.0\n"
+    "id,reference,measured\nA1,10.0,11.0\nA2,50.0,51.0\nA3,90.0,95.0\nA4,200.0,201.0\n"
 )
 
 
@@ -209,8 +205,12 @@ def test_brushing_sets_the_x_range_and_narrows_the_view(state):
 
 def test_brushing_refreshes_every_panel(state):
     calls = []
-    apply_brush(state, {"range": {"x": [0.0, 1000.0]}},
-                lambda: calls.append("a"), lambda: calls.append("b"))
+    apply_brush(
+        state,
+        {"range": {"x": [0.0, 1000.0]}},
+        lambda: calls.append("a"),
+        lambda: calls.append("b"),
+    )
     assert calls == ["a", "b"]
 
 
@@ -285,11 +285,12 @@ Inside `page()`, after the existing `plot_view.on("plotly_click", on_point_click
 attach the two selection events:
 
 ```python
-                def on_brush(event) -> None:
-                    apply_brush(state, event.args, refresh)
+def on_brush(event) -> None:
+    apply_brush(state, event.args, refresh)
 
-                plot_view.on("plotly_selected", on_brush)
-                plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
+
+plot_view.on("plotly_selected", on_brush)
+plot_view.on("plotly_deselect", lambda _: apply_brush(state, None, refresh))
 ```
 
 Then make box-select the default drag action so the brush is discoverable, by

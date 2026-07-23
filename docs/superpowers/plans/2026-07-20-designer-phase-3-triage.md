@@ -123,9 +123,9 @@ def test_outside_tolerance_leaves_unpaired_records_to_the_other_switch(data):
 def test_x_range_keeps_records_inside_the_window(data):
     result = FilterSet(x_range=(40.0, 80.0)).apply(data)
 
-    assert result.keys == ["c"]          # x = 50
+    assert result.keys == ["c"]  # x = 50
     assert result.missing_y.keys == ["d"]  # x = 70, known
-    assert result.missing_x.keys == []     # no x at all, so not in any window
+    assert result.missing_x.keys == []  # no x at all, so not in any window
 
 
 def test_x_range_bounds_are_inclusive(data):
@@ -383,16 +383,32 @@ from .records import RecordView
 # Quasar column definitions. Every column sorts; the point of the table is to
 # put the worst offenders at the top on demand.
 COLUMNS: list[dict[str, Any]] = [
-    {"name": "key", "label": "Record", "field": "key", "required": True,
-     "align": "left", "sortable": True},
+    {
+        "name": "key",
+        "label": "Record",
+        "field": "key",
+        "required": True,
+        "align": "left",
+        "sortable": True,
+    },
     {"name": "x", "label": "Reference", "field": "x", "sortable": True},
     {"name": "y", "label": "Measured", "field": "y", "sortable": True},
     {"name": "error", "label": "Error", "field": "error", "sortable": True},
     {"name": "rel_error", "label": "Error %", "field": "rel_error", "sortable": True},
-    {"name": "status", "label": "Status", "field": "status", "align": "left",
-     "sortable": True},
-    {"name": "verdict", "label": "Tolerance", "field": "verdict", "align": "left",
-     "sortable": True},
+    {
+        "name": "status",
+        "label": "Status",
+        "field": "status",
+        "align": "left",
+        "sortable": True,
+    },
+    {
+        "name": "verdict",
+        "label": "Tolerance",
+        "field": "verdict",
+        "align": "left",
+        "sortable": True,
+    },
 ]
 
 _DIGITS = 6
@@ -406,7 +422,9 @@ def to_rows(views: Sequence[RecordView]) -> list[dict[str, Any]]:
             "x": _round(view.x),
             "y": _round(view.y),
             "error": _round(view.error),
-            "rel_error": _round(None if view.rel_error is None else view.rel_error * 100),
+            "rel_error": _round(
+                None if view.rel_error is None else view.rel_error * 100
+            ),
             "status": view.status,
             "verdict": _verdict(view.within),
         }
@@ -585,25 +603,28 @@ Add the field to the dataclass, after `selection`:
 Add these methods after `selected_record`:
 
 ```python
-    def tolerance(self) -> Tolerance:
-        """The tolerance the current config specifies."""
-        return Tolerance(abstol=self.config.plot.abstol, reltol=self.config.plot.reltol)
+def tolerance(self) -> Tolerance:
+    """The tolerance the current config specifies."""
+    return Tolerance(abstol=self.config.plot.abstol, reltol=self.config.plot.reltol)
 
-    def visible_data(self) -> ParityData:
-        """The dataset after filtering. The plot and the table both read this."""
-        return self.filters.apply(self.data, self.tolerance())
 
-    def visible_records(self) -> list[RecordView]:
-        """One row per visible record, judged against the current tolerance."""
-        return record_views(self.visible_data(), self.tolerance())
+def visible_data(self) -> ParityData:
+    """The dataset after filtering. The plot and the table both read this."""
+    return self.filters.apply(self.data, self.tolerance())
 
-    def counts(self) -> tuple[int, int]:
-        """``(showing, total)`` records -- a filtered view that looks unfiltered
-        is a trap, so the UI always states both."""
-        visible = self.visible_data()
-        showing = visible.n_paired + visible.n_unpaired
-        total = self.data.n_paired + self.data.n_unpaired
-        return showing, total
+
+def visible_records(self) -> list[RecordView]:
+    """One row per visible record, judged against the current tolerance."""
+    return record_views(self.visible_data(), self.tolerance())
+
+
+def counts(self) -> tuple[int, int]:
+    """``(showing, total)`` records -- a filtered view that looks unfiltered
+    is a trap, so the UI always states both."""
+    visible = self.visible_data()
+    showing = visible.n_paired + visible.n_unpaired
+    total = self.data.n_paired + self.data.n_unpaired
+    return showing, total
 ```
 
 Change **one line** in `figure()` — the `build_figure` call — so the plot and the
@@ -951,13 +972,7 @@ from parity_plot.designer.state import DesignerState
 from parity_plot.designer.table_rows import to_rows
 
 # A1 +10%, A2 +0.5%, A3 +25%, A4 unpaired
-WIDE = (
-    "id,reference,measured\n"
-    "A1,10.0,11.0\n"
-    "A2,100.0,100.5\n"
-    "A3,40.0,50.0\n"
-    "A4,70.0,\n"
-)
+WIDE = "id,reference,measured\nA1,10.0,11.0\nA2,100.0,100.5\nA3,40.0,50.0\nA4,70.0,\n"
 
 
 @pytest.fixture

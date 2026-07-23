@@ -82,11 +82,11 @@ A new **browser-free, unit-tested** module — `parity_plot/designer/validation.
 ```python
 @dataclass(frozen=True)
 class Problem:
-    message: str          # human-readable, names the offending setting
-    field: str            # a stable id, e.g. "data.join", for inline marking
+    message: str  # human-readable, names the offending setting
+    field: str  # a stable id, e.g. "data.join", for inline marking
 
-def problems(config: ParityConfig) -> list[Problem]:
-    ...
+
+def problems(config: ParityConfig) -> list[Problem]: ...
 ```
 
 Rules are cross-field config constraints that `ParityConfig` cannot express on its own
