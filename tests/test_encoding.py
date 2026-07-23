@@ -138,3 +138,38 @@ def test_single_symbol_is_validated_too():
 
     with pytest.raises(EncodingError):
         Encoding(symbol="nonsense")
+
+
+def test_colorscale_is_a_colour_channel_only():
+    from parity_plot.encoding import COLOR_CHANNELS, SYMBOL_CHANNELS
+    assert "colorscale" in COLOR_CHANNELS
+    assert "colorscale" not in SYMBOL_CHANNELS
+
+
+def test_symbol_by_rejects_colorscale():
+    from parity_plot.encoding import EncodingError
+    with pytest.raises(EncodingError):
+        Encoding(symbol_by="colorscale")
+
+
+def test_colorscale_name_validates_and_strips_reverse_suffix():
+    Encoding(color_by="colorscale", colorscale="Viridis")   # case-insensitive
+    Encoding(color_by="colorscale", colorscale="viridis_r")  # reverse suffix ok
+    from parity_plot.encoding import EncodingError
+    with pytest.raises(EncodingError):
+        Encoding(color_by="colorscale", colorscale="notascale")
+
+
+def test_colorscale_color_key_is_constant():
+    from parity_plot.encoding import color_key_of
+    k0 = color_key_of(0, True, "a", Encoding(color_by="colorscale"), has_group_column=True)
+    k1 = color_key_of(1, False, "b", Encoding(color_by="colorscale"), has_group_column=True)
+    assert k0 == k1 == "colorscale"
+
+
+def test_colorscale_partitions_by_symbol_only():
+    specs = partition(
+        4, [True] * 4, ["a", "b", "a", "b"],
+        Encoding(color_by="colorscale", symbol_by="group"),
+    )
+    assert len(specs) == 2  # one trace per symbol group; colour does not split

@@ -12,8 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
+import plotly.colors as _pcolors
+
 __all__ = [
     "CHANNELS",
+    "COLOR_CHANNELS",
+    "SYMBOL_CHANNELS",
     "Encoding",
     "EncodingError",
     "TraceSpec",
@@ -22,7 +26,25 @@ __all__ = [
     "symbol_key_of",
 ]
 
-CHANNELS: tuple[str, str, str] = ("single", "pass-fail", "group")
+COLOR_CHANNELS: tuple[str, ...] = ("single", "pass-fail", "group", "colorscale")
+SYMBOL_CHANNELS: tuple[str, ...] = ("single", "pass-fail", "group")
+# Back-compat alias for callers that referenced the old single tuple.
+CHANNELS = SYMBOL_CHANNELS
+
+_NAMED_COLORSCALES: frozenset[str] = frozenset(_pcolors.named_colorscales())
+
+
+def _validate_colorscale(name: str) -> None:
+    if not isinstance(name, str) or not name.strip():
+        raise EncodingError(f"colorscale must be a non-empty name, got {name!r}")
+    base = name.lower()
+    if base.endswith("_r"):
+        base = base[:-2]
+    if base not in _NAMED_COLORSCALES:
+        raise EncodingError(
+            f"unknown colorscale {name!r}; use a Plotly named scale "
+            f"(e.g. viridis, cividis, plasma, turbo)"
+        )
 
 # The default symbol cycle used when ``symbol_by = "group"`` and no explicit
 # ``symbol_sequence`` is given. Ordered for maximum shape contrast early, so the
@@ -129,17 +151,19 @@ class Encoding:
     color: str = "blue"
     symbol: str = "circle"
     symbol_sequence: tuple[str, ...] = ()
+    colorscale: str = "viridis"
 
     def __post_init__(self) -> None:
-        if self.color_by not in CHANNELS:
+        if self.color_by not in COLOR_CHANNELS:
             raise EncodingError(
-                f"color_by must be one of {CHANNELS!r}, got {self.color_by!r}"
+                f"color_by must be one of {COLOR_CHANNELS!r}, got {self.color_by!r}"
             )
-        if self.symbol_by not in CHANNELS:
+        if self.symbol_by not in SYMBOL_CHANNELS:
             raise EncodingError(
-                f"symbol_by must be one of {CHANNELS!r}, got {self.symbol_by!r}"
+                f"symbol_by must be one of {SYMBOL_CHANNELS!r}, got {self.symbol_by!r}"
             )
         _validate_symbol(self.symbol, where="symbol")
+        _validate_colorscale(self.colorscale)
         # TOML (and the designer's multi-select) hand over a list; normalise to a
         # tuple so the frozen dataclass is hashable and compares by value.
         object.__setattr__(self, "symbol_sequence", tuple(self.symbol_sequence))
@@ -175,6 +199,8 @@ def color_key_of(
         return enc.color
     if enc.color_by == "pass-fail":
         return "pass" if verdict else "fail"
+    if enc.color_by == "colorscale":
+        return "colorscale"  # constant: colour is per-point, must not split traces
     # group
     if not has_group_column:
         return _NO_COLUMN_BUCKET
