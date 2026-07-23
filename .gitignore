@@ -21,3 +21,7 @@ out/
 # committed README screenshots (override the global *.png ignore)
 !docs/images/
 !docs/images/*.png
+
+# throwaway designer configs made while experimenting (config1.toml, ...).
+# The committed sample config is parity.toml / EXAMPLE_TOML, never config*.toml.
+config*.toml
