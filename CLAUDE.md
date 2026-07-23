@@ -11,7 +11,8 @@ uv sync                          # runtime + dev deps (designer included)
 uv run pytest                    # full suite
 uv run pytest tests/test_data.py::test_wide_sorts_records_into_paired_and_unpaired
 uv run parity-plot example       # regenerate data/ sample CSVs, plot, open browser
-uv run parity-plot plot data/example.csv --no-open-browser -o out.html
+uv run parity-plot init          # write a documented parity.toml
+uv run parity-plot plot parity.toml --no-open-browser -o out.html   # CONFIG is positional
 ```
 
 `plot` and `example` **open the result in a browser by default**
@@ -50,22 +51,37 @@ carrying an optional per-point `group`), so nothing downstream knows how it was
 loaded. `sources` imports helpers from `data`, so `data.load` imports
 `open_sources` **lazily** to break the cycle.
 
-**Group is file-independent, a bare column name — not `file:column`.** A group
-labels the joined *entity* (a part), not a per-file measurement, so it may live
-in one file or several. `data._group_lookup` resolves it via
-`Sources.files_with_column`, keying by the join value (or row index when
-pairing by order). When 2+ open files carry the group column, `_agree` checks
-that a paired record's value matches across them and raises a `DataError` naming
-the record and the disagreeing values — the test file need not carry it at all.
-`join` stays a column present in *every* file (the key has to match on both
-sides); `group` needs only one.
+**Group is file-independent, bare column names — not `file:column` — and a
+*tuple* (composite).** `DataConfig.group` is `tuple[str, ...]`, normalised from
+`None`/`str`/`list` in `__post_init__`. A group labels the joined *entity* (a
+part), not a per-file measurement, so it may live in one file or several.
+`data._group_lookup(src, groups, join, na)` composes per-column resolvers
+(`_one_group_lookup`, the old single-column body) and joins their values with
+`", "` — `"SMD, Acme"`; a blank slot is `"(none)"`, all-blank is `None`. Each
+column is resolved via `Sources.files_with_column`, keying by the join value (or
+row index when pairing by order); when 2+ files carry a column `_agree` checks the
+values match and raises naming the record. `join` stays a column present in
+*every* file; each `group` column needs only one.
+
+**`color_column` is the colorscale channel's data — a single pinned `file:column`
+numeric ref** (`DataConfig.color_column`, unlike `group` it names one file, since
+the same column can differ between ref and test files). `data._color_lookup`
+resolves it (no cross-file `_agree`) into `ParityData.color_values`
+(`list[float|None]|None`, aligned to paired points, `None` if unset or all-blank)
+plus `color_label` (the colorbar title). `_drop_non_positive` re-slices
+`color_values` in log mode; it still does **not** re-slice `group` (pre-existing).
 
 **Marker encoding** (`encoding.py`, pure) partitions paired points into traces by
-their `(colour-key, symbol-key)` — each channel is `single | pass-fail | group`.
-It is theme-free: keys are tokens / `pass`/`fail` / group values / symbol names,
-and `plot._resolve_colours` turns colour keys into real colours via the theme, so
-one encoding renders on both themes. The default (single blue circle) is one
-trace, keeping the golden test behaviour-preserving.
+their `(colour-key, symbol-key)`. Channels split: `COLOR_CHANNELS = single |
+pass-fail | group | colorscale`, `SYMBOL_CHANNELS = single | pass-fail | group`
+(`CHANNELS` is a back-compat alias of the symbol set). Under `colorscale`,
+`color_key_of` returns the **constant** `"colorscale"` so colour does **not**
+split traces (colour is per-point, shown by a colorbar) — only the symbol channel
+partitions; and `_channel_label` returns `None` for it so a trace is named for its
+symbol group alone (`BGA`, never `colorscale · BGA`). It is theme-free: keys are
+tokens / `pass`/`fail` / group values / symbol names, and `plot._resolve_colours`
+turns colour keys into real colours via the theme. The default (single blue
+circle) is one trace, keeping the golden test behaviour-preserving.
 
 **Colour and symbol resolution are symmetric.** For the group channel both
 `color_key_of` and `symbol_key_of` emit the **group value** (not a resolved
@@ -290,19 +306,26 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   `--noise`, `--bias` are ratios in `[0, 1]` (`--outliers 0.01` = 1%); passing a
   count like `--outliers 6` fails `ExampleSpec.__post_init__`. Only the
   `--missing-*` null knobs accept explicit counts (else a fraction of `n`).
-- **Encoding has no CLI flags.** `color_by` / `symbol_by` / `color` / `symbol` /
-  `symbol_sequence` are set only via TOML or the designer — `cli.py` has `--group`
-  (the column) but no `--color-by` etc. The README's "every key has a matching CLI
-  flag" is about the `[data]` / `[plot]` scalars, not the encoding table.
+- **The CLI drives no plot or data *setting* — TOML is the single source of truth
+  (CLI teardown).** `plot` takes a positional `CONFIG` (default `parity.toml`)
+  plus only operational flags: `-o/--output` (where to write) and `--open-browser`.
+  A missing config raises a message pointing at `parity-plot init`. `example` keeps
+  its generator knobs (`--noise`, `--seed`, `--missing-*`, …) and `-o`/`--plot`, but
+  lost every appearance flag. There is no `--ref`/`--test`/`--join`/`--group`/
+  `--theme`/`--tol` any more, and `_default_ref_test` is gone. `parity-plot init` +
+  the commented `EXAMPLE_TOML` + rich docstrings are the agent-discovery surface;
+  shape a plot via TOML or `parity-plot design`.
 - **kaleido prints `Resorting to unclean kill browser.` on static export** — it is
   benign noise from the headless-Chrome teardown; the image is written fine. Do not
   chase it as an error.
 - **README screenshots are committed under `docs/images/`.** PNG/SVG/PDF are
   gitignored globally, so `.gitignore` carries an explicit `!docs/images/` +
   `!docs/images/*.png` negation. Regenerate them by rendering small TOML configs
-  through the CLI (`plot --config … -o docs/images/<name>.png`); use `theme =
-  "light"`, which reads best on GitHub. Static export needs
-  `uv run plotly_get_chrome` first.
+  through the CLI (`plot <config>.toml`, with `[output].path =
+  docs/images/<name>.png`); use `theme = "light"`, which reads best on GitHub. The
+  `colorscale.png` showcase (colour = temperature, shape = package) is rendered from
+  the regenerated `data/example.csv`. Static export needs a headless Chrome
+  (`uv run plotly_get_chrome`).
 
 ## Releases
 
