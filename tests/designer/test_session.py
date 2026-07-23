@@ -120,3 +120,26 @@ def test_saving_over_a_changed_file_refuses_until_forced(csv, tmp_path: Path):
 
     session.save(config, force=True)
     assert "dark" in cfg_path.read_text(encoding="utf-8")
+
+
+def test_config_choices_returns_only_valid_parity_configs(tmp_path):
+    from parity_plot.designer.session import config_choices
+
+    (tmp_path / "good.toml").write_text(
+        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n', encoding="utf-8"
+    )
+    # parses but names no files -> not a parity-plot config
+    (tmp_path / "nofiles.toml").write_text('[plot]\ntheme = "light"\n', encoding="utf-8")
+    # not even valid TOML
+    (tmp_path / "broken.toml").write_text("this = = nonsense\n", encoding="utf-8")
+    # unrelated extension
+    (tmp_path / "data.csv").write_text("id\n1\n", encoding="utf-8")
+
+    names = [p.name for p in config_choices(tmp_path)]
+    assert names == ["good.toml"]
+
+
+def test_config_choices_empty_dir_is_empty(tmp_path):
+    from parity_plot.designer.session import config_choices
+
+    assert config_choices(tmp_path) == []

@@ -11,6 +11,24 @@ from ..data import ParityData, load
 from .serialize import config_to_toml
 
 
+def config_choices(directory: Path) -> list[Path]:
+    """The parity-plot configs in ``directory``.
+
+    Touchstone: the file parses as a ``ParityConfig`` and names at least one
+    input file (``data.files``). A ``.toml`` that is malformed or unrelated is
+    skipped, so the picker only offers files the designer can actually open.
+    """
+    out: list[Path] = []
+    for path in sorted(Path(directory).glob("*.toml")):
+        try:
+            config = ParityConfig.from_toml(path)
+        except (ConfigError, ValueError, OSError):
+            continue
+        if config.data.files:
+            out.append(path)
+    return out
+
+
 class StaleFileError(RuntimeError):
     """The config file changed on disk after it was loaded."""
 
