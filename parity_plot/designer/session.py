@@ -94,25 +94,10 @@ class Session:
     def is_dirty(self, config: ParityConfig) -> bool:
         return config != self.saved_config
 
-    def is_stale(self) -> bool:
-        """True when the file changed since we last read or wrote it."""
-        if self.config_path is None or not self.config_path.exists():
-            return False
-        return self.config_path.read_text(encoding="utf-8") != self.disk_text
-
-    def save(
-        self, config: ParityConfig, path: Path | None = None, force: bool = False
-    ) -> Path:
+    def save(self, config: ParityConfig, path: Path | None = None) -> Path:
         target = Path(path) if path is not None else self.config_path
         if target is None:
             raise ValueError("no config path to save to; choose one with Save As")
-
-        writing_in_place = path is None or Path(path) == self.config_path
-        if writing_in_place and not force and self.is_stale():
-            raise StaleFileError(
-                f"{target} changed on disk since it was opened; "
-                f"saving now would discard that edit"
-            )
 
         existing = target.read_text(encoding="utf-8") if target.exists() else None
         text = config_to_toml(config, existing=existing)
@@ -123,3 +108,14 @@ class Session:
         self.disk_text = text
         self.saved_config = config
         return target
+
+    def autosave(self, config: ParityConfig) -> Path | None:
+        """Write ``config`` to the bound file, or nothing when unbound.
+
+        The auto-save path: `app.refresh()` calls this after every change that
+        leaves the config valid. Unbound (no file yet) is a no-op — a New Design
+        or data-only launch has nowhere to write until Save As binds a name.
+        """
+        if self.config_path is None:
+            return None
+        return self.save(config, self.config_path)
