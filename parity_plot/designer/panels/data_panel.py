@@ -217,11 +217,12 @@ def build_data_panel(
 
 
 def _preview_dialog(path: Path) -> None:
-    """Zoom-open the first rows of a CSV in a table.
+    """Zoom-open the first rows of a CSV in an AG-Grid table.
 
-    The row count is adjustable via an input; the header row stays pinned (dark
-    background, white text) while the body scrolls. Reads a bounded slice
-    (``datasets.preview``), so it is instant even on a huge file.
+    AG-Grid gives a sticky header, sortable/resizable columns, and a dark theme
+    (it follows the designer's dark mode) out of the box. The row count is
+    adjustable; the read is bounded (``datasets.preview``), so it is instant even
+    on a huge file.
     """
     from nicegui import ui
 
@@ -229,16 +230,6 @@ def _preview_dialog(path: Path) -> None:
     from ..datasets import preview
 
     with ui.dialog() as dialog, ui.card().classes("w-[85vw] max-w-none"):
-        # Pin the header row and give it a dark background with white text. Scoped
-        # by the .preview-table class so it only affects this table.
-        ui.html(
-            "<style>"
-            ".preview-table thead tr th {"
-            " position: sticky; top: 0; z-index: 1;"
-            " background-color: #2a3441; color: #ffffff; font-weight: 600; }"
-            "</style>"
-        )
-
         with ui.row().classes("w-full items-center justify-between no-wrap"):
             ui.label(path.name).classes("text-base font-medium")
             with ui.row().classes("items-center gap-2 no-wrap"):
@@ -268,15 +259,32 @@ def _preview_dialog(path: Path) -> None:
             ui.label(
                 f"first {len(data.rows)} row(s) · {len(data.columns)} column(s)"
             ).classes("text-xs opacity-60")
-            columns = [
-                {"name": c, "label": c, "field": c, "sortable": True, "align": "left"}
-                for c in data.columns
+            # Map each column to a safe internal field id (c0, c1, ...) so a
+            # header containing a dot is not read by AG-Grid as a nested path.
+            field_of = {c: f"c{i}" for i, c in enumerate(data.columns)}
+            column_defs = [
+                {"headerName": c, "field": field_of[c]} for c in data.columns
             ]
-            # A stable per-row key Quasar needs; not a displayed column.
-            rows = [{**row, "__row": i} for i, row in enumerate(data.rows)]
-            ui.table(columns=columns, rows=rows, row_key="__row").classes(
-                "preview-table w-full"
-            ).props("dense flat bordered").style("max-height: 65vh")
+            row_data = [
+                {field_of[c]: row.get(c, "") for c in data.columns} for row in data.rows
+            ]
+            ui.aggrid(
+                {
+                    "columnDefs": column_defs,
+                    "rowData": row_data,
+                    # Tight rows -- NiceGUI/AG-Grid default to a lot of vertical
+                    # air; a data peek wants to show as many rows as it can.
+                    "rowHeight": 24,
+                    "headerHeight": 30,
+                    "defaultColDef": {
+                        "sortable": True,
+                        "resizable": True,
+                        "filter": True,
+                        "minWidth": 100,
+                    },
+                },
+                theme="balham",
+            ).classes("w-full").style("height: 65vh")
 
         body()
 
