@@ -105,3 +105,44 @@ def test_suggest_mapping_never_reuses_one_column_twice():
     guess = suggest_mapping(peeked)
     chosen = [v for v in guess.values() if v is not None]
     assert len(chosen) == len(set(chosen))
+
+
+def test_preview_reads_header_and_up_to_limit_rows(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    path = write(tmp_path, "d.csv", "id,x,y\nA1,10,11\nA2,20,22\nA3,30,33\n")
+    p = preview(path, limit=2)
+    assert p.columns == ["id", "x", "y"]
+    assert p.rows == [
+        {"id": "A1", "x": "10", "y": "11"},
+        {"id": "A2", "x": "20", "y": "22"},
+    ]
+
+
+def test_preview_stops_at_the_limit_on_a_large_file(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    rows = "\n".join(f"A{i},{i}.0" for i in range(200_000))
+    path = write(tmp_path, "big.csv", f"id,value\n{rows}\n")
+    p = preview(path, limit=100)
+    assert len(p.rows) == 100  # islice stopped the reader early
+    assert p.rows[0] == {"id": "A0", "value": "0.0"}
+
+
+def test_preview_header_only_file_has_no_rows(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    path = write(tmp_path, "h.csv", "id,x,y\n")
+    p = preview(path)
+    assert p.columns == ["id", "x", "y"]
+    assert p.rows == []
+
+
+def test_preview_reports_a_missing_file(tmp_path):
+    import pytest
+
+    from parity_plot.data import DataError
+    from parity_plot.designer.datasets import preview
+
+    with pytest.raises(DataError, match="not found"):
+        preview(tmp_path / "nope.csv")

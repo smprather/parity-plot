@@ -103,6 +103,12 @@ def build_data_panel(
                     with ui.row().classes("w-full items-center gap-1 no-wrap"):
                         ui.label(f.name).classes("text-sm grow")
                         ui.button(
+                            "👀",
+                            on_click=lambda _, p=f: _preview_dialog(p),
+                        ).props("flat dense round size=sm").tooltip(
+                            "Peek at the first rows"
+                        )
+                        ui.button(
                             icon="close",
                             on_click=lambda _, p=f: _remove(p),
                         ).props("flat dense round size=sm")
@@ -208,6 +214,47 @@ def build_data_panel(
                 join_sel.props("error")
 
         return mark_problems
+
+
+def _preview_dialog(path: Path) -> None:
+    """Zoom-open the first ~100 rows of a CSV in a scrollable table.
+
+    A quick look at the raw data before mapping columns. Reads a bounded slice
+    (``datasets.preview``), so it stays instant even on a huge file.
+    """
+    from nicegui import ui
+
+    from ...data import DataError
+    from ..datasets import preview
+
+    with ui.dialog() as dialog, ui.card().classes("w-[85vw] max-w-none"):
+        with ui.row().classes("w-full items-center justify-between no-wrap"):
+            ui.label(path.name).classes("text-base font-medium")
+            ui.button(icon="close", on_click=dialog.close).props("flat dense round")
+
+        try:
+            data = preview(path, limit=100)
+        except DataError as exc:
+            ui.label(str(exc)).classes("text-red-400 text-sm")
+            dialog.open()
+            return
+
+        ui.label(
+            f"first {len(data.rows)} row(s) · {len(data.columns)} column(s)"
+        ).classes("text-xs opacity-60")
+        columns = [
+            {"name": c, "label": c, "field": c, "sortable": True, "align": "left"}
+            for c in data.columns
+        ]
+        # A stable per-row key Quasar needs; it is not one of the displayed
+        # columns, so it never shows in the table.
+        rows = [{**row, "__row": i} for i, row in enumerate(data.rows)]
+        with ui.scroll_area().classes("w-full").style("height: 65vh"):
+            ui.table(columns=columns, rows=rows, row_key="__row").classes(
+                "w-full"
+            ).props("dense flat bordered")
+
+    dialog.open()
 
 
 def _browse(on_pick: Callable[[Path], None]) -> None:

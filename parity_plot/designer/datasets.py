@@ -9,6 +9,7 @@ broken, so this reads the header and one data row and stops.
 from __future__ import annotations
 
 import csv
+import itertools
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -64,6 +65,42 @@ def _numeric_columns(row: dict[str, str]) -> set[str]:
             continue
         found.add(name)
     return found
+
+
+@dataclass(frozen=True)
+class Preview:
+    """The header and the first rows of a CSV, for a quick look."""
+
+    columns: list[str] = field(default_factory=list)
+    rows: list[dict[str, str]] = field(default_factory=list)
+
+
+def preview(path: str | Path, limit: int = 100) -> Preview:
+    """Read the header and up to ``limit`` data rows -- never the whole file.
+
+    A peek at the data before column mapping, so values stay raw strings.
+    Bounded like :func:`peek` (``itertools.islice`` stops the reader early), so
+    previewing a huge dataset is still instant.
+    """
+    path = Path(path)
+    try:
+        with path.open(newline="", encoding="utf-8-sig") as fh:
+            reader = csv.DictReader(fh)
+            if reader.fieldnames is None:
+                raise DataError(f"{path}: file is empty")
+            columns = [name for name in reader.fieldnames if name is not None]
+            rows = [
+                {k: (v or "") for k, v in row.items() if k is not None}
+                for row in itertools.islice(reader, limit)
+            ]
+    except FileNotFoundError:
+        raise DataError(f"input file not found: {path}") from None
+    except OSError as exc:
+        raise DataError(f"could not read {path}: {exc}") from None
+
+    if not columns:
+        raise DataError(f"{path}: file is empty")
+    return Preview(columns=columns, rows=rows)
 
 
 def suggest_mapping(peeked: Peek) -> dict[str, str | None]:
