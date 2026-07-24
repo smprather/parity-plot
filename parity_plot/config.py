@@ -102,7 +102,7 @@ class PlotConfig:
 @dataclass(frozen=True)
 class StatsConfig:
     show: bool = True
-    metrics: tuple[str, ...] = ("n", "r2", "rmse", "mae", "bias")
+    metrics: tuple[str, ...] = ("n", "r2", "rmse", "mae", "bias", "std", "max_abs_err")
 
 
 @dataclass(frozen=True)
@@ -468,7 +468,7 @@ symbol = "circle"
 
 [stats]
 show = true
-metrics = ["n", "r2", "rmse", "mae", "bias"]
+metrics = ["n", "r2", "rmse", "mae", "bias", "std", "max_abs_err"]
 
 [output]
 path = "parity.html"

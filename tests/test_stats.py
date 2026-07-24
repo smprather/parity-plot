@@ -37,6 +37,8 @@ def test_metrics_against_hand_computed_values():
     assert stats.mae == pytest.approx(4 / 3)
     assert stats.rmse == pytest.approx(math.sqrt(6 / 3))
     assert stats.max_abs_err == pytest.approx(2.0)
+    # sample std of {+1,-1,+2} about mean 2/3: var = ((1/3)^2+(-5/3)^2+(4/3)^2)/2
+    assert stats.std == pytest.approx(math.sqrt((1 / 9 + 25 / 9 + 16 / 9) / 2))
 
 
 def test_identity_r2_is_stricter_than_a_best_fit():

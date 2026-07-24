@@ -20,8 +20,9 @@ METRIC_LABELS = {
     "pearson_r": "Pearson r",
     "rmse": "RMSE",
     "mae": "MAE",
-    "bias": "bias",
-    "max_abs_err": "max |err|",
+    "bias": "bias (mean Δ)",
+    "std": "σ (Δ)",
+    "max_abs_err": "max |Δ|",
 }
 
 
@@ -36,6 +37,9 @@ class Stats:
     rmse: float | None = None
     mae: float | None = None
     bias: float | None = None
+    # Standard deviation of the deltas (residuals) about their mean -- the spread
+    # of the disagreement independent of any systematic bias. Sample std (n-1).
+    std: float | None = None
     max_abs_err: float | None = None
     # Fraction of paired points inside each pass/fail tolerance envelope,
     # keyed by tolerance name. Informational entries are references, not
@@ -72,13 +76,15 @@ def compute(data: ParityData, tolerances: Sequence[NamedTolerance] = ()) -> Stat
     y_mean = sum(y) / n
     ss_tot = sum((yi - y_mean) ** 2 for yi in y)
 
+    bias = sum(residuals) / n
     return Stats(
         **counts,
         r2=None if ss_tot == 0 else 1.0 - ss_res / ss_tot,
         pearson_r=_pearson(x, y),
         rmse=math.sqrt(ss_res / n),
         mae=sum(abs(r) for r in residuals) / n,
-        bias=sum(residuals) / n,
+        bias=bias,
+        std=math.sqrt(sum((r - bias) ** 2 for r in residuals) / (n - 1)),
         max_abs_err=max(abs(r) for r in residuals),
         within={tol.name: _within(x, y, tol) for tol in pass_fail(tolerances)},
     )
