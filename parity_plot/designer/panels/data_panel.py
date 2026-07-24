@@ -229,6 +229,10 @@ def _preview_dialog(path: Path) -> None:
     from ...data import DataError
     from ..datasets import preview
 
+    # A larger, bolder header row. Scoped by .peek-grid; added to the page head
+    # (ui.add_css applies where an inline <style> element does not).
+    ui.add_css(".peek-grid .ag-header-cell-text { font-size: 15px; font-weight: 700; }")
+
     with ui.dialog() as dialog, ui.card().classes("w-[85vw] max-w-none"):
         with ui.row().classes("w-full items-center justify-between no-wrap"):
             ui.label(path.name).classes("text-base font-medium")
@@ -292,7 +296,7 @@ def _preview_dialog(path: Path) -> None:
                     # Tight rows -- NiceGUI/AG-Grid default to a lot of vertical
                     # air; a data peek wants to show as many rows as it can.
                     "rowHeight": 24,
-                    "headerHeight": 30,
+                    "headerHeight": 36,
                     "defaultColDef": {
                         "sortable": True,
                         "resizable": True,
@@ -301,7 +305,7 @@ def _preview_dialog(path: Path) -> None:
                     },
                 },
                 theme="balham",
-            ).classes("w-full").style("height: 65vh")
+            ).classes("peek-grid w-full").style("height: 65vh")
 
         body()
 
