@@ -261,12 +261,29 @@ def _preview_dialog(path: Path) -> None:
             ).classes("text-xs opacity-60")
             # Map each column to a safe internal field id (c0, c1, ...) so a
             # header containing a dot is not read by AG-Grid as a nested path.
+            # Numeric columns get a numeric schema so they sort by magnitude, not
+            # lexically ("9" before "100"), and their cells carry real numbers.
             field_of = {c: f"c{i}" for i, c in enumerate(data.columns)}
-            column_defs = [
-                {"headerName": c, "field": field_of[c]} for c in data.columns
-            ]
+            column_defs = []
+            for c in data.columns:
+                col = {"headerName": c, "field": field_of[c]}
+                if c in data.numeric:
+                    col["type"] = "numericColumn"
+                    col["filter"] = "agNumberColumnFilter"
+                column_defs.append(col)
+
+            def _cell(value: str, numeric: bool) -> str | float | None:
+                if not numeric:
+                    return value
+                text = (value or "").strip()
+                return float(text) if text else None
+
             row_data = [
-                {field_of[c]: row.get(c, "") for c in data.columns} for row in data.rows
+                {
+                    field_of[c]: _cell(row.get(c, ""), c in data.numeric)
+                    for c in data.columns
+                }
+                for row in data.rows
             ]
             ui.aggrid(
                 {

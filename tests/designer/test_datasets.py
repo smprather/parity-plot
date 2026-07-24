@@ -146,3 +146,25 @@ def test_preview_reports_a_missing_file(tmp_path):
 
     with pytest.raises(DataError, match="not found"):
         preview(tmp_path / "nope.csv")
+
+
+def test_preview_flags_numeric_columns(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    # id is text, x/temp are numbers, note has a blank cell (still numeric-free)
+    path = write(
+        tmp_path,
+        "d.csv",
+        "id,x,temp,note\nS0001,10.5,25,hi\nS0002,-3,80,\nS0010,2e3,-40,ok\n",
+    )
+    p = preview(path)
+    assert p.numeric == {"x", "temp"}  # id and note are not numeric
+    assert "id" not in p.numeric
+
+
+def test_preview_numeric_ignores_a_column_with_no_data(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    path = write(tmp_path, "d.csv", "x,blank\n10,\n20,\n")
+    p = preview(path)
+    assert p.numeric == {"x"}  # blank has no values to prove it numeric

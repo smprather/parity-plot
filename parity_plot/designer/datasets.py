@@ -69,10 +69,16 @@ def _numeric_columns(row: dict[str, str]) -> set[str]:
 
 @dataclass(frozen=True)
 class Preview:
-    """The header and the first rows of a CSV, for a quick look."""
+    """The header and the first rows of a CSV, for a quick look.
+
+    ``numeric`` names the columns whose every non-empty value in the previewed
+    rows parses as a number, so a viewer can give them a numeric schema (and
+    sort them by magnitude rather than lexically).
+    """
 
     columns: list[str] = field(default_factory=list)
     rows: list[dict[str, str]] = field(default_factory=list)
+    numeric: set[str] = field(default_factory=set)
 
 
 def preview(path: str | Path, limit: int = 100) -> Preview:
@@ -100,7 +106,30 @@ def preview(path: str | Path, limit: int = 100) -> Preview:
 
     if not columns:
         raise DataError(f"{path}: file is empty")
-    return Preview(columns=columns, rows=rows)
+    return Preview(columns=columns, rows=rows, numeric=_numeric_over(columns, rows))
+
+
+def _numeric_over(columns: list[str], rows: list[dict[str, str]]) -> set[str]:
+    """Columns whose every non-empty previewed value is a number.
+
+    A column with no data in the previewed rows is left out -- there is nothing
+    to prove it numeric.
+    """
+    numeric: set[str] = set()
+    for column in columns:
+        values = [(row.get(column) or "").strip() for row in rows]
+        present = [v for v in values if v]
+        if present and all(_is_number(v) for v in present):
+            numeric.add(column)
+    return numeric
+
+
+def _is_number(text: str) -> bool:
+    try:
+        float(text)
+        return True
+    except ValueError:
+        return False
 
 
 def suggest_mapping(peeked: Peek) -> dict[str, str | None]:
