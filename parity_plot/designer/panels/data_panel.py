@@ -217,10 +217,11 @@ def build_data_panel(
 
 
 def _preview_dialog(path: Path) -> None:
-    """Zoom-open the first ~100 rows of a CSV in a scrollable table.
+    """Zoom-open the first rows of a CSV in a table.
 
-    A quick look at the raw data before mapping columns. Reads a bounded slice
-    (``datasets.preview``), so it stays instant even on a huge file.
+    The row count is adjustable via an input; the header row stays pinned (dark
+    background, white text) while the body scrolls. Reads a bounded slice
+    (``datasets.preview``), so it is instant even on a huge file.
     """
     from nicegui import ui
 
@@ -228,31 +229,56 @@ def _preview_dialog(path: Path) -> None:
     from ..datasets import preview
 
     with ui.dialog() as dialog, ui.card().classes("w-[85vw] max-w-none"):
+        # Pin the header row and give it a dark background with white text. Scoped
+        # by the .preview-table class so it only affects this table.
+        ui.html(
+            "<style>"
+            ".preview-table thead tr th {"
+            " position: sticky; top: 0; z-index: 1;"
+            " background-color: #2a3441; color: #ffffff; font-weight: 600; }"
+            "</style>"
+        )
+
         with ui.row().classes("w-full items-center justify-between no-wrap"):
             ui.label(path.name).classes("text-base font-medium")
-            ui.button(icon="close", on_click=dialog.close).props("flat dense round")
+            with ui.row().classes("items-center gap-2 no-wrap"):
+                rows_input = (
+                    ui.number(
+                        "Rows",
+                        value=100,
+                        min=1,
+                        max=10000,
+                        format="%d",
+                        on_change=lambda: body.refresh(),
+                    )
+                    .props("debounce=500")
+                    .classes("w-24")
+                )
+                ui.button(icon="close", on_click=dialog.close).props("flat dense round")
 
-        try:
-            data = preview(path, limit=100)
-        except DataError as exc:
-            ui.label(str(exc)).classes("text-red-400 text-sm")
-            dialog.open()
-            return
+        @ui.refreshable
+        def body() -> None:
+            limit = max(1, min(int(rows_input.value or 100), 10000))
+            try:
+                data = preview(path, limit=limit)
+            except DataError as exc:
+                ui.label(str(exc)).classes("text-red-400 text-sm")
+                return
 
-        ui.label(
-            f"first {len(data.rows)} row(s) · {len(data.columns)} column(s)"
-        ).classes("text-xs opacity-60")
-        columns = [
-            {"name": c, "label": c, "field": c, "sortable": True, "align": "left"}
-            for c in data.columns
-        ]
-        # A stable per-row key Quasar needs; it is not one of the displayed
-        # columns, so it never shows in the table.
-        rows = [{**row, "__row": i} for i, row in enumerate(data.rows)]
-        with ui.scroll_area().classes("w-full").style("height: 65vh"):
+            ui.label(
+                f"first {len(data.rows)} row(s) · {len(data.columns)} column(s)"
+            ).classes("text-xs opacity-60")
+            columns = [
+                {"name": c, "label": c, "field": c, "sortable": True, "align": "left"}
+                for c in data.columns
+            ]
+            # A stable per-row key Quasar needs; not a displayed column.
+            rows = [{**row, "__row": i} for i, row in enumerate(data.rows)]
             ui.table(columns=columns, rows=rows, row_key="__row").classes(
-                "w-full"
-            ).props("dense flat bordered")
+                "preview-table w-full"
+            ).props("dense flat bordered").style("max-height: 65vh")
+
+        body()
 
     dialog.open()
 
