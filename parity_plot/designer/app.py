@@ -115,7 +115,12 @@ def build_app(
                 settings_column()
 
             with ui.column().classes("grow"):
-                plot_view = ui.plotly(state.figure()).classes("w-full h-[55vh]")
+                # A parity plot is square; render the preview square and centred
+                # rather than stretched across a wide column, so the legend hugs
+                # the plot and the (paper-centred) title lines up with it.
+                plot_view = ui.plotly(state.figure()).classes(
+                    "aspect-square h-[70vh] mx-auto"
+                )
                 # A persistent, colour-coded status bar -- no toasts. Errors (a
                 # validation problem, a bad column) stay here until the next
                 # action clears them, rather than popping and vanishing.

@@ -44,7 +44,7 @@ _LEGEND_LAYOUTS = {
     # of that domain floats above the visible frame.
     "right": (
         dict(orientation="v", x=1.02, xanchor="left", y=0.5, yanchor="middle"),
-        dict(l=80, r=210, t=100, b=80),
+        dict(l=80, r=160, t=100, b=80),
     ),
     "bottom": (
         dict(orientation="h", x=0.5, xanchor="center", y=-0.09, yanchor="top"),
@@ -480,6 +480,13 @@ def _apply_layout(
         template=theme.template_name,
         title=dict(
             text=plot.title,
+            # Centre on the plotting area (paper), not the whole figure: the
+            # asymmetric margins (a wide right margin for the legend) push the
+            # axes left, and Plotly's default container-centred title then floats
+            # right of the plot.
+            x=0.5,
+            xanchor="center",
+            xref="paper",
             subtitle=dict(
                 text=stats_mod.summarize_nulls(summary, data.x_label, data.y_label),
                 font=dict(color=theme.font_muted, size=13),
