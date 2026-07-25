@@ -36,6 +36,12 @@ DEFAULT_NA_VALUES: tuple[str, ...] = (
 THEMES = ("dark", "light")
 NULL_MODES = ("rug", "drop")
 OUTPUT_FORMATS = ("html", "png", "svg", "pdf")
+# How an exported HTML file gets plotly.js. "inline" is the default because a
+# plot is something you email, archive, or open on a machine with no network --
+# a "cdn" file is 84 KB and a blank page the moment any of that is true (and
+# eventually when that pinned CDN version stops being served). "directory"
+# writes plotly.min.js once beside the HTML, so a folder of plots shares it.
+PLOTLYJS_MODES = ("inline", "cdn", "directory")
 # "top" is deliberately absent: the title carries a subtitle, and a legend
 # above the axes lands on top of it.
 LEGEND_POSITIONS = ("right", "bottom", "none")
@@ -44,6 +50,12 @@ BAND_STYLES = ("lines", "shaded")
 
 class ConfigError(ValueError):
     """Raised for malformed or invalid configuration."""
+
+
+def _format_of(path: Path | str) -> str | None:
+    """The output format a path's extension names, or None if it names none."""
+    suffix = Path(path).suffix.lstrip(".").lower()
+    return suffix if suffix in OUTPUT_FORMATS else None
 
 
 @dataclass(frozen=True)
@@ -112,9 +124,32 @@ class StatsConfig:
 @dataclass(frozen=True)
 class OutputConfig:
     path: Path = Path("parity.html")
-    format: str = "html"
+    # None means "take it from the path's extension" (falling back to html).
+    # Without that, `path = "shot.png"` and no format wrote HTML into a .png --
+    # the exact bug `cli._infer_format` fixes for `-o`, which never covered the
+    # TOML path. Read it through `resolved_format`, never directly.
+    format: str | None = None
+    plotlyjs: str = "inline"
     width: int = 900
     height: int = 900
+
+    def __post_init__(self) -> None:
+        # An explicit format that contradicts the extension is a mistake worth
+        # refusing rather than resolving: whichever way it were resolved, one of
+        # the two things the user wrote would be silently ignored.
+        if self.format is None:
+            return
+        suffix = _format_of(self.path)
+        if suffix is not None and suffix != self.format:
+            raise ConfigError(
+                f"[output]: format is {self.format!r} but path {str(self.path)!r} "
+                f"ends in .{suffix} -- drop one of them"
+            )
+
+    @property
+    def resolved_format(self) -> str:
+        """The format to write: the explicit one, else the path's, else html."""
+        return self.format or _format_of(self.path) or "html"
 
 
 @dataclass(frozen=True)
@@ -231,6 +266,7 @@ _CHOICES = {
     "nulls": NULL_MODES,
     "format": OUTPUT_FORMATS,
     "legend": LEGEND_POSITIONS,
+    "plotlyjs": PLOTLYJS_MODES,
 }
 
 RETIRED_PLOT_KEYS = ("abstol", "reltol", "band_style", "identity_line")
@@ -486,7 +522,12 @@ metrics = ["n", "r2", "rmse", "mae", "bias", "std", "max_abs_err"]
 
 [output]
 path = "parity.html"
-format = "html"         # html | png | svg | pdf (non-html needs parity-plot[static])
+# format is taken from the path's extension; set it only to override, and never
+# to something the extension contradicts (that raises rather than picking one).
+# format = "html"       # html | png | svg | pdf (non-html needs a headless Chrome)
+# How an HTML export gets plotly.js. inline (the default) is self-contained, so
+# it opens with no network -- at the cost of ~4.8 MB per file.
+# plotlyjs = "inline"   # inline | cdn | directory
 width = 900
 height = 900
 """

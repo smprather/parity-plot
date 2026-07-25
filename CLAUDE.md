@@ -379,9 +379,24 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   code uses `RichHelpConfiguration(option_groups=...)`. In those groups, flag
   pairs are matched by their **first** declaration (`--log`, not
   `--log/--no-log`) or they fall into a leftover "Options" panel.
-- Both `plot` and `example` write images, so both must route their output path
-  through `cli._infer_format`. Without it `-o out.png` silently writes HTML into
-  a `.png` file — that bug shipped once already on `example`.
+- **`[output].format` is tri-state and read through `resolved_format`, never
+  directly.** `None` (an absent key) means "take it from the path's extension,
+  else html", so `path = "shot.png"` writes a PNG. An explicit format that
+  *contradicts* the extension raises in `__post_init__` rather than picking a
+  winner — either resolution would silently discard one of the two things the
+  user wrote. `cli._infer_format` still exists and is still needed: it makes an
+  explicit `-o out.png` **override** a format the TOML set, which the config-level
+  inference alone cannot do. The silent-HTML-into-`.png` bug shipped twice — once
+  on `example`'s `-o`, once via the TOML path.
+- **HTML exports are self-contained by default** (`[output].plotlyjs = "inline"`,
+  `PLOTLYJS_MODES`): ~4.8 MB per file, but it opens air-gapped, emailed, or years
+  later when the pinned CDN build is gone. `"cdn"` is 84 KB and needs a network;
+  `"directory"` writes `plotly.min.js` once per folder. `plot._PLOTLYJS_ARG` maps
+  these onto plotly's own `include_plotlyjs` spellings. **The designer needs no
+  CDN either** — NiceGUI serves its own assets, a vendored plotly ESM bundle, and
+  AG-Grid *community* from the venv. When testing offline-ness, do not assert on
+  a bare `cdn.plot.ly`: the inlined bundle contains that host as plotly's
+  topojson default for geo maps. Assert on the `src="https://cdn.plot.ly` tag.
 - `data/` and rendered plots are gitignored; regenerate with `parity-plot example`.
 - **Tolerance band shading is the per-tolerance `style` key** (`"lines"` |
   `"shaded"`), living inside a `[[plot.tolerances]]` table. `band_style` is a

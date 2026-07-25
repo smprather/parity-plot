@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import plotly.graph_objects as go
 import pytest
 
 from parity_plot import parity_plot
-from parity_plot.config import OutputConfig, PlotConfig, StatsConfig
+from parity_plot.config import ConfigError, OutputConfig, PlotConfig, StatsConfig
 from parity_plot.data import ParityData, Unpaired, from_sequences
 from parity_plot.encoding import Encoding
 from parity_plot.plot import build_figure, save
@@ -356,6 +357,72 @@ def test_save_writes_html_and_creates_parent_dirs(data, tmp_path):
     written = save(build_figure(data, PlotConfig()), OutputConfig(path=out))
     assert written.exists()
     assert "plotly" in written.read_text(encoding="utf-8").lower()
+
+
+# A bare "cdn.plot.ly" is the wrong thing to assert on: the *inlined* bundle
+# contains that host too, as plotly's default topojson base for geo maps. What
+# makes a file need the network is a <script src> pointing there.
+_CDN_TAG = 'src="https://cdn.plot.ly'
+
+
+def test_html_is_self_contained_by_default(data, tmp_path):
+    """The default must open with no network."""
+    out = tmp_path / "p.html"
+    save(build_figure(data, PlotConfig()), OutputConfig(path=out))
+    text = out.read_text(encoding="utf-8")
+    assert _CDN_TAG not in text
+    # The inlined library itself, not just a reference to one.
+    assert "Plotly.newPlot" in text
+    assert out.stat().st_size > 1_000_000
+
+
+def test_plotlyjs_cdn_writes_a_script_tag_instead(data, tmp_path):
+    out = tmp_path / "p.html"
+    save(build_figure(data, PlotConfig()), OutputConfig(path=out, plotlyjs="cdn"))
+    assert _CDN_TAG in out.read_text(encoding="utf-8")
+    assert out.stat().st_size < 1_000_000
+
+
+def test_plotlyjs_directory_writes_the_library_beside_the_html(data, tmp_path):
+    out = tmp_path / "p.html"
+    save(build_figure(data, PlotConfig()), OutputConfig(path=out, plotlyjs="directory"))
+    assert (tmp_path / "plotly.min.js").exists()
+    text = out.read_text(encoding="utf-8")
+    assert _CDN_TAG not in text
+    assert out.stat().st_size < 1_000_000
+
+
+def test_a_png_path_writes_a_png_not_html(data, tmp_path, monkeypatch):
+    """The bug this guards: `path = "x.png"` with no format wrote HTML into it.
+
+    `cli._infer_format` covered `-o` only, never the TOML path -- and CLAUDE.md's
+    own instructions for regenerating the README images go through the TOML path.
+
+    The image write is stubbed: what is under test is which branch `save` takes,
+    and booting a headless Chrome to confirm it costs a minute and proves nothing
+    that the existing static-export tests do not already cover.
+    """
+    out = tmp_path / "shot.png"
+    assert OutputConfig(path=out).resolved_format == "png"
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        go.Figure,
+        "write_image",
+        lambda self, path, format, **kw: calls.append(format),
+    )
+    save(build_figure(data, PlotConfig()), OutputConfig(path=out))
+    assert calls == ["png"]
+    assert not out.exists()  # nothing wrote HTML to it behind our back
+
+
+def test_an_extension_contradicting_an_explicit_format_raises(tmp_path):
+    with pytest.raises(ConfigError, match="ends in .png"):
+        OutputConfig(path=tmp_path / "shot.png", format="html")
+
+
+def test_an_unknown_extension_falls_back_to_html(tmp_path):
+    assert OutputConfig(path=tmp_path / "shot.xyz").resolved_format == "html"
 
 
 def test_public_api_accepts_sequences_and_paths(wide_csv):

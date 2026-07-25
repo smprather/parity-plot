@@ -18,6 +18,7 @@ from ...config import (
     LEGEND_POSITIONS,
     NULL_MODES,
     OUTPUT_FORMATS,
+    PLOTLYJS_MODES,
     THEMES,
     OutputConfig,
     PlotConfig,
@@ -97,6 +98,16 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
         "choice",
         "html needs nothing; the rest need kaleido.",
         OUTPUT_FORMATS,
+        group="Output",
+    ),
+    ControlSpec(
+        "output",
+        "plotlyjs",
+        "plotly.js in HTML",
+        "choice",
+        "inline is self-contained and works offline; cdn is small but needs "
+        "a network; directory shares one file per folder.",
+        PLOTLYJS_MODES,
         group="Output",
     ),
     ControlSpec(

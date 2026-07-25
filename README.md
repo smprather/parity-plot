@@ -315,13 +315,30 @@ style = "lines"                # lines | shaded
 
 [output]
 path = "parity.html"
-format = "html"                # html | png | svg | pdf
+# format comes from the extension — `path = "shot.png"` writes a PNG. Set it only
+# to override, and never to something the extension contradicts (that raises).
+# format = "html"              # html | png | svg | pdf
+# plotlyjs = "inline"          # inline | cdn | directory — see Offline use
 ```
 
 ```bash
 uv run parity-plot plot                 # renders ./parity.toml
 uv run parity-plot plot lab/run7.toml   # or any path you name
 ```
+
+### Offline use
+
+Everything works with no network, by design:
+
+- **Exported HTML inlines plotly.js** (`[output].plotlyjs = "inline"`, the
+  default), so the file opens on an air-gapped machine, survives being emailed,
+  and still renders years later when that CDN build is gone. It costs ~4.8 MB per
+  file. Set `plotlyjs = "cdn"` for an 84 KB file that needs a network, or
+  `"directory"` to write `plotly.min.js` once beside the HTML and share it across
+  every plot in that folder.
+- **The designer** serves its own assets — no CDN.
+- **`png`/`svg`/`pdf` export** drives a local headless Chrome
+  (`uv run plotly_get_chrome`), which is the only piece you have to fetch, once.
 
 ## Interactive designer
 

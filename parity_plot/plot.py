@@ -565,6 +565,15 @@ def _add_stats_box(
     )
 
 
+# How `[output].plotlyjs` maps onto plotly's own `include_plotlyjs` argument.
+# True inlines the library; the other two are its own spellings.
+_PLOTLYJS_ARG: dict[str, bool | str] = {
+    "inline": True,
+    "cdn": "cdn",
+    "directory": "directory",
+}
+
+
 def save(fig: go.Figure, output: OutputConfig) -> Path:
     """Write the figure to disk in the configured format."""
     path = Path(output.path)
@@ -573,14 +582,15 @@ def save(fig: go.Figure, output: OutputConfig) -> Path:
 
     fig.update_layout(width=output.width, height=output.height)
 
-    if output.format == "html":
-        fig.write_html(str(path), include_plotlyjs="cdn")
+    fmt = output.resolved_format
+    if fmt == "html":
+        fig.write_html(str(path), include_plotlyjs=_PLOTLYJS_ARG[output.plotlyjs])
         return path
 
     try:
-        fig.write_image(str(path), format=output.format)
+        fig.write_image(str(path), format=fmt)
     except Exception as exc:
-        raise ExportError(_export_hint(output.format, exc)) from exc
+        raise ExportError(_export_hint(fmt, exc)) from exc
     return path
 
 

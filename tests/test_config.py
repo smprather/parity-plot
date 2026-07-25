@@ -11,7 +11,8 @@ def test_defaults_are_usable_without_any_toml():
     cfg = ParityConfig()
     assert cfg.plot.theme == "dark"  # dark by default, per the design
     assert cfg.plot.nulls == "rug"
-    assert cfg.output.format == "html"
+    # format is unset by default and resolves from the path's extension.
+    assert cfg.output.resolved_format == "html"
     assert cfg.data.files == ()
 
 
