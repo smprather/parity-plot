@@ -57,6 +57,7 @@ def test_no_files_offers_nothing():
         "group": [],
         "join": [],
         "color_column": [],
+        "hover_columns": [],
     }
 
 
@@ -67,6 +68,7 @@ def test_an_unreadable_file_yields_empty_rather_than_raising(tmp_path):
         "group": [],
         "join": [],
         "color_column": [],
+        "hover_columns": [],
     }
 
 
@@ -99,3 +101,33 @@ def test_build_data_panel_returns_a_problem_mark_hook():
 
     sig = inspect.signature(build_data_panel)
     assert sig.return_annotation is not inspect.Signature.empty
+
+
+def test_hover_columns_offers_ref_test_file_columns_minus_ref_test_join(tmp_path):
+    f = write(
+        tmp_path,
+        "d.csv",
+        "id,reference,test,package,vendor\nA1,10,11,SMD,Acme\n",
+    )
+    opts = column_options((f,), ref="d.csv:reference", test="d.csv:test", join="id")
+    # ref, test and join are structural hover rows, never offered; package and
+    # vendor are the candidates.
+    assert opts["hover_columns"] == ["d.csv:package", "d.csv:vendor"]
+
+
+def test_hover_columns_exclude_a_third_open_file(tmp_path):
+    a = write(tmp_path, "ref.csv", "id,value,package\nA,10,SMD\n")
+    b = write(tmp_path, "meas.csv", "id,value\nA,11\n")
+    extra = write(tmp_path, "extra.csv", "id,note\nA,hello\n")
+    opts = column_options(
+        (a, b, extra), ref="ref.csv:value", test="meas.csv:value", join="id"
+    )
+    assert all(not c.startswith("extra.csv:") for c in opts["hover_columns"])
+    assert opts["hover_columns"] == ["ref.csv:package"]
+
+
+def test_hover_columns_empty_when_ref_or_test_unset(tmp_path):
+    f = write(tmp_path, "d.csv", "id,reference,test,package\nA1,10,11,SMD\n")
+    # Without a resolvable ref and test, hover_candidates cannot be derived.
+    assert column_options((f,))["hover_columns"] == []
+    assert column_options((f,), ref="d.csv:reference")["hover_columns"] == []

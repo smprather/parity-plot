@@ -12,6 +12,13 @@ from parity_plot.tolerances import NamedTolerance
 
 WIDE = "id,reference,test\nA1,10.0,11.0\nA2,20.0,21.0\nA3,30.0,\n"
 OTHER = "name,golden,dut\nB1,5.0,5.5\nB2,6.0,6.6\n"
+# Like WIDE but with extra context columns so the auto hover set is non-empty.
+RICH = (
+    "id,reference,test,package,vendor\n"
+    "A1,10.0,11.0,SMD,Acme\n"
+    "A2,20.0,21.0,DIP,Beta\n"
+    "A3,30.0,29.0,QFN,Ceres\n"
+)
 
 WIDE_TOL = (NamedTolerance(name="spec", reltol=0.05),)
 
@@ -21,6 +28,26 @@ def first(tmp_path: Path) -> Path:
     path = tmp_path / "first.csv"
     path.write_text(WIDE, encoding="utf-8")
     return path
+
+
+@pytest.fixture
+def rich(tmp_path: Path) -> Path:
+    path = tmp_path / "rich.csv"
+    path.write_text(RICH, encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def rich_state(rich) -> DesignerState:
+    config = ParityConfig().merge(
+        data={
+            "files": (rich,),
+            "ref": "rich.csv:reference",
+            "test": "rich.csv:test",
+            "join": "id",
+        }
+    )
+    return DesignerState(config=config, data=load(config.data))
 
 
 @pytest.fixture
@@ -128,3 +155,52 @@ def test_selected_record_is_none_when_the_key_is_gone(state, second):
         files=(second,), ref="second.csv:golden", test="second.csv:dut", join="name"
     )
     assert state.selected_record() is None
+
+
+# --- hover_columns: the tri-state through set_data_source ---
+
+
+def test_hover_columns_empty_tuple_survives_the_merge(rich_state):
+    """An empty selection is "suppress", not "unset" -- it must reach the config
+    as ``()``, which ``merge`` cannot carry because it drops ``None``."""
+    assert rich_state.set_data_source(hover_columns=())
+    assert rich_state.config.data.hover_columns == ()
+    assert rich_state.last_error is None
+
+
+def test_clear_puts_hover_columns_back_to_auto_and_reloads(rich_state):
+    """``clear`` resets the field to its ``None`` default and reloads, so the
+    auto set repopulates ``hover_labels``."""
+    # Pin a subset first so we can observe the reset.
+    assert rich_state.set_data_source(hover_columns=("rich.csv:package",))
+    assert rich_state.config.data.hover_columns == ("rich.csv:package",)
+    assert rich_state.data.hover_labels == ("package",)
+
+    assert rich_state.set_data_source(clear=("hover_columns",))
+    assert rich_state.config.data.hover_columns is None
+    # Auto resolves every candidate column; package and vendor both appear.
+    assert rich_state.data.hover_labels == ("package", "vendor")
+    assert rich_state.last_error is None
+
+
+def test_clear_does_not_disturb_another_field(rich_state):
+    """Clearing hover_columns must not touch an unrelated data field."""
+    assert rich_state.set_data_source(group=("package",))
+    assert rich_state.config.data.group == ("package",)
+
+    assert rich_state.set_data_source(clear=("hover_columns",))
+    # The group survives the clear.
+    assert rich_state.config.data.group == ("package",)
+
+
+def test_an_invalid_hover_columns_keeps_the_dataset_and_sets_last_error(rich_state):
+    """The keep-the-good-dataset guarantee applies to hover_columns too."""
+    before = rich_state.data
+    before_config = rich_state.config
+
+    assert not rich_state.set_data_source(hover_columns=("rich.csv:nope",))
+
+    assert rich_state.data is before
+    assert rich_state.config == before_config
+    assert rich_state.last_error is not None
+    assert "nope" in rich_state.last_error

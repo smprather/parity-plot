@@ -10,9 +10,9 @@ designer can start empty.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
-from ...data import DataError
+from ...data import DataError, hover_candidates
 from ...sources import open_sources
 from ..state import DesignerState
 from .section import section
@@ -28,7 +28,10 @@ def _column_of(ref: str | None) -> str | None:
 
 
 def column_options(
-    files: tuple[Path, ...], ref: str | None = None, test: str | None = None
+    files: tuple[Path, ...],
+    ref: str | None = None,
+    test: str | None = None,
+    join: str | None = None,
 ) -> dict[str, list[str]]:
     """Dropdown options per role.
 
@@ -37,8 +40,20 @@ def column_options(
     every open file, since the key has to exist on both sides to join. An
     unreadable file yields empty options rather than raising -- the panel must
     still render so a different file can be chosen.
+
+    ``hover_columns`` lists the auto hover set from the ref/test files. It
+    needs a resolvable ref *and* test; when either is missing, or resolving
+    raises (a ref left over from a just-removed file), it falls back to ``[]``
+    so the panel still renders.
     """
-    empty = {"ref": [], "test": [], "group": [], "join": [], "color_column": []}
+    empty = {
+        "ref": [],
+        "test": [],
+        "group": [],
+        "join": [],
+        "color_column": [],
+        "hover_columns": [],
+    }
     if not files:
         return empty
     try:
@@ -65,12 +80,20 @@ def column_options(
     # match group's file-independence) from the group list.
     axis_columns = {c for c in (_column_of(ref), _column_of(test)) if c is not None}
     group = [c for c in distinct if c not in axis_columns]
+    # hover_candidates needs both axes resolvable; a stale ref left pointing at
+    # a removed file resolves to a DataError, which we swallow to [] so the
+    # panel keeps rendering (same reason the whole function swallows DataError).
+    try:
+        hover = hover_candidates(src, ref, test, join) if ref and test else []
+    except DataError:
+        hover = []
     return {
         "ref": numeric,
         "test": list(numeric),
         "group": group,
         "join": common,
         "color_column": list(numeric),
+        "hover_columns": hover,
     }
 
 
@@ -87,7 +110,10 @@ def build_data_panel(
     with section("Data"):
         files = list(state.config.data.files)
         options = column_options(
-            tuple(files), state.config.data.ref, state.config.data.test
+            tuple(files),
+            state.config.data.ref,
+            state.config.data.test,
+            state.config.data.join,
         )
 
         # Add File sits at the top of the section: choosing the data comes first.
@@ -118,19 +144,21 @@ def build_data_panel(
             options["ref"],
             value=state.config.data.ref,
             label="Reference",
-            on_change=lambda: (refresh_group(), apply()),
+            on_change=lambda: (refresh_dependent(), apply()),
         ).classes("w-full")
         test_sel = ui.select(
             options["test"],
             value=state.config.data.test,
             label="Test",
-            on_change=lambda: (refresh_group(), apply()),
+            on_change=lambda: (refresh_dependent(), apply()),
         ).classes("w-full")
         join_sel = ui.select(
             [_NONE, *options["join"]],
             value=state.config.data.join or _NONE,
             label="Join column (blank = pair by order)",
-            on_change=lambda: apply(),
+            # The join is not a hover candidate (it is already the key line), so
+            # changing it changes the hover set -- re-derive before applying.
+            on_change=lambda: (refresh_dependent(), apply()),
         ).classes("w-full")
         group_sel = (
             ui.select(
@@ -150,16 +178,43 @@ def build_data_panel(
             on_change=lambda: apply(),
         ).classes("w-full")
 
+        # The switch is declared first so it sits above the select it governs;
+        # its handler resolves at click time, by when the select exists.
+        hover_auto = ui.switch(
+            "Auto (all columns from the ref/test files)",
+            value=state.config.data.hover_columns is None,
+            on_change=lambda: _on_hover_auto(),
+        )
+        hover_sel = (
+            ui.select(
+                options["hover_columns"],
+                value=list(state.config.data.hover_columns or ()),
+                multiple=True,
+                label="Hover columns",
+                on_change=lambda: apply(),
+            )
+            .classes("w-full")
+            .props("use-chips")
+        )
+        hover_sel.set_enabled(not hover_auto.value)
+
+        def _on_hover_auto() -> None:
+            hover_sel.set_enabled(not hover_auto.value)
+            apply()
+
         # Guard so the programmatic ref/test guessing in refresh_options does not
         # re-enter apply() through the selects' on_change.
         _suspend = {"v": False}
 
         def refresh_options() -> None:
-            opts = column_options(tuple(files), ref_sel.value, test_sel.value)
+            opts = column_options(
+                tuple(files), ref_sel.value, test_sel.value, _join_value()
+            )
             ref_sel.options, test_sel.options = opts["ref"], opts["test"]
             join_sel.options = [_NONE, *opts["join"]]
             group_sel.options = opts["group"]
             color_sel.options = [_NONE, *opts["color_column"]]
+            _refresh_hover(opts["hover_columns"])
             _suspend["v"] = True
             # Guess ref/test if unset and two numeric columns are available.
             if not ref_sel.value and len(opts["ref"]) >= 1:
@@ -170,22 +225,61 @@ def build_data_panel(
             for s in (ref_sel, test_sel, join_sel, group_sel, color_sel):
                 s.update()
 
-        def refresh_group() -> None:
-            opts = column_options(tuple(files), ref_sel.value, test_sel.value)
+        def refresh_dependent() -> None:
+            """Re-derive the options that depend on the ref/test/join choice."""
+            opts = column_options(
+                tuple(files), ref_sel.value, test_sel.value, _join_value()
+            )
             group_sel.options = opts["group"]
             group_sel.update()
+            _refresh_hover(opts["hover_columns"])
+
+        def _join_value() -> str | None:
+            return None if join_sel.value == _NONE else join_sel.value
+
+        def _refresh_hover(candidates: list[str]) -> None:
+            """Re-derive hover options and drop pinned refs no longer offered.
+
+            A pinned ref left pointing at a removed file would make every later
+            ``apply()`` raise a ``DataError`` the user could not see the cause
+            of, so stale selections are pruned here rather than left to fail.
+            """
+            hover_sel.options = candidates
+            current = list(hover_sel.value or ())
+            kept = [v for v in current if v in candidates]
+            if kept != current:
+                # Save and restore rather than clearing the flag outright: this
+                # runs inside refresh_options, which owns its own suspension.
+                was = _suspend["v"]
+                _suspend["v"] = True
+                hover_sel.value = kept
+                _suspend["v"] = was
+            hover_sel.update()
 
         def apply() -> None:
             if _suspend["v"]:
                 return
-            state.set_data_source(
+            # Annotated because it is splatted into a signature with a typed
+            # keyword-only `clear`: without it the checker cannot tell that
+            # `source` never carries that key.
+            source: dict[str, Any] = dict(
                 files=tuple(files),
                 ref=ref_sel.value or None,
                 test=test_sel.value or None,
-                join=None if join_sel.value == _NONE else join_sel.value,
+                join=_join_value(),
                 group=tuple(group_sel.value or ()),
                 color_column=None if color_sel.value == _NONE else color_sel.value,
             )
+            if hover_auto.value:
+                # Auto is hover_columns=None, and merge drops None overrides --
+                # so it has to be routed through clear, not passed as a value.
+                state.set_data_source(**source, clear=("hover_columns",))
+            else:
+                # An empty selection is a real value meaning "no extra rows",
+                # not "unset", so () must reach the config.
+                state.set_data_source(
+                    **source, hover_columns=tuple(hover_sel.value or ())
+                )
             # On failure last_error is set; the status bar (painted by
             # on_change -> refresh) shows it persistently -- no toast.
             on_change()
