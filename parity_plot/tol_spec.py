@@ -8,7 +8,7 @@ click-free so it is unit-tested on its own.
 from __future__ import annotations
 
 from .tolerance import parse_reltol
-from .tolerances import KINDS, STYLES, NamedTolerance, ToleranceError
+from .tolerances import NamedTolerance, ToleranceError
 
 _KEYS = {"name", "label", "abstol", "reltol", "kind", "color", "style"}
 
@@ -53,7 +53,7 @@ def parse_tol_spec(text: str, auto_name: str) -> NamedTolerance:
     fields.setdefault("name", auto_name)
 
     try:
-        return NamedTolerance(**fields)  # type: ignore[arg-type]
+        return NamedTolerance(**fields)  # ty: ignore[invalid-argument-type]
     except ToleranceError as exc:
         raise TolSpecError(str(exc)) from None
 
@@ -84,10 +84,14 @@ def build_tolerances(
 
     if abstol is not None or reltol is not None:
         try:
-            built.append(NamedTolerance(
-                name=next_name(), abstol=abstol, reltol=reltol,
-                style=band_style or "lines",
-            ))
+            built.append(
+                NamedTolerance(
+                    name=next_name(),
+                    abstol=abstol,
+                    reltol=reltol,
+                    style=band_style or "lines",
+                )
+            )
         except ToleranceError as exc:
             raise TolSpecError(str(exc)) from None
 

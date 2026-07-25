@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
@@ -13,6 +14,24 @@ from ..plot import build_figure
 from ..tolerances import NamedTolerance
 from .filters import FilterSet
 from .records import RecordView, find_record, record_views
+
+
+def _with_defaults(section: Any, keys: Sequence[str]) -> Any:
+    """A copy of ``section`` with the named fields at their dataclass defaults.
+
+    Shared by :meth:`DesignerState.reset_fields` (a pure reset) and
+    :meth:`DesignerState.set_data_source` (a reset folded into a reload). Both
+    need to put a field back to its default; ``merge`` cannot, because it drops
+    ``None`` overrides, and ``None`` is sometimes the meaningful value.
+    """
+    defaults: dict[str, object] = {}
+    for f in dataclasses.fields(section):
+        if f.name in keys:
+            if f.default is not dataclasses.MISSING:
+                defaults[f.name] = f.default
+            elif f.default_factory is not dataclasses.MISSING:  # type: ignore[misc]
+                defaults[f.name] = f.default_factory()  # type: ignore[misc]
+    return dataclasses.replace(section, **defaults)
 
 
 @dataclass
@@ -51,12 +70,22 @@ class DesignerState:
         self.last_error = None
         return True
 
-    def set_data_source(self, **values: Any) -> bool:
+    def set_data_source(self, *, clear: Sequence[str] = (), **values: Any) -> bool:
         """Point at a different file or column mapping. Returns whether it worked.
 
         On failure the previously loaded dataset and the config are both left
         untouched: losing a working dataset because of a typo in a column name
         would be far worse than the error message.
+
+        ``clear`` names ``data`` fields to reset to their dataclass default on
+        the candidate *before* loading. This exists because ``merge`` drops
+        ``None`` overrides by design (so a CLI can pass every flag
+        unconditionally), and for some fields ``None`` *is* the meaningful
+        value -- ``hover_columns`` is ``None`` for "auto". Passing
+        ``hover_columns=None`` through ``merge`` would silently keep the stale
+        pinned set, so the designer routes "back to auto" through ``clear``
+        instead. ``reset_fields`` cannot serve here: it does not reload the
+        data, and ``hover_columns`` changes what ``load`` produces.
         """
         try:
             candidate = self.config.merge(data=values)
@@ -64,10 +93,18 @@ class DesignerState:
             self.last_error = str(exc)
             return False
 
+        if clear:
+            new_data = _with_defaults(candidate.data, clear)
+            candidate = dataclasses.replace(candidate, data=new_data)
+
         # An incomplete source -- no files, or no ref/test yet -- is the empty
         # state, not an error: the user removed the last file or has not finished
         # picking columns. Go blank cleanly rather than keeping stale data.
-        if not candidate.data.files or not candidate.data.ref or not candidate.data.test:
+        if (
+            not candidate.data.files
+            or not candidate.data.ref
+            or not candidate.data.test
+        ):
             self.config = candidate
             self.data = None
             self.selection = None
@@ -85,10 +122,42 @@ class DesignerState:
         self.config = candidate
         self.data = data
         self.last_error = None
-        if self.selection is not None and find_record(record_views(data), self.selection) is None:
+        if (
+            self.selection is not None
+            and find_record(record_views(data), self.selection) is None
+        ):
             # The pinned record does not exist in the new dataset.
             self.selection = None
         return True
+
+    def reset_fields(self, section: str, *keys: str) -> None:
+        """Reset the named fields of one section to their dataclass defaults.
+
+        Needed because ``ParityConfig.merge`` drops ``None`` overrides (a
+        deliberate CLI convenience), so it cannot clear an optional field back
+        to its default. Blanking a text control routes here instead, so an
+        emptied ``x_label`` truly reverts to the column name rather than keeping
+        its stale value.
+        """
+        current = getattr(self.config, section)
+        new_section = _with_defaults(current, keys)
+        self.config = dataclasses.replace(self.config, **{section: new_section})
+        self.last_error = None
+
+    def load_session_config(
+        self, config: ParityConfig, data: ParityData | None
+    ) -> None:
+        """Swap in a freshly opened config (and its data), clearing view state.
+
+        Used when the toolbar opens a different config or starts a New Design:
+        the whole config changes, so a pinned selection and any prior error are
+        no longer meaningful. Filters reset to their default (a no-op) view.
+        """
+        self.config = config
+        self.data = data
+        self.selection = None
+        self.filters = FilterSet()
+        self.last_error = None
 
     def selected_record(
         self, tolerances: Sequence[NamedTolerance] = ()
@@ -134,7 +203,9 @@ class DesignerState:
         against.
         """
         try:
-            figure = build_figure(self.visible_data(), self.config.plot, self.config.stats)
+            figure = build_figure(
+                self.visible_data(), self.config.plot, self.config.stats
+            )
         except (ConfigError, ValueError) as exc:
             self.last_error = str(exc)
             if self._last_figure is None:

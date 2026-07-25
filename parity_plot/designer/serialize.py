@@ -49,7 +49,9 @@ def config_to_toml(config: ParityConfig, existing: str | None = None) -> str:
                 if field.name in table:
                     del table[field.name]
                 continue
-            if field.name in table and _already_equals(current, name, field.name, value):
+            if field.name in table and _already_equals(
+                current, name, field.name, value
+            ):
                 # Leave the existing text alone so "10pct" is not rewritten as
                 # 0.1 -- same value, gratuitous diff.
                 #
@@ -75,7 +77,9 @@ def _safe_load(doc: Any) -> ParityConfig | None:
         return None
 
 
-def _already_equals(current: ParityConfig | None, section: str, key: str, value: Any) -> bool:
+def _already_equals(
+    current: ParityConfig | None, section: str, key: str, value: Any
+) -> bool:
     if current is None:
         return False
     return getattr(getattr(current, section), key) == value

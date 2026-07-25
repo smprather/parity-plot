@@ -33,7 +33,7 @@ def test_round_trip_of_the_shipped_example(tmp_path: Path):
     assert tols[1].reltol == pytest.approx(0.10)
     assert tols[1].abstol is None  # commented out in the shipped example
     assert tols[1].style == "lines"  # the default
-    assert cfg.stats.metrics == ("n", "r2", "rmse", "mae", "bias")
+    assert cfg.stats.metrics == ("n", "r2", "rmse", "mae", "bias", "std", "max_abs_err")
     assert cfg.output.width == 900
 
 

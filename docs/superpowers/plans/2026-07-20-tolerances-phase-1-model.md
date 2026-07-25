@@ -87,12 +87,16 @@ def test_at_least_one_bound_is_required():
         NamedTolerance(name="t1")
 
 
-@pytest.mark.parametrize("kwargs", [{"abstol": 2.0}, {"reltol": 0.1}, {"abstol": 2.0, "reltol": 0.1}])
+@pytest.mark.parametrize(
+    "kwargs", [{"abstol": 2.0}, {"reltol": 0.1}, {"abstol": 2.0, "reltol": 0.1}]
+)
 def test_either_bound_alone_is_enough(kwargs):
     assert NamedTolerance(name="t1", **kwargs)
 
 
-@pytest.mark.parametrize("name", ["has space", "tab\there", "line\nbreak", " leading", "trailing "])
+@pytest.mark.parametrize(
+    "name", ["has space", "tab\there", "line\nbreak", " leading", "trailing "]
+)
 def test_names_may_not_contain_whitespace(name):
     """The name is an identifier: it appears in configs, CLI flags and the
     table's comma-separated failure list, where a space would be ambiguous."""
@@ -105,7 +109,9 @@ def test_names_may_not_be_empty():
         NamedTolerance(name="", abstol=1.0)
 
 
-@pytest.mark.parametrize("kwargs", [{"abstol": 0}, {"abstol": -1}, {"reltol": 0}, {"reltol": -0.5}])
+@pytest.mark.parametrize(
+    "kwargs", [{"abstol": 0}, {"abstol": -1}, {"reltol": 0}, {"reltol": -0.5}]
+)
 def test_bounds_must_be_positive(kwargs):
     with pytest.raises(ToleranceError, match="positive"):
         NamedTolerance(name="t1", **kwargs)
@@ -120,7 +126,10 @@ def test_kind_and_style_are_checked():
 
 def test_label_defaults_to_the_spec():
     assert NamedTolerance(name="t1", reltol=0.1).display_label == "±10%"
-    assert NamedTolerance(name="t1", abstol=2.0, reltol=0.1).display_label == "±max(2, 10%)"
+    assert (
+        NamedTolerance(name="t1", abstol=2.0, reltol=0.1).display_label
+        == "±max(2, 10%)"
+    )
 
 
 def test_the_literal_string_auto_also_means_derive_it():
@@ -168,13 +177,18 @@ def test_default_name_counts_up_past_taken_ones():
 
 def test_duplicate_names_are_rejected():
     """Two tolerances called the same thing make the failure list meaningless."""
-    tols = [NamedTolerance(name="t1", abstol=1.0), NamedTolerance(name="t1", reltol=0.1)]
+    tols = [
+        NamedTolerance(name="t1", abstol=1.0),
+        NamedTolerance(name="t1", reltol=0.1),
+    ]
     with pytest.raises(ToleranceError, match="duplicate"):
         require_unique_names(tols)
 
 
 def test_unique_names_pass():
-    require_unique_names([NamedTolerance(name="a", abstol=1.0), NamedTolerance(name="b", abstol=2.0)])
+    require_unique_names(
+        [NamedTolerance(name="a", abstol=1.0), NamedTolerance(name="b", abstol=2.0)]
+    )
 
 
 def test_pass_fail_selects_only_criteria():
@@ -209,7 +223,9 @@ def test_failures_preserves_declaration_order():
 
 
 def test_failures_with_no_criteria_is_empty():
-    assert failures([NamedTolerance(name="ref", reltol=0.1, kind="info")], 1.0, 99.0) == ()
+    assert (
+        failures([NamedTolerance(name="ref", reltol=0.1, kind="info")], 1.0, 99.0) == ()
+    )
     assert failures([], 1.0, 99.0) == ()
 
 
@@ -418,7 +434,14 @@ def test_every_token_resolves_in_every_theme(theme_name):
 
 def test_the_offered_tokens_are_the_curated_set():
     assert themes.COLOR_TOKENS == (
-        "red", "yellow", "orange", "green", "blue", "purple", "magenta", "grey",
+        "red",
+        "yellow",
+        "orange",
+        "green",
+        "blue",
+        "purple",
+        "magenta",
+        "grey",
     )
 
 
@@ -503,22 +526,23 @@ Add the field to the `Theme` dataclass, after `band_fill`:
 Add these methods to `Theme`:
 
 ```python
-    def resolve_color(self, token: str) -> str:
-        """A token, or a hex value passed through untouched."""
-        if token.startswith("#"):
-            return token
-        try:
-            return self.tolerance_colors[token]
-        except KeyError:
-            raise ValueError(
-                f"unknown colour {token!r}; use one of {list(COLOR_TOKENS)} "
-                f"or a hex value like '#8844ff'"
-            ) from None
+def resolve_color(self, token: str) -> str:
+    """A token, or a hex value passed through untouched."""
+    if token.startswith("#"):
+        return token
+    try:
+        return self.tolerance_colors[token]
+    except KeyError:
+        raise ValueError(
+            f"unknown colour {token!r}; use one of {list(COLOR_TOKENS)} "
+            f"or a hex value like '#8844ff'"
+        ) from None
 
-    def band_fill_for(self, token: str, alpha: float = 0.10) -> str:
-        """The same colour, translucent, for a shaded band."""
-        red, green, blue = _hex_to_rgb(self.resolve_color(token))
-        return f"rgba({red}, {green}, {blue}, {alpha})"
+
+def band_fill_for(self, token: str, alpha: float = 0.10) -> str:
+    """The same colour, translucent, for a shaded band."""
+    red, green, blue = _hex_to_rgb(self.resolve_color(token))
+    return f"rgba({red}, {green}, {blue}, {alpha})"
 ```
 
 Add this helper at module level:
@@ -534,31 +558,35 @@ def _hex_to_rgb(value: str) -> tuple[int, int, int]:
 Give `DARK` these colours:
 
 ```python
-    tolerance_colors={
+tolerance_colors = (
+    {
         "red": "#ff4d5a",
         "yellow": "#ffd23f",
         "orange": "#ff8c42",
-        "green": "#9ccc65",     # olive, not the identity line's mint
-        "blue": "#5b8dee",      # true blue, not the markers' cyan
+        "green": "#9ccc65",  # olive, not the identity line's mint
+        "blue": "#5b8dee",  # true blue, not the markers' cyan
         "purple": "#b18cff",
         "magenta": "#ff6ec7",
         "grey": "#9aa4b0",
     },
+)
 ```
 
 and `LIGHT` these:
 
 ```python
-    tolerance_colors={
+tolerance_colors = (
+    {
         "red": "#d00000",
         "yellow": "#b38600",
         "orange": "#b35309",
-        "green": "#6a8f00",     # olive, not the identity line's emerald
-        "blue": "#3b5bdb",      # true blue, not the markers' teal
+        "green": "#6a8f00",  # olive, not the identity line's emerald
+        "blue": "#3b5bdb",  # true blue, not the markers' teal
         "purple": "#7048e8",
         "magenta": "#c2255c",
         "grey": "#6b7280",
     },
+)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -628,7 +656,7 @@ def test_several_tolerances_keep_their_order(tmp_path: Path):
 def test_every_attribute_parses(tmp_path: Path):
     path = tmp_path / "p.toml"
     path.write_text(
-        '[[plot.tolerances]]\n'
+        "[[plot.tolerances]]\n"
         'name = "customer"\nlabel = "customer limit"\n'
         'abstol = 2.0\nreltol = 0.10\nkind = "pass"\n'
         'color = "purple"\nstyle = "shaded"\n',
@@ -636,8 +664,13 @@ def test_every_attribute_parses(tmp_path: Path):
     )
     tol = ParityConfig.from_toml(path).plot.tolerances[0]
     assert tol == NamedTolerance(
-        name="customer", label="customer limit", abstol=2.0, reltol=0.10,
-        kind="pass", color="purple", style="shaded",
+        name="customer",
+        label="customer limit",
+        abstol=2.0,
+        reltol=0.10,
+        kind="pass",
+        color="purple",
+        style="shaded",
     )
 
 
@@ -677,9 +710,14 @@ def test_an_unknown_tolerance_key_is_rejected(tmp_path: Path):
         ParityConfig.from_toml(path)
 
 
-@pytest.mark.parametrize("key, value", [
-    ("abstol", "2.0"), ("reltol", "0.10"), ("band_style", '"lines"'),
-])
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("abstol", "2.0"),
+        ("reltol", "0.10"),
+        ("band_style", '"lines"'),
+    ],
+)
 def test_the_v0_1_0_scalar_keys_are_a_clear_error(tmp_path: Path, key, value):
     """A clean break, but the message has to teach the new shape."""
     path = tmp_path / "p.toml"
@@ -830,7 +868,9 @@ PlotConfig(abstol=2.0, reltol=0.10, band_style="shaded")
 
 # after
 PlotConfig(tolerances=(NamedTolerance(name="t1", reltol=0.10),))
-PlotConfig(tolerances=(NamedTolerance(name="t1", abstol=2.0, reltol=0.10, style="shaded"),))
+PlotConfig(
+    tolerances=(NamedTolerance(name="t1", abstol=2.0, reltol=0.10, style="shaded"),)
+)
 ```
 
 Files known to need this: `tests/test_config.py`, `tests/test_plot.py`,
@@ -947,10 +987,12 @@ def test_with_parity_preserves_a_customised_parity_entry():
 
 def test_draw_order_puts_parity_last_so_nothing_buries_it():
     """List position drives the legend; z-order is separate."""
-    tols = with_parity((
-        NamedTolerance(name="spec", reltol=0.1, style="shaded"),
-        NamedTolerance(name="tight", abstol=1.0),
-    ))
+    tols = with_parity(
+        (
+            NamedTolerance(name="spec", reltol=0.1, style="shaded"),
+            NamedTolerance(name="tight", abstol=1.0),
+        )
+    )
     assert [t.name for t in tols] == [PARITY_NAME, "spec", "tight"]
     assert [t.name for t in draw_order(tols)] == ["spec", "tight", PARITY_NAME]
 
@@ -977,7 +1019,9 @@ def test_a_builtin_entry_is_forced_informational():
 def test_config_gains_parity_automatically(tmp_path):
     """Even a config that never mentions it gets the reference line."""
     path = tmp_path / "p.toml"
-    path.write_text('[[plot.tolerances]]\nname = "spec"\nreltol = 0.1\n', encoding="utf-8")
+    path.write_text(
+        '[[plot.tolerances]]\nname = "spec"\nreltol = 0.1\n', encoding="utf-8"
+    )
     tols = ParityConfig.from_toml(path).plot.tolerances
     assert [t.name for t in tols] == [PARITY_NAME, "spec"]
 

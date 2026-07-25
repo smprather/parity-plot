@@ -40,9 +40,15 @@ def _state_with(csv: Path, plot: dict) -> DesignerState:
     they build the config directly through `from_dict`.
     """
     config = ParityConfig.from_dict(
-        {"data": {"files": [str(csv)], "ref": "wide.csv:reference",
-                  "test": "wide.csv:test", "join": "id"},
-         "plot": plot}
+        {
+            "data": {
+                "files": [str(csv)],
+                "ref": "wide.csv:reference",
+                "test": "wide.csv:test",
+                "join": "id",
+            },
+            "plot": plot,
+        }
     )
     state = DesignerState(config=config, data=load(config.data))
     return state
@@ -133,7 +139,7 @@ def test_a_saved_config_reloads_into_an_identical_designer(csv, tmp_path: Path):
 
 
 def test_the_cli_plot_command_renders_a_designer_config(csv, tmp_path: Path):
-    """The end the user actually reaches: design, save, then `parity-plot plot -c`."""
+    """The end the user actually reaches: design, save, then `parity-plot plot`."""
     from click.testing import CliRunner
 
     from parity_plot.cli import cli
@@ -147,7 +153,7 @@ def test_the_cli_plot_command_renders_a_designer_config(csv, tmp_path: Path):
 
     html = tmp_path / "out.html"
     result = CliRunner().invoke(
-        cli, ["plot", "-c", str(toml_path), "-o", str(html), "--no-open-browser"]
+        cli, ["plot", str(toml_path), "-o", str(html), "--no-open-browser"]
     )
 
     assert result.exit_code == 0, result.output
@@ -211,4 +217,67 @@ def test_a_multi_tolerance_config_round_trips_identically(csv, tmp_path: Path):
     rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
 
     assert from_disk.plot.tolerances == state.config.plot.tolerances
+    assert rendered.to_dict() == preview.to_dict()
+
+
+def test_colorscale_multigroup_designer_matches_cli(tmp_path: Path):
+    """A colorscale + multi-column-group config must render identically through
+    the designer preview and the CLI reload path."""
+    from parity_plot.encoding import Encoding
+
+    rich = tmp_path / "rich.csv"
+    rich.write_text(
+        "id,reference,test,package,vendor,temp\n"
+        "A1,10,11,SMD,Acme,25\n"
+        "A2,20,22,DIP,Beta,80\n"
+        "A3,30,29,SMD,Ceres,-10\n"
+        "A4,40,44,QFN,Acme,55\n",
+        encoding="utf-8",
+    )
+    config = ParityConfig.from_dict(
+        {
+            "data": {
+                "files": [str(rich)],
+                "ref": "rich.csv:reference",
+                "test": "rich.csv:test",
+                "join": "id",
+                "group": ["package", "vendor"],
+                "color_column": "rich.csv:temp",
+            },
+            "plot": {
+                "encoding": Encoding(
+                    color_by="colorscale", symbol_by="group", colorscale="turbo"
+                )
+            },
+        }
+    )
+    state = DesignerState(config=config, data=load(config.data))
+    assert state.last_error is None, state.last_error
+
+    preview = state.figure()
+
+    out = tmp_path / "parity.toml"
+    Session().save(state.config, out)
+    from_disk = ParityConfig.from_toml(out)
+    rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
+
+    assert rendered.to_dict() == preview.to_dict()
+
+
+def test_autosave_output_round_trips_identically(csv, tmp_path: Path):
+    """What auto-save writes must reload to an identical render."""
+    out = tmp_path / "parity.toml"
+    out.write_text(
+        f'[data]\nfiles = ["{csv.as_posix()}"]\n'
+        f'ref = "wide.csv:reference"\ntest = "wide.csv:test"\n',
+        encoding="utf-8",
+    )
+    session, config, data = Session.start((), out)  # bound to the file
+    state = DesignerState(config=config, data=data)
+    edited = state.config.merge(plot={"theme": "light"})
+    written = session.autosave(edited)  # writes to the bound file
+
+    from_disk = ParityConfig.from_toml(written)
+    preview = build_figure(load(edited.data), edited.plot, edited.stats)
+    rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
     assert rendered.to_dict() == preview.to_dict()

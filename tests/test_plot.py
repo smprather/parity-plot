@@ -140,7 +140,7 @@ def test_parity_line_spans_the_full_range(data):
 def test_parity_line_can_be_switched_off(data):
     """Disabling the parity entry replaces the old identity_line = false."""
     from dataclasses import replace
-    from parity_plot.tolerances import parity
+
     fig = build_figure(data, PlotConfig(tolerances=(replace(parity(), enabled=False),)))
     assert trace_named(fig, "0% error") is None
 
@@ -285,17 +285,26 @@ def test_log_mode_places_the_identity_line_in_data_space():
 
 
 def test_stats_box_is_optional(data):
-    assert len(build_figure(data, PlotConfig(), StatsConfig(show=True)).layout.annotations) == 1
-    assert build_figure(data, PlotConfig(), StatsConfig(show=False)).layout.annotations == ()
+    assert (
+        len(build_figure(data, PlotConfig(), StatsConfig(show=True)).layout.annotations)
+        == 1
+    )
+    assert (
+        build_figure(data, PlotConfig(), StatsConfig(show=False)).layout.annotations
+        == ()
+    )
 
 
 def test_subtitle_reports_every_null_category():
     data = ParityData(
-        keys=["a"], x=[1.0], y=[1.0],
+        keys=["a"],
+        x=[1.0],
+        y=[1.0],
         missing_y=Unpaired(["b"], [2.0]),
         missing_x=Unpaired(["c"], [3.0]),
         n_dropped=4,
-        x_label="ref", y_label="meas",
+        x_label="ref",
+        y_label="meas",
     )
     subtitle = build_figure(data, PlotConfig()).layout.title.subtitle.text
     assert "1 paired" in subtitle
@@ -335,9 +344,7 @@ def test_symbol_sequence_assigns_symbols_in_first_seen_order():
     fig = build_figure(
         _grouped(),
         PlotConfig(
-            encoding=Encoding(
-                symbol_by="group", symbol_sequence=("square", "diamond")
-            )
+            encoding=Encoding(symbol_by="group", symbol_sequence=("square", "diamond"))
         ),
     )
     by_group = {t.name: t.marker.symbol for t in fig.data if t.name in ("r", "c")}
@@ -355,8 +362,9 @@ def test_public_api_accepts_sequences_and_paths(wide_csv):
     from_arrays = parity_plot(ref=[1.0, 2.0], test=[1.1, None], theme="light")
     assert from_arrays.layout.template.layout.paper_bgcolor == "#ffffff"
 
-    from_path = parity_plot(wide_csv, ref="wide.csv:reference",
-                           test="wide.csv:test", join="id")
+    from_path = parity_plot(
+        wide_csv, ref="wide.csv:reference", test="wide.csv:test", join="id"
+    )
     assert trace_named(from_path, "paired").x == (10.0, 30.0)
 
 
@@ -367,3 +375,181 @@ def test_public_api_rejects_mixed_and_unknown_arguments(wide_csv):
         parity_plot(ref=[1.0], test=[1.0], colour="blue")
     with pytest.raises(TypeError, match="not both"):
         parity_plot(wide_csv, ref=[1.0], test=[1.0])
+
+
+def _scale_data():
+    from parity_plot.data import ParityData
+
+    return ParityData(
+        keys=["a", "b", "c", "d"],
+        x=[1.0, 2.0, 3.0, 4.0],
+        y=[1.1, 2.1, 2.9, 4.2],
+        group=["r", "r", "c", "c"],
+        color_values=[10.0, 20.0, 30.0, 40.0],
+        color_label="temp",
+        x_label="ref",
+        y_label="test",
+    )
+
+
+def test_colorscale_draws_one_colorbar():
+    from parity_plot.config import PlotConfig
+    from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(
+            encoding=Encoding(
+                color_by="colorscale", symbol_by="group", colorscale="turbo"
+            )
+        ),
+    )
+    paired = [t for t in fig.data if t.mode == "markers" and t.marker.symbol]
+    showscale = [t for t in paired if t.marker.showscale]
+    assert len(showscale) == 1  # single shared colorbar
+    assert showscale[0].marker.colorbar.title.text == "temp"
+    cmins = {
+        t.marker.cmin
+        for t in paired
+        if t.marker.color and not isinstance(t.marker.color, str)
+    }
+    assert cmins == {10.0}  # shared cmin across groups
+
+
+def test_colorscale_partitions_by_symbol():
+    from parity_plot.config import PlotConfig
+    from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(encoding=Encoding(color_by="colorscale", symbol_by="group")),
+    )
+    paired = [
+        t
+        for t in fig.data
+        if t.mode == "markers"
+        and hasattr(t.marker, "colorscale")
+        and t.marker.colorscale
+    ]
+    assert len(paired) == 2  # one trace per symbol group
+
+
+def test_colorscale_without_column_raises():
+    import pytest
+
+    from parity_plot.config import PlotConfig
+    from parity_plot.data import ParityData
+    from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
+
+    d = ParityData(keys=["a"], x=[1.0], y=[1.0])
+    with pytest.raises(ValueError, match="color_column"):
+        build_figure(d, PlotConfig(encoding=Encoding(color_by="colorscale")))
+
+
+def test_colorbar_and_right_legend_do_not_overlap():
+    from parity_plot.config import PlotConfig
+    from parity_plot.encoding import Encoding
+    from parity_plot.plot import build_figure
+
+    fig = build_figure(
+        _scale_data(),
+        PlotConfig(
+            encoding=Encoding(color_by="colorscale", symbol_by="group"), legend="right"
+        ),
+    )
+    assert fig.layout.legend.x >= 1.15  # legend pushed right of the colorbar
+    assert fig.layout.margin.r >= 260
+
+
+def test_public_api_accepts_a_list_of_group_columns(tmp_path):
+    """A list `group=` in the file branch composes a multi-column label, not None."""
+    from parity_plot import parity_plot
+    from parity_plot.encoding import Encoding
+
+    f = tmp_path / "d.csv"
+    f.write_text(
+        "reference,test,package,vendor\n10,11,SMD,Acme\n20,22,DIP,Beta\n",
+        encoding="utf-8",
+    )
+    fig = parity_plot(
+        str(f),
+        ref=f"{f.name}:reference",
+        test=f"{f.name}:test",
+        group=["package", "vendor"],
+        encoding=Encoding(color_by="group"),
+    )
+    marker_names = {t.name for t in fig.data if t.mode == "markers"}
+    assert marker_names == {"SMD, Acme", "DIP, Beta"}
+
+
+# --- hover columns in the figure ---
+
+
+def _hover_data():
+    """Paired points carrying two hover columns, package and temperature."""
+    from parity_plot.data import ParityData
+
+    return ParityData(
+        keys=["a", "b"],
+        x=[1.0, 2.0],
+        y=[1.1, 2.2],
+        x_label="ref",
+        y_label="test",
+        hover_labels=("package", "temperature"),
+        hover_values=[("SMD", "25"), ("DIP", "80")],
+    )
+
+
+def test_hovertemplate_contains_each_label_and_customdata_index():
+    fig = build_figure(_hover_data(), PlotConfig())
+    paired = trace_named(fig, "paired")
+    template = paired.hovertemplate
+    assert "package: %{customdata[3]}" in template
+    assert "temperature: %{customdata[4]}" in template
+    # The verdict stays last.
+    assert template.index("%{customdata[2]}") > template.index("%{customdata[4]}")
+
+
+def test_customdata_width_is_three_plus_hover_labels():
+    fig = build_figure(_hover_data(), PlotConfig())
+    paired = trace_named(fig, "paired")
+    row = paired.customdata[0]
+    assert len(row) == 3 + 2  # key, diff, verdict, package, temperature
+    assert row[3] == "SMD"
+    assert row[4] == "25"
+
+
+def test_no_hover_columns_keeps_the_three_row_template():
+    """An empty hover set must not leave a dangling <br> or empty row."""
+    data = from_sequences(x=[1.0, 2.0], y=[1.1, 2.2], keys=["a", "b"])
+    fig = build_figure(data, PlotConfig())
+    paired = trace_named(fig, "paired")
+    template = paired.hovertemplate
+    # exactly the structural rows, nothing past the verdict.
+    assert template.count("<br>") == 4
+    assert "%{customdata[3]}" not in template
+    assert "customdata[2]" in template  # verdict present
+
+
+def test_log_mode_keeps_hover_aligned_after_dropping_non_positive():
+    """hover_values must be re-sliced in step with x/y on a log axis."""
+    from parity_plot.data import ParityData
+
+    data = ParityData(
+        keys=["a", "b", "c"],
+        x=[1.0, -5.0, 10.0],
+        y=[1.1, -4.0, 11.0],
+        x_label="ref",
+        y_label="test",
+        hover_labels=("note",),
+        hover_values=[("first",), ("dropped",), ("third",)],
+    )
+    with pytest.warns(UserWarning, match="zero or negative"):
+        fig = build_figure(data, PlotConfig(log=True))
+    paired = trace_named(fig, "paired")
+    # b dropped; a and c remain, in order.
+    assert list(paired.x) == [1.0, 10.0]
+    assert [row[3] for row in paired.customdata] == ["first", "third"]

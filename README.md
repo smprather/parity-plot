@@ -54,41 +54,96 @@ uv run parity-plot example      # sample data → data/, render parity.html, ope
 ```
 
 Both `example` and `plot` open the result by default; pass `--no-open-browser` to
-suppress that, or `--no-plot` to skip rendering entirely.
+suppress that, or (for `example`) `--no-plot` to skip rendering entirely.
+
+**`plot` is TOML-driven.** Everything about how a plot looks — data columns, theme,
+tolerances, encoding — lives in a config file, not on the command line. Start one,
+edit it, render it:
 
 ```bash
-uv run parity-plot plot data/example.csv --theme light --reltol 10pct
-uv run parity-plot plot data/example.csv --no-open-browser -o quiet.html
+uv run parity-plot init                 # write a documented parity.toml
+uv run parity-plot plot                 # render it (CONFIG defaults to ./parity.toml)
+uv run parity-plot plot my.toml -o quiet.html --no-open-browser
 ```
+
+The only `plot` flags are operational: `-o/--output` (where to write) and
+`--open-browser`. To explore the surface, `parity-plot --help` and each
+subcommand's `--help`; to shape a plot, edit the TOML (below) or use the designer.
 
 ## Data sources
 
 Open any number of files. The two plotted series — **reference** and **test** —
-are each picked as `file:column`, and must be numeric.
+are each picked as `file:column`, and must be numeric. This lives in `[data]`:
 
-```bash
-# both columns in one file (they pair by row order)
-uv run parity-plot plot data.csv --ref 'data.csv:reference' --test 'data.csv:test'
+```toml
+[data]
+# both columns in one file → they pair by row order
+files = ["data.csv"]
+ref   = "data.csv:reference"
+test  = "data.csv:test"
 
-# a column from each of two files, aligned on a join key
-uv run parity-plot plot meas.csv sim.csv \
-    --ref 'meas.csv:voltage' --test 'sim.csv:voltage' --join id
-
-# a single file with no flags defaults ref/test to its first two numeric columns
-uv run parity-plot plot data.csv
+# — or — a column from each of two files, aligned on a join key:
+# files = ["meas.csv", "sim.csv"]
+# ref   = "meas.csv:voltage"
+# test  = "sim.csv:voltage"
+# join  = "id"
 ```
 
 ![A parity plot of two files joined on an id column, blue points, with rug ticks marking records present in only one of the two files.](docs/images/join.png)
 
-With `--join`, rows are outer-joined on that key, and a key on only one side is
+With `join`, rows are outer-joined on that key, and a key on only one side is
 unpaired. **Without a join, rows pair by position**, and the longer column's tail
 is left unpaired.
 
-A `--group COL` labels each point for the encoding below. Group is a **bare column
-name**, not `file:column`: it names the joined *entity* (a part), so it may live
-in one file or several. When two files both carry it, their values for a paired
-record must agree — a mismatch is reported as an error naming the record and the
-two values.
+`group` labels each point for the encoding below. It is one **or more** bare column
+names (not `file:column`): a group names the joined *entity* (a part), so it may
+live in one file or several, and several columns compose into one label —
+`group = ["package", "vendor"]` reads as `"SMD, Acme"`. When two files both carry a
+group column, their values for a paired record must agree — a mismatch is an error
+naming the record and the two values.
+
+A separate `color_column` (a single numeric `file:column`) drives the *colorscale*
+colour mode — see [Encoding](#encoding). Unlike `group`, it is pinned to one file,
+since the same column can legitimately differ between the reference and test files.
+
+### Hover text
+
+Hovering a point always shows its key, both axis values, their difference and the
+tolerance verdict. Everything else in the row can be shown too — by default,
+**it already is**:
+
+```
+S0000
+reference: 11.01
+test: 11.33
+difference: +0.3209
+package: BGA
+vendor: Acme
+temperature: 111.3864
+pass
+```
+
+The extra rows come from `hover_columns`, whose default is every *other* column
+of the files backing `ref` and `test`:
+
+```toml
+[data]
+# hover_columns = ["example.csv:package", "example.csv:temperature"]
+```
+
+- **Omit the key** for the default: all the context in those files, so you rarely
+  have to configure anything.
+- **Give a list** to pin exactly those columns, in that order. They are
+  `file:column` refs, so a column present in both files can be shown from each —
+  the hover labels them `reference.csv:temperature` and `measured.csv:temperature`
+  only when it would otherwise be ambiguous.
+- **Give `[]`** for no extra rows.
+
+`ref`, `test` and the `join` column are never candidates: the hover already shows
+all three, as the two axis rows and the bold key line. A third open file is not a
+candidate either — without a join into it, its rows cannot be aligned to a point.
+Cells are shown as the file's own text, so `111.3864` hovers exactly as written;
+per-column number formatting is not yet configurable.
 
 ### Unpaired records
 
@@ -100,23 +155,23 @@ as a **rug mark on the axis of the value that is known**:
 - a record with a measurement but no reference → tick along the y-axis
 
 Counts appear in the subtitle. Unpaired records are excluded from the statistics,
-since there is no difference to measure. Use `--nulls drop` to hide the rug marks
-while still reporting the counts.
+since there is no difference to measure. Set `nulls = "drop"` in `[plot]` to hide
+the rug marks while still reporting the counts.
 
 ## Encoding
 
-Marker **colour** and **symbol** are driven independently, each by one of
-`single | pass-fail | group`. Below, **colour is the pass/fail verdict** (green =
-pass, red = fail) and **each part family gets its own symbol** — so you read
-whether a part is in spec from its colour and which family it belongs to from its
-shape:
+Marker **colour** and **symbol** are driven independently. Symbol is one of
+`single | pass-fail | group`; colour adds a fourth mode, `colorscale`. Below,
+**colour is the pass/fail verdict** (green = pass, red = fail) and **each part
+family gets its own symbol** — so you read whether a part is in spec from its
+colour and which family it belongs to from its shape:
 
 ![A parity plot where points are coloured green for pass and red for fail, and each part family — inductor, diode, capacitor, resistor — has a distinct marker shape, showing the diode family (squares) running high and out of spec.](docs/images/groups.png)
 
 ```toml
 [plot.encoding]
-color_by  = "pass-fail"   # single | pass-fail | group
-symbol_by = "group"
+color_by  = "pass-fail"   # single | pass-fail | group | colorscale
+symbol_by = "group"       # single | pass-fail | group
 # the symbols the groups cycle through (first-seen order, wraps if needed);
 # omit for a built-in default cycle.
 symbol_sequence = ["circle", "square", "diamond", "triangle-up"]
@@ -129,9 +184,27 @@ symbol    = "circle"      # the symbol used when symbol_by = single
 - **group** — by the group column: a colour palette, or a symbol cycle you can
   set with `symbol_sequence` (any Plotly symbol name, including `-open`/`-dot`
   variants; an unknown name is rejected with a named error).
+- **colorscale** *(colour only)* — a **continuous colorbar** driven by a numeric
+  column. Point `[data].color_column` at the column and pick any Plotly named
+  scale. Colour then rides a colorbar (not the legend), so it composes with a
+  symbol channel: colour = temperature, shape = package.
+
+![A parity plot whose points are coloured on a viridis temperature scale shown as a colorbar, with a distinct marker shape per package family and a shaded ±10% band.](docs/images/colorscale.png)
+
+```toml
+[data]
+color_column = "example.csv:temperature"   # a single numeric file:column
+
+[plot.encoding]
+color_by   = "colorscale"
+colorscale = "viridis"    # any Plotly named scale: plasma, turbo, cividis, …
+symbol_by  = "group"      # colour = temperature, shape = part family
+```
 
 Each distinct trace is one legend entry named for its meaningful dimensions —
-`pass · inductor`, `fail · diode` — never for the raw glyph.
+`pass · inductor`, `fail · diode` — never for the raw glyph. Under `colorscale`
+the colour is shown by the colorbar, so a trace is named for its symbol group
+alone (`BGA`, `DIP`), and the colour never appears in the legend.
 
 ## Tolerances
 
@@ -161,46 +234,66 @@ the names of the limits it failed — appears in the hover, the record table, an
 the inspector. The statistics box reports the pass rate per criterion
 (`within spec: 85.5%`); info tolerances are omitted.
 
-```bash
-# repeatable --tol, each a key=value spec
-uv run parity-plot plot data.csv \
-    --tol 'name=spec,reltol=10pct' \
-    --tol 'name=tight,abstol=2,kind=info,color=blue,style=shaded'
+```toml
+# a list; repeat the block for each named limit
+[[plot.tolerances]]
+name   = "spec"
+reltol = "10pct"
 
-# --abstol / --reltol stay as shorthand for a single tolerance
-uv run parity-plot plot data.csv --abstol 2 --reltol 10pct
+[[plot.tolerances]]
+name   = "tight"
+abstol = 2
+kind   = "info"
+color  = "blue"
+style  = "shaded"
 ```
 
-`--reltol` is a true ratio: `0.1` is a tenth, `10pct` says the same in percent,
+`reltol` is a true ratio: `0.1` is a tenth, `10pct` says the same in percent,
 and a bare `10` means ten times the reading — the unit is stated, never guessed.
 
 ## Python API
 
 ```python
 from parity_plot import parity_plot
+from parity_plot.encoding import Encoding
 
 fig = parity_plot("data.csv", ref="data.csv:reference", test="data.csv:test")
 fig = parity_plot("meas.csv", "sim.csv", ref="meas.csv:v", test="sim.csv:v", join="id")
 fig = parity_plot(ref=[1.0, 2.0, 3.0], test=[1.1, None, 2.9], theme="light")
+
+# group takes one or more column names; keyword options are PlotConfig fields
+fig = parity_plot(
+    "parts.csv",
+    ref="parts.csv:sim",
+    test="parts.csv:measured",
+    group=["package", "vendor"],
+    encoding=Encoding(color_by="pass-fail", symbol_by="group"),
+)
 fig.show()
 ```
 
 Any iterable of numbers works for `ref`/`test` — lists, pandas Series, numpy
 arrays — with `None` or `NaN` marking a missing value. (No numpy or pandas
-required; they're just accepted.)
+required; they're just accepted.) Keyword `options` are `PlotConfig` fields
+(`theme`, `legend`, `encoding`, …); an unknown one is rejected.
 
 ## Config file
 
-`uv run parity-plot init` writes a documented `parity.toml`. Every key has a
-matching CLI flag, and **CLI flags win over the file, which wins over defaults**.
+`uv run parity-plot init` writes a documented `parity.toml`. **The TOML is the
+single source of truth for how a plot looks** — the CLI has no appearance flags; it
+only chooses which config to render (`parity-plot plot CONFIG`) and where to write
+it (`-o`). Unknown keys raise, so a typo never silently renders the default.
 
 ```toml
 [data]
 files = ["data/example.csv"]      # any number of files
 ref   = "example.csv:reference"   # file:column, numeric
 test  = "example.csv:test"
-# join  = "id"                 # optional; omit to pair by row order
-# group = "batch"              # optional; bare column name, file-independent
+# join  = "id"                     # optional; omit to pair by row order
+# group = ["package", "vendor"]    # optional; one or more bare column names
+# color_column = "example.csv:temperature"  # optional; numeric, for colorscale
+# hover_columns = ["example.csv:package"]   # optional; omit for every other
+#                                  # column of the ref/test files, [] for none
 
 [plot]
 theme = "dark"                 # dark | light
@@ -208,8 +301,9 @@ nulls = "rug"                  # rug | drop
 legend = "right"               # right | bottom | none
 
 [plot.encoding]
-color_by  = "single"           # single | pass-fail | group
-symbol_by = "single"
+color_by  = "single"           # single | pass-fail | group | colorscale
+symbol_by = "single"           # single | pass-fail | group
+# colorscale = "viridis"       # any Plotly named scale; used by color_by = colorscale
 
 [[plot.tolerances]]            # a list; repeat the block for more
 name = "spec"
@@ -225,8 +319,8 @@ format = "html"                # html | png | svg | pdf
 ```
 
 ```bash
-uv run parity-plot plot -c parity.toml
-uv run parity-plot plot -c parity.toml --theme light   # flag overrides the file
+uv run parity-plot plot                 # renders ./parity.toml
+uv run parity-plot plot lab/run7.toml   # or any path you name
 ```
 
 ## Interactive designer
@@ -235,17 +329,24 @@ uv run parity-plot plot -c parity.toml --theme light   # flag overrides the file
 uv run parity-plot design data/example.csv -c parity.toml
 ```
 
-Opens a local browser app: edit any setting and the plot updates live, then save
-back to the TOML. Comments in an existing config survive the round trip, and a key
-you have not changed keeps its original spelling (`reltol = "10pct"` is not
-rewritten as `0.1`).
+Opens a local browser app: edit any setting and the plot updates live. **Edits
+auto-save** to the bound config — a top toolbar carries a config dropdown (the
+parity `.toml`s in the launch directory), **Save As**, and **New Design**. Pick a
+config to open it; every valid edit is written straight to it, so the file on disk
+always holds the latest valid config. A `‹unsaved›` design (New Design, or a
+data-only launch) writes nowhere until **Save As** binds it a name. Comments in an
+existing config survive the round trip, and a key you have not changed keeps its
+original spelling (`reltol = "10pct"` is not rewritten as `0.1`).
 
 The preview is produced by the same `build_figure` the CLI uses, so what you see
-is exactly what `parity-plot plot -c parity.toml` will render — an equivalence
-pinned by a test, not assumed. Saving refuses to overwrite a config that changed
-on disk since it was opened, so an edit made in another window is not silently
-discarded. **Errors surface in a persistent status bar under the plot**, never a
-disappearing pop-up.
+is exactly what `parity-plot plot parity.toml` will render — an equivalence pinned
+by a test, not assumed. **Problems are flagged in place.** A blocking error (a
+setting that would produce a broken config) reddens the field, disables Save As,
+and withholds the auto-save, so a broken config never reaches disk. A non-blocking
+advisory — e.g. a join column while `ref` and `test` come from one file, which is
+merely *redundant* (they already pair by row) — shows an amber note without
+stopping anything. **Both surface in a persistent status bar under the plot**,
+never a disappearing pop-up.
 
 - **Data panel** — open any CSV and map its columns; the designer reads just the
   header to offer choices and guesses the mapping from names seen in the wild

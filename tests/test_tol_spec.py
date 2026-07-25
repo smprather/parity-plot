@@ -5,7 +5,6 @@ import pytest
 from parity_plot.tol_spec import TolSpecError, build_tolerances, parse_tol_spec
 from parity_plot.tolerances import NamedTolerance
 
-
 # --- parse_tol_spec ---------------------------------------------------------
 
 

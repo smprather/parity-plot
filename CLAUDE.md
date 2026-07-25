@@ -11,7 +11,8 @@ uv sync                          # runtime + dev deps (designer included)
 uv run pytest                    # full suite
 uv run pytest tests/test_data.py::test_wide_sorts_records_into_paired_and_unpaired
 uv run parity-plot example       # regenerate data/ sample CSVs, plot, open browser
-uv run parity-plot plot data/example.csv --no-open-browser -o out.html
+uv run parity-plot init          # write a documented parity.toml
+uv run parity-plot plot parity.toml --no-open-browser -o out.html   # CONFIG is positional
 ```
 
 `plot` and `example` **open the result in a browser by default**
@@ -26,6 +27,30 @@ actually goes missing — but kaleido's own error reports itself in terms of the
 other, which would send people to reinstall what they already have.
 `plot.py::_export_hint` untangles that; keep it accurate if the export path
 changes.
+
+## Code quality — ruff and ty must be clean before every commit
+
+**A commit lands only when both are green.** Run before committing:
+
+```bash
+uv run ruff check .          # lint (E/F/I); must print "All checks passed!"
+uv run ruff format .         # formatter; keeps the tree formatted
+uv run ty check parity_plot  # type-check the shipped library; must be 0 diagnostics
+```
+
+Config is in `pyproject.toml`:
+- **ruff lint** selects `E`/`F`/`I`. `E501` (line length) is owned by `ruff
+  format`, so it is ignored. **`C408` is deliberately not selected** — the
+  plotly-heavy code uses `dict(...)` as a readable idiom; rewriting to `{...}`
+  literals would be a regression.
+- **ty is scoped to `parity_plot/`** (`[tool.ty.src] exclude = ["tests"]`): the
+  shipped library is type-checked strictly, but the tests introspect
+  plotly/nicegui objects (`fig.data[i].marker.*`) no checker can resolve, so they
+  are held to ruff only.
+- Prefer a real fix (Optional narrowing, a proper annotation) over a waiver. When
+  a diagnostic is unavoidable third-party / `**kwargs`-into-dataclass noise, waive
+  it with **`# ty: ignore[<rule>]`** — ty does *not* honour the mypy `# type:
+  ignore`, so use ty's own comment.
 
 **Python floor is `>=3.14`**, matching the sibling `time-plot` project. Nothing in
 the code needs 3.14 specifically — `tomllib` only wants 3.11 — so the floor is a
@@ -50,22 +75,67 @@ carrying an optional per-point `group`), so nothing downstream knows how it was
 loaded. `sources` imports helpers from `data`, so `data.load` imports
 `open_sources` **lazily** to break the cycle.
 
-**Group is file-independent, a bare column name — not `file:column`.** A group
-labels the joined *entity* (a part), not a per-file measurement, so it may live
-in one file or several. `data._group_lookup` resolves it via
-`Sources.files_with_column`, keying by the join value (or row index when
-pairing by order). When 2+ open files carry the group column, `_agree` checks
-that a paired record's value matches across them and raises a `DataError` naming
-the record and the disagreeing values — the test file need not carry it at all.
-`join` stays a column present in *every* file (the key has to match on both
-sides); `group` needs only one.
+**Group is file-independent, bare column names — not `file:column` — and a
+*tuple* (composite).** `DataConfig.group` is `tuple[str, ...]`, normalised from
+`None`/`str`/`list` in `__post_init__`. A group labels the joined *entity* (a
+part), not a per-file measurement, so it may live in one file or several.
+`data._group_lookup(src, groups, join, na)` composes per-column resolvers
+(`_one_group_lookup`, the old single-column body) and joins their values with
+`", "` — `"SMD, Acme"`; a blank slot is `"(none)"`, all-blank is `None`. Each
+column is resolved via `Sources.files_with_column`, keying by the join value (or
+row index when pairing by order); when 2+ files carry a column `_agree` checks the
+values match and raises naming the record. `join` stays a column present in
+*every* file; each `group` column needs only one.
+
+**`color_column` is the colorscale channel's data — a single pinned `file:column`
+numeric ref** (`DataConfig.color_column`, unlike `group` it names one file, since
+the same column can differ between ref and test files). `data._color_lookup`
+resolves it (no cross-file `_agree`) into `ParityData.color_values`
+(`list[float|None]|None`, aligned to paired points, `None` if unset or all-blank)
+plus `color_label` (the colorbar title). `_drop_non_positive` re-slices
+`color_values` in log mode; it still does **not** re-slice `group` (pre-existing).
+
+**`hover_columns` is the hover box's extra rows — pinned `file:column` refs, and
+tri-state.** `DataConfig.hover_columns` is `tuple[str, ...] | None`: `None` (an
+absent key) means **auto** — every candidate column — `()` suppresses, a tuple
+pins that set in order. Do **not** normalise `None` to `()` in `__post_init__`;
+the three states are the feature. Auto is resolved in `load`, never stored, so it
+follows a ref/test change instead of going stale — which is also why the designer
+writes nothing for it (`serialize` deletes a `None`-valued key) and why
+`DesignerState.set_data_source` needs `clear=` (`merge` drops `None` overrides by
+design, and here `None` is the meaningful value).
+
+**Candidates** = every column of the *ref file and test file* only, minus ref,
+test and join — the hover already shows those three as the x row, the y row and
+the bold key line, so they are never offered, not merely off by default. Axis
+exclusion is **per file**: a column sharing the other file's axis name is a
+different measurement and stays offered. `data.hover_candidates` is public
+because the designer's picker must use the same list — deriving it twice is how
+picker and renderer drift apart. `hover_labels_for` gives the shortest
+unambiguous label (bare name; `file:col` only when a bare name repeats, prefixed
+with `Path.name`). `_hover_lookup` mirrors `_color_lookup` — pinned per file, no
+`_agree`. Cells are **raw stripped text**, nulls an em dash; per-column float
+formatting needs a schema and is deferred (see the spec's Future work).
+
+`customdata` is `(key, diff, verdict, *hover)`, so hover rows start at index 3
+and `key_from_customdata` (index 0) is unaffected. `plot._drop_non_positive`
+re-slices by kept **indices** and covers `hover_values` and `color_values` — but
+still not `group` (pre-existing). `load` also checks the join column is in both
+axis files up front: `_index_by_key` enforced it already, but that runs after the
+per-point lookups are built, so an auto-hover column from the same file would
+otherwise report a missing join key in the hover channel's language.
 
 **Marker encoding** (`encoding.py`, pure) partitions paired points into traces by
-their `(colour-key, symbol-key)` — each channel is `single | pass-fail | group`.
-It is theme-free: keys are tokens / `pass`/`fail` / group values / symbol names,
-and `plot._resolve_colours` turns colour keys into real colours via the theme, so
-one encoding renders on both themes. The default (single blue circle) is one
-trace, keeping the golden test behaviour-preserving.
+their `(colour-key, symbol-key)`. Channels split: `COLOR_CHANNELS = single |
+pass-fail | group | colorscale`, `SYMBOL_CHANNELS = single | pass-fail | group`
+(`CHANNELS` is a back-compat alias of the symbol set). Under `colorscale`,
+`color_key_of` returns the **constant** `"colorscale"` so colour does **not**
+split traces (colour is per-point, shown by a colorbar) — only the symbol channel
+partitions; and `_channel_label` returns `None` for it so a trace is named for its
+symbol group alone (`BGA`, never `colorscale · BGA`). It is theme-free: keys are
+tokens / `pass`/`fail` / group values / symbol names, and `plot._resolve_colours`
+turns colour keys into real colours via the theme. The default (single blue
+circle) is one trace, keeping the golden test behaviour-preserving.
 
 **Colour and symbol resolution are symmetric.** For the group channel both
 `color_key_of` and `symbol_key_of` emit the **group value** (not a resolved
@@ -148,10 +218,43 @@ that a config saved from the designer renders an identical figure through the
 CLI path — if that test fails, the designer is lying about what the CLI will do,
 and the designer is what needs fixing.
 
-Logic lives in `state.py`, `session.py`, and `serialize.py`, all browser-free and
-unit-tested; `app.py` and `panels/` only wire widgets. Anything worth testing
-belongs in the pure modules. `build_app` registers the page and returns state;
-`launch.run` owns `ui.run`, so they cannot double-serve.
+Logic lives in `state.py`, `session.py`, `serialize.py`, and `validation.py`, all
+browser-free and unit-tested; `app.py` and `panels/` only wire widgets. Anything
+worth testing belongs in the pure modules. `build_app` registers the page and
+returns state; `launch.run` owns `ui.run`, so they cannot double-serve.
+
+**The designer auto-saves.** `app.refresh()` is the single point that, after every
+change, rebuilds the figure, computes `validation.problems(config)`, paints the
+status bar, enables/disables **Save As**, marks the offending field, and — when
+nothing is wrong and a file is **bound** — writes via `Session.autosave`. So a
+*bound* config's file on disk always equals the **most recent valid** config; a
+hard-invalid edit is withheld (disk keeps the last good one) until fixed. There is
+no plain Save button. Persistence is a **top toolbar**: a config dropdown
+(`session.config_choices(dir)` lists parity `.toml`s in the launch dir — touchstone:
+parses + non-empty `data.files`), **Save As**, **New Design**. `<unsaved>` in the
+dropdown means *unbound* — a New Design or data-only launch with no file yet; Save
+As binds it. The settings column is a `@ui.refreshable` rebuilt on a config swap
+(`state.load_session_config`), while the plot/selection on the right persist. The
+only confirm-dialog left guards leaving an *unbound-with-edits* state. The
+**stale-file guard is retired** — the designer owns the open file; concurrent
+external edits are overwritten (bidirectional editing is a deferred non-goal).
+
+**`validation.py` is browser-free cross-field validation** (`problems(config) ->
+list[Problem]`, each with a dotted `field` id and a `severity`). **`severity`:
+`"error"` blocks — withholds auto-save, disables Save As, reddens the field (the
+data panel returns a `mark_problems` hook that `app.refresh` calls with the
+*error*-severity problems only, today marking `data.join`); `"warning"` is advisory
+— an amber status note, nothing blocked.** The only rule so far is a **warning**:
+ref and test from the **same file** while a `join` is set. That is redundant, not
+wrong — a wide file's ref/test share a row, so a join re-pairs the same rows to the
+same result (it only adds duplicate-key checking), so it must not block. (An earlier
+version made this a hard error; corrected — don't reintroduce it as blocking.)
+
+**Clearing a text control reverts to the field's default**, via
+`state.reset_fields` — *not* `merge`, which drops `None` and so silently keeps the
+stale value (the old "blank falls back to default" comment in `controls` was wrong).
+`x_label`/`y_label` show the resolved column name as a dimmed placeholder
+(`controls._placeholder`).
 
 `serialize.py` uses tomlkit rather than generating TOML, because a config meant to
 be hand-edited and committed must not lose its comments on save. It skips writing
@@ -290,28 +393,36 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   `--noise`, `--bias` are ratios in `[0, 1]` (`--outliers 0.01` = 1%); passing a
   count like `--outliers 6` fails `ExampleSpec.__post_init__`. Only the
   `--missing-*` null knobs accept explicit counts (else a fraction of `n`).
-- **Encoding has no CLI flags.** `color_by` / `symbol_by` / `color` / `symbol` /
-  `symbol_sequence` are set only via TOML or the designer — `cli.py` has `--group`
-  (the column) but no `--color-by` etc. The README's "every key has a matching CLI
-  flag" is about the `[data]` / `[plot]` scalars, not the encoding table.
+- **The CLI drives no plot or data *setting* — TOML is the single source of truth
+  (CLI teardown).** `plot` takes a positional `CONFIG` (default `parity.toml`)
+  plus only operational flags: `-o/--output` (where to write) and `--open-browser`.
+  A missing config raises a message pointing at `parity-plot init`. `example` keeps
+  its generator knobs (`--noise`, `--seed`, `--missing-*`, …) and `-o`/`--plot`, but
+  lost every appearance flag. There is no `--ref`/`--test`/`--join`/`--group`/
+  `--theme`/`--tol` any more, and `_default_ref_test` is gone. `parity-plot init` +
+  the commented `EXAMPLE_TOML` + rich docstrings are the agent-discovery surface;
+  shape a plot via TOML or `parity-plot design`.
 - **kaleido prints `Resorting to unclean kill browser.` on static export** — it is
   benign noise from the headless-Chrome teardown; the image is written fine. Do not
   chase it as an error.
 - **README screenshots are committed under `docs/images/`.** PNG/SVG/PDF are
   gitignored globally, so `.gitignore` carries an explicit `!docs/images/` +
   `!docs/images/*.png` negation. Regenerate them by rendering small TOML configs
-  through the CLI (`plot --config … -o docs/images/<name>.png`); use `theme =
-  "light"`, which reads best on GitHub. Static export needs
-  `uv run plotly_get_chrome` first.
+  through the CLI (`plot <config>.toml`, with `[output].path =
+  docs/images/<name>.png`); use `theme = "light"`, which reads best on GitHub. The
+  `colorscale.png` showcase (colour = temperature, shape = package) is rendered from
+  the regenerated `data/example.csv`. Static export needs a headless Chrome
+  (`uv run plotly_get_chrome`).
 
 ## Releases
 
 Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
-GitHub Releases. Current line: **0.5.0** (`main`). History: 0.1.0 → multi-file
+GitHub Releases. Current line: **0.6.0** (`main`). History: 0.1.0 → multi-file
 data model & encoding (0.3.0) → file-independent group + persistent designer
 status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
-value (0.5.0). Tags `v0.1.0`–`v0.3.0` predate the GitHub Releases; `v0.4.0`
-onward have them.
+value (0.5.0) → composite group, colorscale channel, TOML-only CLI, designer
+auto-save/config picker, hover-text columns (0.6.0). Tags `v0.1.0`–`v0.3.0`
+predate the GitHub Releases; `v0.4.0` onward have them.
 
 The ship flow (only when the user asks): branch off `main`, commit, bump the
 version on the branch, `git checkout main && git merge --no-ff`, `git tag -a`,

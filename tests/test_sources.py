@@ -7,7 +7,7 @@ import pytest
 
 from parity_plot.config import DEFAULT_NA_VALUES
 from parity_plot.data import DataError
-from parity_plot.sources import Sources, open_sources
+from parity_plot.sources import open_sources
 
 
 def write(tmp_path: Path, name: str, text: str) -> Path:
@@ -58,17 +58,25 @@ def test_basename_resolves_when_unique(tmp_path):
     sub.mkdir()
     f = write(sub, "meas.csv", "id,v\nA1,1.0\n")
     src = open_sources((f,))
-    assert src.resolve("meas.csv:v").name == "v"          # basename
-    assert src.resolve(f"{f}:v").name == "v"               # full path also works
+    assert src.resolve("meas.csv:v").name == "v"  # basename
+    assert src.resolve(f"{f}:v").name == "v"  # full path also works
 
 
 def test_ambiguous_basename_requires_the_full_path(tmp_path):
-    a = write(tmp_path / "one", "meas.csv", "id,v\nA,1\n") if (tmp_path / "one").mkdir() or True else None
-    b = write(tmp_path / "two", "meas.csv", "id,v\nB,2\n") if (tmp_path / "two").mkdir() or True else None
+    a = (
+        write(tmp_path / "one", "meas.csv", "id,v\nA,1\n")
+        if (tmp_path / "one").mkdir() or True
+        else None
+    )
+    b = (
+        write(tmp_path / "two", "meas.csv", "id,v\nB,2\n")
+        if (tmp_path / "two").mkdir() or True
+        else None
+    )
     src = open_sources((a, b))
     with pytest.raises(DataError, match="ambiguous"):
         src.resolve("meas.csv:v")
-    assert src.resolve(f"{a}:v").values == ["1"]           # full path disambiguates
+    assert src.resolve(f"{a}:v").values == ["1"]  # full path disambiguates
 
 
 def test_resolve_reports_an_unknown_file(tmp_path):

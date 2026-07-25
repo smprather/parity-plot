@@ -41,9 +41,7 @@ def parse_reltol(value: float | str) -> float:
             try:
                 return float(number) / 100.0
             except ValueError:
-                raise ValueError(
-                    f"could not read {value!r} as a percentage"
-                ) from None
+                raise ValueError(f"could not read {value!r} as a percentage") from None
     try:
         return float(text)
     except ValueError:
@@ -118,7 +116,9 @@ class Tolerance:
                 points.add(candidate)
         return sorted(points)
 
-    def envelope(self, lo: float, hi: float) -> tuple[list[float], list[float], list[float]]:
+    def envelope(
+        self, lo: float, hi: float
+    ) -> tuple[list[float], list[float], list[float]]:
         """``(x, upper, lower)`` polylines spanning ``lo`` to ``hi``."""
         xs = self.vertices(lo, hi)
         upper = [x + self.half_width(x) for x in xs]

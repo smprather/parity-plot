@@ -49,6 +49,16 @@ class ParityData:
     # Aligned to `keys`/`x`/`y`; an entry may be None if that point's group cell
     # was blank. Drives colour/symbol-by-group in Phase 2.
     group: list[str | None] | None = None
+    # Per-paired-point numeric value for the colorscale channel, aligned to
+    # keys/x/y; None when no colour column (or every value blank). color_label
+    # is the column's display name, used as the colorbar title.
+    color_values: list[float | None] | None = None
+    color_label: str = ""
+    # Extra hover rows, aligned to keys/x/y. hover_labels is the display text
+    # per column; hover_values is one tuple per paired point (row-major, which
+    # is the shape Plotly's customdata wants). None when no hover columns.
+    hover_labels: tuple[str, ...] = ()
+    hover_values: list[tuple[str, ...]] | None = None
 
     @property
     def n_paired(self) -> int:
@@ -94,27 +104,274 @@ def load(cfg: DataConfig) -> ParityData:
     _require_numeric(ref_col, na, "ref")
     _require_numeric(test_col, na, "test")
 
+    # Both axis files must carry the join column. `_index_by_key` checks this
+    # too, but it runs after the per-point lookups are built, and an auto-hover
+    # column drawn from the same file would raise first -- reporting a missing
+    # join key in the language of the hover channel. Check it here so the
+    # canonical message wins no matter which channel trips over it.
+    if cfg.join:
+        for col in (ref_col, test_col):
+            if cfg.join not in src.tables[col.file]:
+                raise DataError(
+                    f"{col.file}: join column {cfg.join!r} not found; "
+                    f"available: {sorted(src.tables[col.file])}"
+                )
+
     # Group is a bare, file-independent column name: it labels the paired entity,
     # not a per-file measurement. It may live in one file or several; when in
     # several, the value must agree for each paired point -- a part cannot be
     # both a "diode" and a "mosfet". A file that lacks it simply does not vote.
     group_lookup = _group_lookup(src, cfg.group, cfg.join, na) if cfg.group else None
 
-    builder = _Builder(x_label=ref_col.name, y_label=test_col.name)
-    if cfg.join:
-        _load_joined(builder, src, ref_col, test_col, group_lookup, cfg.join, na)
+    color_col = src.resolve(cfg.color_column) if cfg.color_column else None
+    if color_col is not None:
+        _require_numeric(color_col, na, "color_column")
+    color_lookup = _color_lookup(src, color_col, cfg.join, na) if color_col else None
+
+    # Absent hover_columns means "auto": every candidate column. Resolved here
+    # rather than stored, so the set follows a ref/test change instead of going
+    # stale.
+    if cfg.hover_columns is None:
+        hover_refs: tuple[str, ...] = tuple(
+            hover_candidates(src, cfg.ref, cfg.test, cfg.join)
+        )
     else:
-        _load_by_order(builder, ref_col, test_col, group_lookup, na)
+        hover_refs = tuple(cfg.hover_columns)
+        _validate_hover(src, hover_refs, ref_col, test_col, cfg.join)
+    hover_lookup = _hover_lookup(src, hover_refs, cfg.join, na) if hover_refs else None
+
+    builder = _Builder(
+        x_label=ref_col.name,
+        y_label=test_col.name,
+        color_label=color_col.name if color_col else "",
+        hover_labels=hover_labels_for(hover_refs),
+    )
+    if cfg.join:
+        _load_joined(
+            builder,
+            src,
+            ref_col,
+            test_col,
+            group_lookup,
+            color_lookup,
+            hover_lookup,
+            cfg.join,
+            na,
+        )
+    else:
+        _load_by_order(
+            builder,
+            ref_col,
+            test_col,
+            group_lookup,
+            color_lookup,
+            hover_lookup,
+            na,
+        )
     return builder.build()
 
 
-def _group_lookup(src, group: str, join: str | None, na: frozenset[str]):
-    """A callable resolving a paired point's group value across all files.
+def _group_lookup(src, groups: tuple[str, ...], join: str | None, na: frozenset[str]):
+    """A callable giving a paired point's composite group label.
 
-    Given a join key (join mode) or a row index (order mode), it collects the
-    group value from every file that carries the column and agrees on the
-    answer, raising if two files disagree for the same point.
+    Each column is resolved file-independently (present in one file or several,
+    values must agree across files via ``_agree``). The point's label joins the
+    per-column values with ", "; a blank column contributes "(none)", and a
+    point whose columns are all blank has no group (``None``).
     """
+    per_column = [_one_group_lookup(src, col, join, na) for col in groups]
+
+    def composite(point):
+        parts = [fn(point) for fn in per_column]
+        if all(p is None for p in parts):
+            return None
+        return ", ".join("(none)" if p is None else p for p in parts)
+
+    return composite
+
+
+def _color_lookup(src, color_col, join: str | None, na: frozenset[str]):
+    """A callable giving a paired point's numeric colour value.
+
+    Pinned to the colour column's own file (no cross-file agreement): the same
+    column can legitimately differ between the reference and test files.
+    """
+    if join:
+        table = src.tables[color_col.file]
+        if join not in table:
+            raise DataError(
+                f"{color_col.file}: colour column's file lacks join column "
+                f"{join!r}; cannot align colour values"
+            )
+        mapping = dict(zip(table[join], color_col.values))
+
+        def lookup(key):
+            return _color_value(mapping.get(key), na)
+
+        return lookup
+
+    values = color_col.values
+
+    def lookup_by_index(index):
+        return _color_value(values[index] if index < len(values) else None, na)
+
+    return lookup_by_index
+
+
+def _color_value(raw: str | None, na: frozenset[str]) -> float | None:
+    """Parse a colour cell to a float, or None if blank/NA.
+
+    The whole column has already passed ``_require_numeric``, so ``float`` here
+    cannot raise on a non-null cell.
+    """
+    if raw is None:
+        return None
+    text = raw.strip()
+    if text.lower() in na:
+        return None
+    return float(text)
+
+
+def hover_candidates(src, ref: str, test: str, join: str | None) -> list[str]:
+    """The ``file:column`` refs offered as hover rows, in a stable order.
+
+    Only the files backing ref and test: a third open file has no per-point
+    alignment without a join into it. The ref column, the test column and the
+    join column are left out because the hover already shows all three -- as
+    the x row, the y row and the bold key line -- and a config able to
+    duplicate them can only look like a bug.
+    """
+    ref_col = src.resolve(ref)
+    test_col = src.resolve(test)
+    # Ref's file first, then test's file only if it is a different file. Order
+    # within a file is its header order, so the picker reads top-to-bottom.
+    files: list[Path] = [ref_col.file]
+    if test_col.file != ref_col.file:
+        files.append(test_col.file)
+
+    # Exclusions are per file, not global: a column that merely shares a name
+    # with the *other* file's axis column is a different measurement and stays
+    # offered. The join, being one key across all files, is excluded everywhere.
+    excluded: dict[Path, set[str]] = {path: set() for path in files}
+    excluded[ref_col.file].add(ref_col.name)
+    excluded[test_col.file].add(test_col.name)
+    if join is not None:
+        for names in excluded.values():
+            names.add(join)
+
+    out: list[str] = []
+    for path in files:
+        for column in src.tables[path]:
+            if column in excluded[path]:
+                continue
+            out.append(f"{path.name}:{column}")
+    return out
+
+
+def hover_labels_for(refs: Sequence[str]) -> tuple[str, ...]:
+    """Display text per hover column: the shortest unambiguous name.
+
+    A bare column name reads best, but two files can both carry `temperature`
+    and two identical hover rows are worse than a long label -- so a name
+    appearing more than once in this selection is prefixed with its file.
+    """
+    bare = [ref.rpartition(":")[2] for ref in refs]
+    seen: dict[str, int] = {}
+    for name in bare:
+        seen[name] = seen.get(name, 0) + 1
+    labels: list[str] = []
+    for ref, name in zip(refs, bare):
+        if seen[name] > 1:
+            file_part = ref.rpartition(":")[0]
+            labels.append(f"{Path(file_part).name}:{name}")
+        else:
+            labels.append(name)
+    return tuple(labels)
+
+
+def _hover_text(raw: str | None, na: frozenset[str]) -> str:
+    """One hover cell as raw text -- no coercion, no formatting.
+
+    Showing the file's own text is lossless and cannot misreport a number.
+    Configurable float formatting needs a per-column schema and is deliberately
+    deferred (see the spec's Future work). A null renders as an em dash so
+    "present but blank" is legible rather than looking like a dropped row.
+    """
+    if raw is None:
+        return "—"
+    text = raw.strip()
+    if text.lower() in na:
+        return "—"
+    return text
+
+
+def _hover_lookup(src, refs: Sequence[str], join: str | None, na: frozenset[str]):
+    """A callable giving a paired point's hover cells, one per ref.
+
+    Mirrors :func:`_color_lookup`: a dict keyed by the join value, or an index
+    lookup when pairing by order. Pinned per file -- no ``_agree`` voting, since
+    a pinned ref has nothing to reconcile.
+    """
+    cols = [src.resolve(r) for r in refs]
+
+    if join:
+        mappings: list[dict[str, str]] = []
+        for col in cols:
+            table = src.tables[col.file]
+            if join not in table:
+                raise DataError(
+                    f"{col.file}: hover column's file lacks join column "
+                    f"{join!r}; cannot align hover values"
+                )
+            mappings.append(dict(zip(table[join], col.values)))
+
+        def lookup_by_key(key):
+            return tuple(_hover_text(m.get(key), na) for m in mappings)
+
+        return lookup_by_key
+
+    def lookup_by_index(index: int):
+        cells: list[str] = []
+        for col in cols:
+            raw = col.values[index] if index < len(col.values) else None
+            cells.append(_hover_text(raw, na))
+        return tuple(cells)
+
+    return lookup_by_index
+
+
+def _validate_hover(
+    src, refs: Sequence[str], ref_col, test_col, join: str | None
+) -> None:
+    """Reject a pinned hover ref the candidate rules do not allow.
+
+    Silently rendering nothing for a ref the user typed is exactly the failure
+    this project rejects for unknown TOML keys.
+    """
+    axis_files = {ref_col.file, test_col.file}
+    # dict, not a set: ref and test may share one file, and naming it twice in
+    # the message reads like a bug in the tool rather than one in the config.
+    names = sorted({f.name: None for f in (ref_col.file, test_col.file)})
+    axes = {(ref_col.file, ref_col.name), (test_col.file, test_col.name)}
+    for r in refs:
+        col = src.resolve(r)
+        if col.file not in axis_files:
+            raise DataError(
+                f"hover column {r!r} is in {col.file.name}, which backs neither "
+                f"ref nor test; hover columns come from the ref/test files ({names})"
+            )
+        if (col.file, col.name) in axes:
+            raise DataError(
+                f"hover column {r!r} is already shown as an axis row in the hover"
+            )
+        if join is not None and col.name == join:
+            raise DataError(
+                f"hover column {r!r} is already the hover's key line (the join column)"
+            )
+
+
+def _one_group_lookup(src, group: str, join: str | None, na: frozenset[str]):
+    """The single-column resolver (the old ``_group_lookup`` body)."""
     files = src.files_with_column(group)
     if not files:
         raise DataError(
@@ -130,16 +387,18 @@ def _group_lookup(src, group: str, join: str | None, na: frozenset[str]):
             if join in src.tables[f]
         }
 
-        def lookup(key: str):
-            return _agree({f: d[key] for f, d in keyed.items() if key in d}, key, group, na)
+        def lookup(key: str, _keyed=keyed, _group=group):
+            return _agree(
+                {f: d[key] for f, d in _keyed.items() if key in d}, key, _group, na
+            )
 
         return lookup
 
     columns = {f: src.tables[f][group] for f in files}
 
-    def lookup_by_index(index: int):
-        present = {f: v[index] for f, v in columns.items() if index < len(v)}
-        return _agree(present, str(index), group, na)
+    def lookup_by_index(index: int, _columns=columns, _group=group):
+        present = {f: v[index] for f, v in _columns.items() if index < len(v)}
+        return _agree(present, str(index), _group, na)
 
     return lookup_by_index
 
@@ -171,7 +430,15 @@ def _require_numeric(col, na: frozenset[str], role: str) -> None:
             ) from None
 
 
-def _load_by_order(builder: "_Builder", ref_col, test_col, group_lookup, na) -> None:
+def _load_by_order(
+    builder: "_Builder",
+    ref_col,
+    test_col,
+    group_lookup,
+    color_lookup,
+    hover_lookup,
+    na,
+) -> None:
     """Pair rows by position; the longer column's tail becomes unpaired."""
     n = max(len(ref_col.values), len(test_col.values))
     for i in range(n):
@@ -179,13 +446,29 @@ def _load_by_order(builder: "_Builder", ref_col, test_col, group_lookup, na) -> 
         tv = test_col.values[i] if i < len(test_col.values) else None
         builder.add(
             str(i),
-            _parse(rv, na, ref_col.file, i + 2, ref_col.name) if rv is not None else None,
-            _parse(tv, na, test_col.file, i + 2, test_col.name) if tv is not None else None,
+            _parse(rv, na, ref_col.file, i + 2, ref_col.name)
+            if rv is not None
+            else None,
+            _parse(tv, na, test_col.file, i + 2, test_col.name)
+            if tv is not None
+            else None,
             group=group_lookup(i) if group_lookup else None,
+            color=color_lookup(i) if color_lookup else None,
+            hover=hover_lookup(i) if hover_lookup else None,
         )
 
 
-def _load_joined(builder: "_Builder", src, ref_col, test_col, group_lookup, join, na) -> None:
+def _load_joined(
+    builder: "_Builder",
+    src,
+    ref_col,
+    test_col,
+    group_lookup,
+    color_lookup,
+    hover_lookup,
+    join,
+    na,
+) -> None:
     """Outer-join ref and test files on ``join``; a key on one side is unpaired."""
     ref_by = _index_by_key(src, ref_col, join)
     test_by = _index_by_key(src, test_col, join)
@@ -198,9 +481,15 @@ def _load_joined(builder: "_Builder", src, ref_col, test_col, group_lookup, join
         tline, traw = test_by.get(key, (0, None))
         builder.add(
             key,
-            _parse(rraw, na, ref_col.file, rline, ref_col.name) if rraw is not None else None,
-            _parse(traw, na, test_col.file, tline, test_col.name) if traw is not None else None,
+            _parse(rraw, na, ref_col.file, rline, ref_col.name)
+            if rraw is not None
+            else None,
+            _parse(traw, na, test_col.file, tline, test_col.name)
+            if traw is not None
+            else None,
             group=group_lookup(key) if group_lookup else None,
+            color=color_lookup(key) if color_lookup else None,
+            hover=hover_lookup(key) if hover_lookup else None,
         )
 
 
@@ -261,11 +550,19 @@ def from_sequences(
 class _Builder:
     """Accumulates records and sorts them into paired / unpaired / dropped."""
 
-    def __init__(self, x_label: str, y_label: str) -> None:
+    def __init__(
+        self,
+        x_label: str,
+        y_label: str,
+        color_label: str = "",
+        hover_labels: tuple[str, ...] = (),
+    ) -> None:
         self.keys: list[str] = []
         self.x: list[float] = []
         self.y: list[float] = []
         self.groups: list[str | None] = []
+        self.colors: list[float | None] = []
+        self.hovers: list[tuple[str, ...]] = []
         self.missing_y_keys: list[str] = []
         self.missing_y_vals: list[float] = []
         self.missing_x_keys: list[str] = []
@@ -273,9 +570,17 @@ class _Builder:
         self.n_dropped = 0
         self.x_label = x_label
         self.y_label = y_label
+        self.color_label = color_label
+        self.hover_labels = hover_labels
 
     def add(
-        self, key: str, xv: float | None, yv: float | None, group: str | None = None
+        self,
+        key: str,
+        xv: float | None,
+        yv: float | None,
+        group: str | None = None,
+        color: float | None = None,
+        hover: tuple[str, ...] | None = None,
     ) -> None:
         if xv is not None and yv is not None:
             self.keys.append(key)
@@ -284,6 +589,10 @@ class _Builder:
             # Group is a property of a paired point only; unpaired records have
             # no place in the encoded scatter, so their group is not tracked.
             self.groups.append(group)
+            self.colors.append(color)
+            # A hover row is a paired-point concern, exactly as group and colour
+            # already are.
+            self.hovers.append(hover or ())
         elif xv is not None:
             self.missing_y_keys.append(key)
             self.missing_y_vals.append(xv)
@@ -296,6 +605,7 @@ class _Builder:
     def build(self) -> ParityData:
         # None unless a group column actually supplied a label somewhere.
         group = self.groups if any(g is not None for g in self.groups) else None
+        color_values = self.colors if any(c is not None for c in self.colors) else None
         return ParityData(
             keys=self.keys,
             x=self.x,
@@ -306,6 +616,10 @@ class _Builder:
             x_label=self.x_label,
             y_label=self.y_label,
             group=group,
+            color_values=color_values,
+            color_label=self.color_label,
+            hover_labels=self.hover_labels,
+            hover_values=self.hovers if self.hover_labels else None,
         )
 
 

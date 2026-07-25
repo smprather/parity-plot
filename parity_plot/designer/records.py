@@ -24,8 +24,8 @@ class RecordView:
     key: str
     x: float | None
     y: float | None
-    error: float | None       # y - x, undefined unless both are present
-    rel_error: float | None   # error / x, undefined at x = 0
+    error: float | None  # y - x, undefined unless both are present
+    rel_error: float | None  # error / x, undefined at x = 0
     status: str
     # Names of every pass/fail tolerance this record breaks, in declared order.
     # None when the record was never judged -- unpaired, or no pass/fail

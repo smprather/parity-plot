@@ -75,10 +75,12 @@ def test_with_parity_preserves_a_customised_parity_entry():
 
 def test_draw_order_puts_parity_last_so_nothing_buries_it():
     """List position drives the legend; z-order is separate."""
-    tols = with_parity((
-        NamedTolerance(name="spec", reltol=0.1, style="shaded"),
-        NamedTolerance(name="tight", abstol=1.0),
-    ))
+    tols = with_parity(
+        (
+            NamedTolerance(name="spec", reltol=0.1, style="shaded"),
+            NamedTolerance(name="tight", abstol=1.0),
+        )
+    )
     assert [t.name for t in tols] == [PARITY_NAME, "spec", "tight"]
     assert [t.name for t in draw_order(tols)] == ["spec", "tight", PARITY_NAME]
 
@@ -105,7 +107,9 @@ def test_a_builtin_entry_is_forced_informational():
 def test_config_gains_parity_automatically(tmp_path):
     """Even a config that never mentions it gets the reference line."""
     path = tmp_path / "p.toml"
-    path.write_text('[[plot.tolerances]]\nname = "spec"\nreltol = 0.1\n', encoding="utf-8")
+    path.write_text(
+        '[[plot.tolerances]]\nname = "spec"\nreltol = 0.1\n', encoding="utf-8"
+    )
     tols = ParityConfig.from_toml(path).plot.tolerances
     assert [t.name for t in tols] == [PARITY_NAME, "spec"]
 

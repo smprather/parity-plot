@@ -20,8 +20,16 @@ def test_a_single_tolerance_round_trips(tmp_path: Path):
         '[[plot.tolerances]]\nname = "spec"\nreltol = 0.10\n', encoding="utf-8"
     )
     tols = ParityConfig.from_toml(path).plot.tolerances
-    assert tols == (NamedTolerance(name=PARITY_NAME, builtin=True, kind="info", color="green", label="0% error (y = x)"),
-                    NamedTolerance(name="spec", reltol=0.10))
+    assert tols == (
+        NamedTolerance(
+            name=PARITY_NAME,
+            builtin=True,
+            kind="info",
+            color="green",
+            label="0% error (y = x)",
+        ),
+        NamedTolerance(name="spec", reltol=0.10),
+    )
 
 
 def test_several_tolerances_keep_their_order(tmp_path: Path):
@@ -40,7 +48,7 @@ def test_several_tolerances_keep_their_order(tmp_path: Path):
 def test_every_attribute_parses(tmp_path: Path):
     path = tmp_path / "p.toml"
     path.write_text(
-        '[[plot.tolerances]]\n'
+        "[[plot.tolerances]]\n"
         'name = "customer"\nlabel = "customer limit"\n'
         'abstol = 2.0\nreltol = 0.10\nkind = "pass"\n'
         'color = "purple"\nstyle = "shaded"\n',
@@ -48,8 +56,13 @@ def test_every_attribute_parses(tmp_path: Path):
     )
     tol = ParityConfig.from_toml(path).plot.tolerances[1]
     assert tol == NamedTolerance(
-        name="customer", label="customer limit", abstol=2.0, reltol=0.10,
-        kind="pass", color="purple", style="shaded",
+        name="customer",
+        label="customer limit",
+        abstol=2.0,
+        reltol=0.10,
+        kind="pass",
+        color="purple",
+        style="shaded",
     )
 
 
@@ -89,9 +102,14 @@ def test_an_unknown_tolerance_key_is_rejected(tmp_path: Path):
         ParityConfig.from_toml(path)
 
 
-@pytest.mark.parametrize("key, value", [
-    ("abstol", "2.0"), ("reltol", "0.10"), ("band_style", '"lines"'),
-])
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("abstol", "2.0"),
+        ("reltol", "0.10"),
+        ("band_style", '"lines"'),
+    ],
+)
 def test_the_v0_1_0_scalar_keys_are_a_clear_error(tmp_path: Path, key, value):
     """A clean break, but the message has to teach the new shape."""
     path = tmp_path / "p.toml"

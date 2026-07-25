@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from parity_plot.config import ParityConfig
 from parity_plot.designer.panels.data_panel import column_options
-from parity_plot.designer.panels.encoding import build_encoding_panel  # noqa: F401 (import guard)
+from parity_plot.designer.panels.encoding import (
+    build_encoding_panel,  # noqa: F401 (import guard)
+)
 from parity_plot.designer.state import DesignerState
 from parity_plot.encoding import Encoding
 
@@ -44,11 +44,15 @@ def test_opening_a_file_populates_the_plot(tmp_path):
 
 
 def test_group_column_enables_group_encoding(tmp_path):
-    f = write(tmp_path, "d.csv",
-              "id,reference,test,batch\nA1,10,11,x\nA2,20,22,y\nA3,30,29,x\n")
+    f = write(
+        tmp_path,
+        "d.csv",
+        "id,reference,test,batch\nA1,10,11,x\nA2,20,22,y\nA3,30,29,x\n",
+    )
     state = DesignerState(config=ParityConfig())
-    state.set_data_source(files=(f,), ref="d.csv:reference", test="d.csv:test",
-                          group="batch")
+    state.set_data_source(
+        files=(f,), ref="d.csv:reference", test="d.csv:test", group="batch"
+    )
 
     assert state.update("plot", encoding=Encoding(color_by="group"))
     # One trace per group value (x, y) plus the tolerance/parity lines.

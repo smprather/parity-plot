@@ -18,8 +18,12 @@ def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "wide.csv"
     csv.write_text(WIDE, encoding="utf-8")
     config = ParityConfig().merge(
-        data={"files": (csv,), "ref": "wide.csv:reference",
-              "test": "wide.csv:test", "join": "id"}
+        data={
+            "files": (csv,),
+            "ref": "wide.csv:reference",
+            "test": "wide.csv:test",
+            "join": "id",
+        }
     )
     return DesignerState(config=config, data=load(config.data))
 

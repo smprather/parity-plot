@@ -58,9 +58,7 @@ class FilterSet:
                 # a reference band -- so only pass/fail criteria gate here.
                 # An unpaired record has no verdict, so this switch says nothing
                 # about it; show_unpaired governs those.
-                paired = [
-                    (k, x, y) for k, x, y in paired if failures(tolerances, x, y)
-                ]
+                paired = [(k, x, y) for k, x, y in paired if failures(tolerances, x, y)]
             if self.x_range is not None:
                 paired = [(k, x, y) for k, x, y in paired if self._in_range(x)]
 

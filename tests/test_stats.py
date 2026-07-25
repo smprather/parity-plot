@@ -5,12 +5,14 @@ import math
 import pytest
 
 from parity_plot.data import ParityData, Unpaired
-from parity_plot.tolerances import NamedTolerance
 from parity_plot.stats import compute, format_lines, summarize_nulls
+from parity_plot.tolerances import NamedTolerance
 
 
 def make(x, y, **kwargs):
-    return ParityData(keys=[str(i) for i in range(len(x))], x=list(x), y=list(y), **kwargs)
+    return ParityData(
+        keys=[str(i) for i in range(len(x))], x=list(x), y=list(y), **kwargs
+    )
 
 
 def tol(**kwargs):
@@ -35,6 +37,8 @@ def test_metrics_against_hand_computed_values():
     assert stats.mae == pytest.approx(4 / 3)
     assert stats.rmse == pytest.approx(math.sqrt(6 / 3))
     assert stats.max_abs_err == pytest.approx(2.0)
+    # sample std of {+1,-1,+2} about mean 2/3: var = ((1/3)^2+(-5/3)^2+(4/3)^2)/2
+    assert stats.std == pytest.approx(math.sqrt((1 / 9 + 25 / 9 + 16 / 9) / 2))
 
 
 def test_identity_r2_is_stricter_than_a_best_fit():
@@ -88,9 +92,13 @@ def test_funnel_scores_against_whichever_spec_is_looser():
     # x=1: relative allows 0.1, absolute allows 2.0 -> the looser (2.0) wins.
     assert compute(make([1.0, 1.0], [2.5, 2.5]), (t,)).within["t"] == pytest.approx(1.0)
     # x=100: absolute allows 2.0, relative allows 10.0 -> relative wins.
-    assert compute(make([100.0, 100.0], [105.0, 105.0]), (t,)).within["t"] == pytest.approx(1.0)
+    assert compute(make([100.0, 100.0], [105.0, 105.0]), (t,)).within[
+        "t"
+    ] == pytest.approx(1.0)
     # x=100 with an error of 12 exceeds both.
-    assert compute(make([100.0, 100.0], [112.0, 112.0]), (t,)).within["t"] == pytest.approx(0.0)
+    assert compute(make([100.0, 100.0], [112.0, 112.0]), (t,)).within[
+        "t"
+    ] == pytest.approx(0.0)
 
 
 def test_counts_carry_the_unpaired_records():

@@ -27,7 +27,9 @@ def test_at_least_one_bound_is_required():
         NamedTolerance(name="t1")
 
 
-@pytest.mark.parametrize("kwargs", [{"abstol": 2.0}, {"reltol": 0.1}, {"abstol": 2.0, "reltol": 0.1}])
+@pytest.mark.parametrize(
+    "kwargs", [{"abstol": 2.0}, {"reltol": 0.1}, {"abstol": 2.0, "reltol": 0.1}]
+)
 def test_either_bound_alone_is_enough(kwargs):
     assert NamedTolerance(name="t1", **kwargs)
 
@@ -46,7 +48,9 @@ def test_names_may_not_be_empty():
         NamedTolerance(name="   ", abstol=1.0)
 
 
-@pytest.mark.parametrize("kwargs", [{"abstol": 0}, {"abstol": -1}, {"reltol": 0}, {"reltol": -0.5}])
+@pytest.mark.parametrize(
+    "kwargs", [{"abstol": 0}, {"abstol": -1}, {"reltol": 0}, {"reltol": -0.5}]
+)
 def test_bounds_must_be_positive(kwargs):
     with pytest.raises(ToleranceError, match="positive"):
         NamedTolerance(name="t1", **kwargs)
@@ -61,7 +65,10 @@ def test_kind_and_style_are_checked():
 
 def test_label_defaults_to_the_spec():
     assert NamedTolerance(name="t1", reltol=0.1).display_label == "±10%"
-    assert NamedTolerance(name="t1", abstol=2.0, reltol=0.1).display_label == "±max(2, 10%)"
+    assert (
+        NamedTolerance(name="t1", abstol=2.0, reltol=0.1).display_label
+        == "±max(2, 10%)"
+    )
 
 
 def test_the_literal_string_auto_also_means_derive_it():
@@ -109,13 +116,18 @@ def test_default_name_counts_up_past_taken_ones():
 
 def test_duplicate_names_are_rejected():
     """Two tolerances called the same thing make the failure list meaningless."""
-    tols = [NamedTolerance(name="t1", abstol=1.0), NamedTolerance(name="t1", reltol=0.1)]
+    tols = [
+        NamedTolerance(name="t1", abstol=1.0),
+        NamedTolerance(name="t1", reltol=0.1),
+    ]
     with pytest.raises(ToleranceError, match="duplicate"):
         require_unique_names(tols)
 
 
 def test_unique_names_pass():
-    require_unique_names([NamedTolerance(name="a", abstol=1.0), NamedTolerance(name="b", abstol=2.0)])
+    require_unique_names(
+        [NamedTolerance(name="a", abstol=1.0), NamedTolerance(name="b", abstol=2.0)]
+    )
 
 
 def test_pass_fail_selects_only_criteria():
@@ -150,7 +162,9 @@ def test_failures_preserves_declaration_order():
 
 
 def test_failures_with_no_criteria_is_empty():
-    assert failures([NamedTolerance(name="ref", reltol=0.1, kind="info")], 1.0, 99.0) == ()
+    assert (
+        failures([NamedTolerance(name="ref", reltol=0.1, kind="info")], 1.0, 99.0) == ()
+    )
     assert failures([], 1.0, 99.0) == ()
 
 

@@ -11,13 +11,7 @@ from parity_plot.designer.app import apply_brush
 from parity_plot.designer.filters import FilterSet
 from parity_plot.designer.state import DesignerState
 
-WIDE = (
-    "id,reference,test\n"
-    "A1,10.0,11.0\n"
-    "A2,50.0,51.0\n"
-    "A3,90.0,95.0\n"
-    "A4,200.0,201.0\n"
-)
+WIDE = "id,reference,test\nA1,10.0,11.0\nA2,50.0,51.0\nA3,90.0,95.0\nA4,200.0,201.0\n"
 
 
 @pytest.fixture
@@ -25,8 +19,12 @@ def state(tmp_path: Path) -> DesignerState:
     csv = tmp_path / "wide.csv"
     csv.write_text(WIDE, encoding="utf-8")
     config = ParityConfig().merge(
-        data={"files": (csv,), "ref": "wide.csv:reference",
-              "test": "wide.csv:test", "join": "id"}
+        data={
+            "files": (csv,),
+            "ref": "wide.csv:reference",
+            "test": "wide.csv:test",
+            "join": "id",
+        }
     )
     return DesignerState(config=config, data=load(config.data))
 
@@ -41,8 +39,12 @@ def test_brushing_sets_the_x_range_and_narrows_the_view(state):
 
 def test_brushing_refreshes_every_panel(state):
     calls = []
-    apply_brush(state, {"range": {"x": [0.0, 1000.0]}},
-                lambda: calls.append("a"), lambda: calls.append("b"))
+    apply_brush(
+        state,
+        {"range": {"x": [0.0, 1000.0]}},
+        lambda: calls.append("a"),
+        lambda: calls.append("b"),
+    )
     assert calls == ["a", "b"]
 
 

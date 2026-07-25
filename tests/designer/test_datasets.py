@@ -15,7 +15,9 @@ def write(tmp_path: Path, name: str, text: str) -> Path:
 
 
 def test_peek_reads_headers_and_one_sample_row(tmp_path):
-    path = write(tmp_path, "a.csv", "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n")
+    path = write(
+        tmp_path, "a.csv", "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n"
+    )
 
     result = peek(path)
 
@@ -65,8 +67,14 @@ def test_peek_reports_an_empty_file(tmp_path):
 @pytest.mark.parametrize(
     "columns, expected",
     [
-        (["id", "reference", "measured"], {"key": "id", "x": "reference", "y": "measured"}),
-        (["name", "expected", "actual"], {"key": "name", "x": "expected", "y": "actual"}),
+        (
+            ["id", "reference", "measured"],
+            {"key": "id", "x": "reference", "y": "measured"},
+        ),
+        (
+            ["name", "expected", "actual"],
+            {"key": "name", "x": "expected", "y": "actual"},
+        ),
         (["part", "golden", "dut"], {"key": "part", "x": "golden", "y": "dut"}),
         (["serial", "ref", "meas"], {"key": "serial", "x": "ref", "y": "meas"}),
     ],
@@ -97,3 +105,66 @@ def test_suggest_mapping_never_reuses_one_column_twice():
     guess = suggest_mapping(peeked)
     chosen = [v for v in guess.values() if v is not None]
     assert len(chosen) == len(set(chosen))
+
+
+def test_preview_reads_header_and_up_to_limit_rows(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    path = write(tmp_path, "d.csv", "id,x,y\nA1,10,11\nA2,20,22\nA3,30,33\n")
+    p = preview(path, limit=2)
+    assert p.columns == ["id", "x", "y"]
+    assert p.rows == [
+        {"id": "A1", "x": "10", "y": "11"},
+        {"id": "A2", "x": "20", "y": "22"},
+    ]
+
+
+def test_preview_stops_at_the_limit_on_a_large_file(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    rows = "\n".join(f"A{i},{i}.0" for i in range(200_000))
+    path = write(tmp_path, "big.csv", f"id,value\n{rows}\n")
+    p = preview(path, limit=100)
+    assert len(p.rows) == 100  # islice stopped the reader early
+    assert p.rows[0] == {"id": "A0", "value": "0.0"}
+
+
+def test_preview_header_only_file_has_no_rows(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    path = write(tmp_path, "h.csv", "id,x,y\n")
+    p = preview(path)
+    assert p.columns == ["id", "x", "y"]
+    assert p.rows == []
+
+
+def test_preview_reports_a_missing_file(tmp_path):
+    import pytest
+
+    from parity_plot.data import DataError
+    from parity_plot.designer.datasets import preview
+
+    with pytest.raises(DataError, match="not found"):
+        preview(tmp_path / "nope.csv")
+
+
+def test_preview_flags_numeric_columns(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    # id is text, x/temp are numbers, note has a blank cell (still numeric-free)
+    path = write(
+        tmp_path,
+        "d.csv",
+        "id,x,temp,note\nS0001,10.5,25,hi\nS0002,-3,80,\nS0010,2e3,-40,ok\n",
+    )
+    p = preview(path)
+    assert p.numeric == {"x", "temp"}  # id and note are not numeric
+    assert "id" not in p.numeric
+
+
+def test_preview_numeric_ignores_a_column_with_no_data(tmp_path):
+    from parity_plot.designer.datasets import preview
+
+    path = write(tmp_path, "d.csv", "x,blank\n10,\n20,\n")
+    p = preview(path)
+    assert p.numeric == {"x"}  # blank has no values to prove it numeric

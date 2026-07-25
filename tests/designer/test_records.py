@@ -92,9 +92,9 @@ def test_find_record_returns_none_for_an_unknown_key(data):
 @pytest.mark.parametrize(
     "customdata, expected",
     [
-        (["a1", 0.5, "pass"], "a1"),       # paired trace: (key, diff, verdict)
+        (["a1", 0.5, "pass"], "a1"),  # paired trace: (key, diff, verdict)
         (("a1", 0.5, "spec"), "a1"),
-        ("a1", "a1"),                       # rug trace: bare key
+        ("a1", "a1"),  # rug trace: bare key
         ([], None),
         (None, None),
     ],

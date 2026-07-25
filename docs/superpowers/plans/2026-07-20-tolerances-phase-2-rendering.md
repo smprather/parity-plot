@@ -67,28 +67,45 @@ def _add_one_tolerance(fig, tol, lo, hi, log, theme) -> None:
     # A zero-width tolerance (the parity line) has upper == lower, so drawing
     # both would stack two identical traces and double the legend entry.
     if upper == lower:
-        fig.add_trace(go.Scatter(
-            x=xs, y=upper, mode="lines", name=tol.display_label,
-            line=line, showlegend=tol.show_in_legend, hoverinfo="skip",
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=upper,
+                mode="lines",
+                name=tol.display_label,
+                line=line,
+                showlegend=tol.show_in_legend,
+                hoverinfo="skip",
+            )
+        )
         return
 
-    fig.add_trace(go.Scatter(
-        x=xs, y=lower, mode="lines", name=tol.display_label,
-        legendgroup=tol.name,
-        line=dict(width=0) if shaded else line,
-        showlegend=tol.show_in_legend and not shaded,
-        hoverinfo="skip",
-    ))
-    fig.add_trace(go.Scatter(
-        x=xs, y=upper, mode="lines", name=tol.display_label,
-        legendgroup=tol.name,
-        line=dict(width=0) if shaded else line,
-        fill="tonexty" if shaded else None,
-        fillcolor=theme.band_fill_for(tol.color_token) if shaded else None,
-        showlegend=tol.show_in_legend and shaded,
-        hoverinfo="skip",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=lower,
+            mode="lines",
+            name=tol.display_label,
+            legendgroup=tol.name,
+            line=dict(width=0) if shaded else line,
+            showlegend=tol.show_in_legend and not shaded,
+            hoverinfo="skip",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=upper,
+            mode="lines",
+            name=tol.display_label,
+            legendgroup=tol.name,
+            line=dict(width=0) if shaded else line,
+            fill="tonexty" if shaded else None,
+            fillcolor=theme.band_fill_for(tol.color_token) if shaded else None,
+            showlegend=tol.show_in_legend and shaded,
+            hoverinfo="skip",
+        )
+    )
 ```
 
 - [ ] **Step 2: Update `build_figure`**
@@ -144,16 +161,18 @@ line is now the parity entry named by its label.
 - [ ] **Step 1: Change the shape**
 
 ```python
-    within: dict[str, float] = field(default_factory=dict)   # name -> fraction
+within: dict[str, float] = field(default_factory=dict)  # name -> fraction
 ```
 
 Delete `tolerance_label`. `compute(data, tolerances)` takes the list and fills `within` for
 **pass/fail entries only** — info entries are references, not criteria.
 
 ```python
-        within={
-            tol.name: _within(x, y, tol) for tol in pass_fail(tolerances)
-        } if len(x) >= 2 else {},
+within = (
+    {tol.name: _within(x, y, tol) for tol in pass_fail(tolerances)}
+    if len(x) >= 2
+    else {},
+)
 ```
 
 with `_within` taking a `NamedTolerance` and using `tol.contains`.
@@ -177,7 +196,7 @@ with `_within` taking a `NamedTolerance` and using `tol.contains`.
 - [ ] **Step 1: `RecordView.within` becomes `failed`**
 
 ```python
-    failed: tuple[str, ...] | None = None   # None when unpaired or no criteria
+failed: tuple[str, ...] | None = None  # None when unpaired or no criteria
 ```
 
 `record_views(data, tolerances)` computes `failures(tolerances, x, y)` for paired records,

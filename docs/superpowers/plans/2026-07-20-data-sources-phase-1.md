@@ -104,17 +104,25 @@ def test_basename_resolves_when_unique(tmp_path):
     sub.mkdir()
     f = write(sub, "meas.csv", "id,v\nA1,1.0\n")
     src = open_sources((f,))
-    assert src.resolve("meas.csv:v").name == "v"          # basename
-    assert src.resolve(f"{f}:v").name == "v"               # full path also works
+    assert src.resolve("meas.csv:v").name == "v"  # basename
+    assert src.resolve(f"{f}:v").name == "v"  # full path also works
 
 
 def test_ambiguous_basename_requires_the_full_path(tmp_path):
-    a = write(tmp_path / "one", "meas.csv", "id,v\nA,1\n") if (tmp_path / "one").mkdir() or True else None
-    b = write(tmp_path / "two", "meas.csv", "id,v\nB,2\n") if (tmp_path / "two").mkdir() or True else None
+    a = (
+        write(tmp_path / "one", "meas.csv", "id,v\nA,1\n")
+        if (tmp_path / "one").mkdir() or True
+        else None
+    )
+    b = (
+        write(tmp_path / "two", "meas.csv", "id,v\nB,2\n")
+        if (tmp_path / "two").mkdir() or True
+        else None
+    )
     src = open_sources((a, b))
     with pytest.raises(DataError, match="ambiguous"):
         src.resolve("meas.csv:v")
-    assert src.resolve(f"{a}:v").values == ["1"]           # full path disambiguates
+    assert src.resolve(f"{a}:v").values == ["1"]  # full path disambiguates
 
 
 def test_resolve_reports_an_unknown_file(tmp_path):
@@ -176,9 +184,13 @@ class Sources:
     tables: dict[Path, dict[str, list[str]]] = field(default_factory=dict)
 
     def columns(self) -> list[str]:
-        return [f"{path.name}:{col}" for path in self.order for col in self.tables[path]]
+        return [
+            f"{path.name}:{col}" for path in self.order for col in self.tables[path]
+        ]
 
-    def numeric_columns(self, na_values: Sequence[str] = DEFAULT_NA_VALUES) -> list[str]:
+    def numeric_columns(
+        self, na_values: Sequence[str] = DEFAULT_NA_VALUES
+    ) -> list[str]:
         na = _na_set(na_values)
         out = []
         for path in self.order:
@@ -225,7 +237,7 @@ def open_sources(
     order = tuple(Path(p) for p in paths)
     tables: dict[Path, dict[str, list[str]]] = {}
     for path in order:
-        rows = _read_rows(path)          # raises DataError for missing/unreadable
+        rows = _read_rows(path)  # raises DataError for missing/unreadable
         if not rows:
             raise DataError(f"{path}: file is empty")
         header = list(rows[0][1].keys())
@@ -301,15 +313,24 @@ def test_parses_the_new_shape(tmp_path: Path):
 
 def test_join_and_group_are_optional(tmp_path: Path):
     p = tmp_path / "c.toml"
-    p.write_text('[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n', encoding="utf-8")
+    p.write_text(
+        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n',
+        encoding="utf-8",
+    )
     d = ParityConfig.from_toml(p).data
     assert d.join is None and d.group is None
 
 
-@pytest.mark.parametrize("key, value", [
-    ("paths", '["d.csv"]'), ("x", '"reference"'), ("y", '"measured"'),
-    ("key", '"id"'), ("value", '"value"'),
-])
+@pytest.mark.parametrize(
+    "key, value",
+    [
+        ("paths", '["d.csv"]'),
+        ("x", '"reference"'),
+        ("y", '"measured"'),
+        ("key", '"id"'),
+        ("value", '"value"'),
+    ],
+)
 def test_retired_data_keys_error_with_guidance(tmp_path: Path, key, value):
     p = tmp_path / "c.toml"
     p.write_text(f"[data]\n{key} = {value}\n", encoding="utf-8")
@@ -347,11 +368,12 @@ class DataConfig:
     An arbitrary set of files; the two plotted series are `file:column` refs.
     A join column aligns rows across files; without one, rows pair by order.
     """
+
     files: tuple[Path, ...] = ()
-    ref: str | None = None       # "file:column", a numeric column
-    test: str | None = None      # "file:column", a numeric column
-    join: str | None = None      # column name in both files, or None -> pair by order
-    group: str | None = None     # "file:column", any column, or None
+    ref: str | None = None  # "file:column", a numeric column
+    test: str | None = None  # "file:column", a numeric column
+    join: str | None = None  # column name in both files, or None -> pair by order
+    group: str | None = None  # "file:column", any column, or None
     na_values: tuple[str, ...] = DEFAULT_NA_VALUES
 ```
 

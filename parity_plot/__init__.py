@@ -1,9 +1,9 @@
 """45-degree parity plots, as a Python package and a CLI.
 
-    from parity_plot import parity_plot
+from parity_plot import parity_plot
 
-    fig = parity_plot("data/example.csv", x="reference", y="measured")
-    fig.show()
+fig = parity_plot("data/example.csv", x="reference", y="measured")
+fig.show()
 """
 
 from __future__ import annotations
@@ -26,10 +26,11 @@ from .examples import ExampleSpec, SpecError
 from .examples import generate as generate_example
 from .examples import write_all as write_example_data
 from .plot import build_figure, save
-from .stats import Stats, compute as compute_stats
-from .tolerance import Tolerance
+from .stats import Stats
+from .stats import compute as compute_stats
 from .themes import THEMES as THEME_NAMES
 from .themes import Theme
+from .tolerance import Tolerance
 
 __version__ = "0.1.0"
 
@@ -107,14 +108,17 @@ def parity_plot(
         if paths:
             raise TypeError("pass either files or ref/test sequences, not both")
         group_seq = group if not isinstance(group, str) else None
-        data = from_sequences(ref, test, keys=keys, group=group_seq)  # type: ignore[arg-type]
+        data = from_sequences(ref, test, keys=keys, group=group_seq)  # ty: ignore[invalid-argument-type]
     else:
         data_overrides = {
             "ref": ref,
             "test": test,
             "join": join,
-            "group": group if isinstance(group, str) else None,
         }
+        # In the file branch a str or list/tuple of column names selects group
+        # columns; DataConfig.__post_init__ normalises either to a tuple.
+        if isinstance(group, (str, list, tuple)):
+            data_overrides["group"] = group
         if paths:
             data_overrides["files"] = tuple(Path(p) for p in paths)
         cfg = cfg.merge(data=data_overrides)

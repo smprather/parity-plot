@@ -81,7 +81,7 @@ def _hex_to_rgb(value: str) -> tuple[int, int, int]:
     text = value.lstrip("#")
     if len(text) == 3:  # short form, #abc
         text = "".join(character * 2 for character in text)
-    return tuple(int(text[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]
+    return (int(text[0:2], 16), int(text[2:4], 16), int(text[4:6], 16))
 
 
 DARK = Theme(
@@ -106,8 +106,8 @@ DARK = Theme(
         "red": "#ff4d5a",
         "yellow": "#ffd23f",
         "orange": "#ff8c42",
-        "green": "#9ccc65",     # olive, not the identity line's mint
-        "blue": "#5b8dee",      # true blue, not the markers' cyan
+        "green": "#9ccc65",  # olive, not the identity line's mint
+        "blue": "#5b8dee",  # true blue, not the markers' cyan
         "purple": "#b18cff",
         "magenta": "#ff6ec7",
         "grey": "#9aa4b0",
@@ -136,8 +136,8 @@ LIGHT = Theme(
         "red": "#d00000",
         "yellow": "#b38600",
         "orange": "#b35309",
-        "green": "#6a8f00",     # olive, not the identity line's emerald
-        "blue": "#3b5bdb",      # true blue, not the markers' teal
+        "green": "#6a8f00",  # olive, not the identity line's emerald
+        "blue": "#3b5bdb",  # true blue, not the markers' teal
         "purple": "#7048e8",
         "magenta": "#c2255c",
         "grey": "#6b7280",
@@ -172,7 +172,9 @@ def _template(theme: Theme) -> go.layout.Template:
         layout=go.Layout(
             paper_bgcolor=theme.paper_bg,
             plot_bgcolor=theme.plot_bg,
-            font=dict(color=theme.font, family="Inter, Segoe UI, Helvetica, sans-serif"),
+            font=dict(
+                color=theme.font, family="Inter, Segoe UI, Helvetica, sans-serif"
+            ),
             title=dict(font=dict(color=theme.font, size=20)),
             xaxis=axis,
             yaxis=axis,

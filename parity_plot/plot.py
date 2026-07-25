@@ -16,7 +16,7 @@ import math
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import plotly.graph_objects as go
 
@@ -44,7 +44,7 @@ _LEGEND_LAYOUTS = {
     # of that domain floats above the visible frame.
     "right": (
         dict(orientation="v", x=1.02, xanchor="left", y=0.5, yanchor="middle"),
-        dict(l=80, r=210, t=100, b=80),
+        dict(l=80, r=160, t=100, b=80),
     ),
     "bottom": (
         dict(orientation="h", x=0.5, xanchor="center", y=-0.09, yanchor="top"),
@@ -63,6 +63,12 @@ def build_figure(
     stats_cfg = stats_cfg or StatsConfig()
     theme = themes.get(plot.theme)
 
+    is_scale = plot.encoding.color_by == "colorscale"
+    if is_scale and data.color_values is None:
+        raise ValueError(
+            "color_by=colorscale needs a numeric colour column; set [data].color_column"
+        )
+
     if plot.log:
         data = _drop_non_positive(data)
 
@@ -75,7 +81,7 @@ def build_figure(
     if plot.nulls == "rug":
         _add_rugs(fig, data, lo, hi, plot.log, theme)
 
-    _apply_layout(fig, data, plot, theme, summary, lo, hi)
+    _apply_layout(fig, data, plot, theme, summary, lo, hi, has_colorbar=is_scale)
     if stats_cfg.show:
         _add_stats_box(fig, summary, stats_cfg.metrics, theme, lo, hi)
     return fig
@@ -83,16 +89,18 @@ def build_figure(
 
 def _drop_non_positive(data: ParityData) -> ParityData:
     """Remove values a log axis cannot show, reporting how many were lost."""
-    paired = [
-        (k, xi, yi)
-        for k, xi, yi in zip(data.keys, data.x, data.y)
-        if xi > 0 and yi > 0
-    ]
+    # Re-slice every per-paired-point list by kept indices so hover text and
+    # colour stay aligned to x/y. group is deliberately left alone: re-slicing
+    # it is a pre-existing gap tracked separately, not this feature's to close.
+    kept = [i for i in range(data.n_paired) if data.x[i] > 0 and data.y[i] > 0]
+    hovers = (
+        [data.hover_values[i] for i in kept] if data.hover_values is not None else None
+    )
     missing_y = _filter_unpaired(data.missing_y)
     missing_x = _filter_unpaired(data.missing_x)
 
     removed = (
-        (data.n_paired - len(paired))
+        (data.n_paired - len(kept))
         + (len(data.missing_y) - len(missing_y))
         + (len(data.missing_x) - len(missing_x))
     )
@@ -104,9 +112,15 @@ def _drop_non_positive(data: ParityData) -> ParityData:
 
     return replace(
         data,
-        keys=[k for k, _, _ in paired],
-        x=[xi for _, xi, _ in paired],
-        y=[yi for _, _, yi in paired],
+        keys=[data.keys[i] for i in kept],
+        x=[data.x[i] for i in kept],
+        y=[data.y[i] for i in kept],
+        color_values=(
+            [data.color_values[i] for i in kept]
+            if data.color_values is not None
+            else None
+        ),
+        hover_values=hovers,
         missing_y=missing_y,
         missing_x=missing_x,
     )
@@ -234,6 +248,25 @@ def _add_one_tolerance(
     )
 
 
+def _paired_hovertemplate(data: ParityData) -> str:
+    """The hover layout for a paired point.
+
+    customdata is (key, difference, verdict, *hover cells), so the configured
+    columns start at index 3. The verdict stays last: it reads as the
+    conclusion, and the metadata belongs with the record's identity above it.
+    """
+    rows = [
+        "<b>%{customdata[0]}</b>",
+        f"{data.x_label}: %{{x:.4g}}",
+        f"{data.y_label}: %{{y:.4g}}",
+        "difference: %{customdata[1]:+.4g}",
+    ]
+    for i, label in enumerate(data.hover_labels):
+        rows.append(f"{label}: %{{customdata[{3 + i}]}}")
+    rows.append("%{customdata[2]}<extra></extra>")
+    return "<br>".join(rows)
+
+
 def _add_paired(
     fig: go.Figure,
     data: ParityData,
@@ -243,44 +276,84 @@ def _add_paired(
 ) -> None:
     """Draw the paired points, one trace per (colour, symbol) the encoding yields.
 
-    `encoding.partition` decides which points share a trace; here each trace's
-    colour key is resolved to a real colour through the theme (symbol keys are
-    already Plotly symbol names). The default encoding produces a single trace,
-    so the plot -- and the golden test -- are unchanged until a channel is set.
+    Under ``color_by = "colorscale"`` colour is per-point, so the colour key is
+    constant and does not split traces: every symbol group shares one continuous
+    colour mapping, drawn once as a colorbar. Otherwise each trace's colour key
+    is resolved to a real colour through the theme.
     """
     scatter = go.Scattergl if data.n_paired > _WEBGL_THRESHOLD else go.Scatter
     diffs = [yi - xi for xi, yi in zip(data.x, data.y)]
-    verdicts = [verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)]
+    verdicts = [
+        verdict_text(failures(tolerances, xi, yi)) for xi, yi in zip(data.x, data.y)
+    ]
     passes = [failures(tolerances, xi, yi) == () for xi, yi in zip(data.x, data.y)]
 
     specs = partition(data.n_paired, passes, data.group, encoding)
-    colours = _resolve_colours(specs, encoding, theme)
     symbols = _resolve_symbols(specs, encoding)
 
-    for spec in specs:
+    is_scale = encoding.color_by == "colorscale"
+    colours = None if is_scale else _resolve_colours(specs, encoding, theme)
+    cmin = cmax = None
+    color_values: list[float | None] = []
+    if is_scale:
+        # build_figure guarantees color_values is present under colorscale.
+        assert data.color_values is not None
+        color_values = data.color_values
+        finite = [c for c in color_values if c is not None]
+        cmin, cmax = (min(finite), max(finite)) if finite else (0.0, 1.0)
+
+    template = _paired_hovertemplate(data)
+    for i, spec in enumerate(specs):
         idx = spec.indices
         name = spec.name if len(specs) > 1 else f"paired (n={data.n_paired:,})"
+        if is_scale:
+            marker: dict[str, Any] = dict(
+                color=[color_values[j] for j in idx],
+                colorscale=encoding.colorscale,
+                cmin=cmin,
+                cmax=cmax,
+                showscale=(i == 0),
+                symbol=symbols[spec.symbol_key],
+                opacity=theme.marker_opacity,
+                size=7,
+                line=dict(color=theme.marker_line, width=0.5),
+            )
+            if i == 0:
+                marker["colorbar"] = dict(
+                    title=dict(text=data.color_label),
+                    x=1.02,
+                    xanchor="left",
+                    thickness=14,
+                    len=0.6,
+                    y=0.5,
+                    yanchor="middle",
+                )
+        else:
+            assert colours is not None
+            marker = dict(
+                color=colours[spec.color_key],
+                symbol=symbols[spec.symbol_key],
+                opacity=theme.marker_opacity,
+                size=7,
+                line=dict(color=theme.marker_line, width=0.5),
+            )
         fig.add_trace(
             scatter(
-                x=[data.x[i] for i in idx],
-                y=[data.y[i] for i in idx],
+                x=[data.x[j] for j in idx],
+                y=[data.y[j] for j in idx],
                 mode="markers",
                 name=name,
-                customdata=[(data.keys[i], diffs[i], verdicts[i]) for i in idx],
-                marker=dict(
-                    color=colours[spec.color_key],
-                    symbol=symbols[spec.symbol_key],
-                    opacity=theme.marker_opacity,
-                    size=7,
-                    line=dict(color=theme.marker_line, width=0.5),
-                ),
-                hovertemplate=(
-                    "<b>%{customdata[0]}</b><br>"
-                    f"{data.x_label}: %{{x:.4g}}<br>"
-                    f"{data.y_label}: %{{y:.4g}}<br>"
-                    "difference: %{customdata[1]:+.4g}<br>"
-                    "%{customdata[2]}<extra></extra>"
-                ),
+                customdata=[
+                    (
+                        data.keys[j],
+                        diffs[j],
+                        verdicts[j],
+                        *(data.hover_values[j] if data.hover_values else ()),
+                    )
+                    for j in idx
+                ],
+                marker=marker,
+                hovertemplate=template,
             )
         )
 
@@ -325,9 +398,7 @@ def _resolve_symbols(specs: Sequence, encoding: Encoding) -> dict[str, str]:
             if spec.symbol_key not in distinct:
                 distinct.append(spec.symbol_key)
         sequence = encoding.symbol_sequence or DEFAULT_SYMBOLS
-        return {
-            key: sequence[i % len(sequence)] for i, key in enumerate(distinct)
-        }
+        return {key: sequence[i % len(sequence)] for i, key in enumerate(distinct)}
     return {spec.symbol_key: spec.symbol_key for spec in specs}
 
 
@@ -396,10 +467,15 @@ def _apply_layout(
     summary: stats_mod.Stats,
     lo: float,
     hi: float,
+    has_colorbar: bool = False,
 ) -> None:
     axis_type = "log" if plot.log else "linear"
-    x_axis = dict(title=plot.x_label or data.x_label, range=[lo, hi], type=axis_type)
-    y_axis = dict(title=plot.y_label or data.y_label, range=[lo, hi], type=axis_type)
+    x_axis: dict[str, Any] = dict(
+        title=plot.x_label or data.x_label, range=[lo, hi], type=axis_type
+    )
+    y_axis: dict[str, Any] = dict(
+        title=plot.y_label or data.y_label, range=[lo, hi], type=axis_type
+    )
     if plot.equal_axes:
         # `constrain="domain"` is what makes both axes actually *start and end*
         # at the same value. Under the default ("range"), Plotly satisfies the
@@ -417,10 +493,24 @@ def _apply_layout(
             f"available positions are {sorted(_LEGEND_LAYOUTS)}"
         ) from None
 
+    if has_colorbar:
+        if plot.legend == "right" and placement is not None:
+            placement = {**placement, "x": 1.16}
+            margin = {**margin, "r": 300}
+        else:
+            margin = {**margin, "r": max(margin["r"], 110)}
+
     fig.update_layout(
         template=theme.template_name,
         title=dict(
             text=plot.title,
+            # Centre on the plotting area (paper), not the whole figure: the
+            # asymmetric margins (a wide right margin for the legend) push the
+            # axes left, and Plotly's default container-centred title then floats
+            # right of the plot.
+            x=0.5,
+            xanchor="center",
+            xref="paper",
             subtitle=dict(
                 text=stats_mod.summarize_nulls(summary, data.x_label, data.y_label),
                 font=dict(color=theme.font_muted, size=13),

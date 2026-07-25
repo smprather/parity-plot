@@ -59,9 +59,9 @@ def test_missing_values_are_none_not_zero(views):
 
 def test_verdict_reads_as_words(views):
     rows = {r["key"]: r for r in to_rows(views)}
-    assert rows["a"]["verdict"] == "spec"        # failed the "spec" tolerance
-    assert rows["b"]["verdict"] == "pass"        # judged and passed
-    assert rows["d"]["verdict"] == ""            # never judged, so no verdict claimed
+    assert rows["a"]["verdict"] == "spec"  # failed the "spec" tolerance
+    assert rows["b"]["verdict"] == "pass"  # judged and passed
+    assert rows["d"]["verdict"] == ""  # never judged, so no verdict claimed
 
 
 def test_status_is_carried_through(views):

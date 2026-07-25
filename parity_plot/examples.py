@@ -20,6 +20,9 @@ from pathlib import Path
 # Draws land inside [x_min, x_max] this often; the rest form the long tail.
 _CENTRAL_MASS_Z = 1.96
 
+_PACKAGES = ("SMD", "DIP", "BGA", "QFN")
+_VENDORS = ("Acme", "Beta", "Ceres")
+
 
 class SpecError(ValueError):
     """Raised when the requested example data is not physically possible."""
@@ -101,7 +104,7 @@ class ExampleSpec:
 
     @property
     def n_nulls(self) -> int:
-        return self.n_missing_x + self.n_missing_y + self.n_both_null
+        return self.n_missing_x + self.n_missing_y + self.n_both_null  # ty: ignore[unsupported-operator]
 
     @property
     def log_mu(self) -> float:
@@ -119,6 +122,9 @@ class Record:
     key: str
     reference: float | None
     measured: float | None
+    package: str = ""
+    vendor: str = ""
+    temperature: float | None = None
 
 
 def generate(spec: ExampleSpec | None = None, **overrides) -> list[Record]:
@@ -138,21 +144,38 @@ def generate(spec: ExampleSpec | None = None, **overrides) -> list[Record]:
         y += rng.gauss(0, spec.noise_floor)
         if spec.outlier_rate and rng.random() < spec.outlier_rate:
             y += rng.choice((-1, 1)) * spec.outlier_scale * spec.noise * x
-        records.append(Record(key=f"S{i:04d}", reference=x, measured=y))
+        package = rng.choice(_PACKAGES)
+        vendor = rng.choice(_VENDORS)
+        temperature = rng.uniform(-40.0, 125.0)
+        records.append(
+            Record(
+                key=f"S{i:04d}",
+                reference=x,
+                measured=y,
+                package=package,
+                vendor=vendor,
+                temperature=temperature,
+            )
+        )
 
     # Carve the null records out of disjoint index sets so each case is
     # reachable independently.
     holes = rng.sample(range(spec.n), spec.n_nulls)
     drop_y = holes[: spec.n_missing_y]
-    drop_x = holes[spec.n_missing_y : spec.n_missing_y + spec.n_missing_x]
-    drop_both = holes[spec.n_missing_y + spec.n_missing_x :]
+    drop_x = holes[spec.n_missing_y : spec.n_missing_y + spec.n_missing_x]  # ty: ignore[unsupported-operator]
+    drop_both = holes[spec.n_missing_y + spec.n_missing_x :]  # ty: ignore[unsupported-operator]
 
     for i in drop_y:
-        records[i] = Record(records[i].key, records[i].reference, None)
+        r = records[i]
+        records[i] = Record(
+            r.key, r.reference, None, r.package, r.vendor, r.temperature
+        )
     for i in drop_x:
-        records[i] = Record(records[i].key, None, records[i].measured)
+        r = records[i]
+        records[i] = Record(r.key, None, r.measured, r.package, r.vendor, r.temperature)
     for i in drop_both:
-        records[i] = Record(records[i].key, None, None)
+        r = records[i]
+        records[i] = Record(r.key, None, None, r.package, r.vendor, r.temperature)
 
     return records
 
@@ -178,9 +201,18 @@ def write_wide(records: list[Record], path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh, lineterminator="\n")
-        writer.writerow(["id", "reference", "test"])
+        writer.writerow(["id", "reference", "test", "package", "vendor", "temperature"])
         for rec in records:
-            writer.writerow([rec.key, _fmt(rec.reference), _fmt(rec.measured)])
+            writer.writerow(
+                [
+                    rec.key,
+                    _fmt(rec.reference),
+                    _fmt(rec.measured),
+                    rec.package,
+                    rec.vendor,
+                    _fmt(rec.temperature),
+                ]
+            )
     return path
 
 
@@ -197,10 +229,25 @@ def write_pair(
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh, lineterminator="\n")
-            writer.writerow(["id", "value"])
+            if attr == "reference":
+                writer.writerow(["id", "value", "package", "vendor", "temperature"])
+            else:
+                writer.writerow(["id", "value"])
             for rec in records:
                 value = getattr(rec, attr)
-                if value is not None:
+                if value is None:
+                    continue
+                if attr == "reference":
+                    writer.writerow(
+                        [
+                            rec.key,
+                            _fmt(value),
+                            rec.package,
+                            rec.vendor,
+                            _fmt(rec.temperature),
+                        ]
+                    )
+                else:
                     writer.writerow([rec.key, _fmt(value)])
     return x_path, y_path
 

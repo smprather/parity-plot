@@ -12,6 +12,7 @@ from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import Any
 
+from .encoding import Encoding, EncodingError
 from .tolerance import parse_reltol
 from .tolerances import (
     NamedTolerance,
@@ -21,7 +22,6 @@ from .tolerances import (
     require_unique_names,
     with_parity,
 )
-from .encoding import Encoding, EncodingError
 
 DEFAULT_NA_VALUES: tuple[str, ...] = (
     "",
@@ -55,11 +55,32 @@ class DataConfig:
     """
 
     files: tuple[Path, ...] = ()
-    ref: str | None = None       # "file:column", a numeric column
-    test: str | None = None      # "file:column", a numeric column
-    join: str | None = None      # column name in both files, or None -> pair by order
-    group: str | None = None     # "file:column", any column, or None
+    ref: str | None = None  # "file:column", a numeric column
+    test: str | None = None  # "file:column", a numeric column
+    join: str | None = None  # column name in both files, or None -> pair by order
+    # Zero or more bare, file-independent column names. A paired point's group
+    # label joins the per-column values with ", " (see data._group_lookup).
+    group: tuple[str, ...] = ()
+    # A single file:column numeric ref driving the colorscale channel. Pinned to
+    # one file (unlike group) because the same column can differ across files.
+    color_column: str | None = None
+    # Extra per-point rows in the hover box, as pinned `file:column` refs.
+    # None = auto (every candidate column of the ref/test files); an explicit
+    # empty tuple suppresses them; a tuple pins that set, in that order.
+    hover_columns: tuple[str, ...] | None = None
     na_values: tuple[str, ...] = DEFAULT_NA_VALUES
+
+    def __post_init__(self) -> None:
+        # Accept None / "col" / ["a","b"] and store a tuple of column names, so
+        # both direct construction and TOML/CLI merging converge on one shape.
+        group = self.group
+        if group is None:
+            normalised: tuple[str, ...] = ()
+        elif isinstance(group, str):
+            normalised = (group,)
+        else:
+            normalised = tuple(str(g) for g in group)
+        object.__setattr__(self, "group", normalised)
 
 
 @dataclass(frozen=True)
@@ -85,7 +106,7 @@ class PlotConfig:
 @dataclass(frozen=True)
 class StatsConfig:
     show: bool = True
-    metrics: tuple[str, ...] = ("n", "r2", "rmse", "mae", "bias")
+    metrics: tuple[str, ...] = ("n", "r2", "rmse", "mae", "bias", "std", "max_abs_err")
 
 
 @dataclass(frozen=True)
@@ -189,7 +210,7 @@ def _build(cls: type, raw: dict[str, Any], source: str, base: Any = None) -> Any
                 f'  test  = "sim.csv:voltage"\n'
                 f'  join  = "id"                  # optional; omit to pair by order\n'
             )
-    known = {f.name for f in fields(cls)}
+    known = {f.name for f in fields(cls)}  # ty: ignore[invalid-argument-type]
     unknown = set(raw) - known
     if unknown:
         raise ConfigError(
@@ -243,11 +264,14 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         return _coerce_tolerances(value, where)
     if key == "encoding":
         return _coerce_encoding(value, where)
+    if key == "hover_columns":
+        # None (an absent key) means "auto", so it is not a list to coerce.
+        if value is None:
+            return None
+        return tuple(str(v) for v in _as_sequence(value, where))
     if key in _CHOICES:
         if value not in _CHOICES[key]:
-            raise ConfigError(
-                f"{where}: {value!r} is not one of {list(_CHOICES[key])}"
-            )
+            raise ConfigError(f"{where}: {value!r} is not one of {list(_CHOICES[key])}")
         return value
     if key in {"width", "height"}:
         size = int(value)
@@ -332,8 +356,7 @@ def _coerce_encoding(value: Any, where: str) -> Encoding:
     unknown = set(value) - known
     if unknown:
         raise ConfigError(
-            f"{where}: unknown key(s) {sorted(unknown)}; "
-            f"valid keys are {sorted(known)}"
+            f"{where}: unknown key(s) {sorted(unknown)}; valid keys are {sorted(known)}"  # ty: ignore[invalid-argument-type]
         )
     try:
         return Encoding(**value)
@@ -350,8 +373,8 @@ def _register_tomlkit_encoding_encoder() -> None:
     Registering here keeps the encoder alongside the type it knows about, and
     runs once at import so the designer (which imports this module) picks it up.
     """
-    from tomlkit.items import CUSTOM_ENCODERS, Table, Trivia
     from tomlkit.container import Container
+    from tomlkit.items import CUSTOM_ENCODERS, Table, Trivia
 
     def _encode_encoding(value: object, **_: object) -> Table:
         if not isinstance(value, Encoding):
@@ -365,11 +388,13 @@ def _register_tomlkit_encoding_encoder() -> None:
         # litter every config with `symbol_sequence = []`.
         if value.symbol_sequence:
             table["symbol_sequence"] = list(value.symbol_sequence)
+        # Only emit a non-default scale, matching symbol_sequence's treatment.
+        if value.colorscale and value.colorscale != "viridis":
+            table["colorscale"] = value.colorscale
         return table
 
     if not any(
-        getattr(enc, "__name__", None) == "_encode_encoding"
-        for enc in CUSTOM_ENCODERS
+        getattr(enc, "__name__", None) == "_encode_encoding" for enc in CUSTOM_ENCODERS
     ):
         CUSTOM_ENCODERS.append(_encode_encoding)
 
@@ -388,7 +413,15 @@ files = ["data/example.csv"]
 ref = "data/example.csv:reference"    # file:column, a numeric column
 test = "data/example.csv:measured"    # file:column, a numeric column
 # join = "id"                         # optional; column name in both files
-# group = "data/example.csv:batch"    # optional; any column, or file:column
+# group = ["package", "vendor"]       # optional; one or more bare column names,
+#                                     # joined into one label ("SMD, Acme")
+# color_column = "data/example.csv:temperature"  # optional; a numeric file:column
+#                                     # driving the colorscale colour mode below
+# hover_columns = ["data/example.csv:package"]   # optional; extra rows in the
+#                                     # hover box, as pinned file:column refs.
+#                                     # Omit the key entirely for the default:
+#                                     # every other column of the ref/test
+#                                     # files. Set it to [] for none.
 na_values = ["", "NA", "N/A", "null", "none", "nan", "-"]
 
 [plot]
@@ -426,6 +459,8 @@ reltol = 0.10           # a ratio; write "10pct" if you prefer percent
 #   color_by   = "single"     # one colour for all points (see `color` below)
 #              | "pass-fail"  # overall verdict: pass → green, fail → red
 #              | "group"      # the point's group column → a qualitative palette
+#              | "colorscale" # a numeric [data].color_column → a continuous
+#                             # colorbar; pick the scale with `colorscale` below
 #   symbol_by  = "single"     # one symbol for all points (see `symbol` below)
 #              | "pass-fail"  # pass → circle, fail → x
 #              | "group"      # the group column → a symbol cycle
@@ -442,10 +477,12 @@ symbol_by = "single"
 color = "blue"
 symbol = "circle"
 # symbol_sequence = ["circle", "square", "diamond", "triangle-up", "x"]
+# colorscale = "viridis"    # any Plotly named scale (viridis, plasma, turbo, cividis, …);
+#                           # only used when color_by = "colorscale"
 
 [stats]
 show = true
-metrics = ["n", "r2", "rmse", "mae", "bias"]
+metrics = ["n", "r2", "rmse", "mae", "bias", "std", "max_abs_err"]
 
 [output]
 path = "parity.html"

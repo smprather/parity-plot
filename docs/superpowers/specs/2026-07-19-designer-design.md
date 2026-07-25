@@ -70,11 +70,11 @@ module instead.
 ```python
 @dataclass
 class DesignerState:
-    config: ParityConfig          # the thing being edited and saved
-    data: ParityData | None       # None until a dataset is loaded
-    filters: FilterSet            # exploration only, never saved
-    selection: str | None         # record key of the pinned point
-    dirty: bool                   # config differs from what is on disk
+    config: ParityConfig  # the thing being edited and saved
+    data: ParityData | None  # None until a dataset is loaded
+    filters: FilterSet  # exploration only, never saved
+    selection: str | None  # record key of the pinned point
+    dirty: bool  # config differs from what is on disk
 ```
 
 **Filters are exploration state, not configuration.** Narrowing the view to
@@ -90,7 +90,7 @@ class FilterSet:
     outside_tolerance_only: bool = False
     show_paired: bool = True
     show_unpaired: bool = True
-    x_range: tuple[float, float] | None = None      # brush selection
+    x_range: tuple[float, float] | None = None  # brush selection
 
     def apply(self, data: ParityData, tol: Tolerance) -> ParityData: ...
 ```

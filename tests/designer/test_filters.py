@@ -89,9 +89,9 @@ def test_outside_tolerance_leaves_unpaired_records_to_the_other_switch(data):
 def test_x_range_keeps_records_inside_the_window(data):
     result = FilterSet(x_range=(40.0, 80.0)).apply(data, PASS_TOL)
 
-    assert result.keys == ["c"]          # x = 50
+    assert result.keys == ["c"]  # x = 50
     assert result.missing_y.keys == ["d"]  # x = 70, known
-    assert result.missing_x.keys == []     # no x at all, so not in any window
+    assert result.missing_x.keys == []  # no x at all, so not in any window
 
 
 def test_x_range_bounds_are_inclusive(data):

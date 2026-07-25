@@ -51,10 +51,83 @@ def test_ref_test_span_all_open_files(tmp_path):
 
 
 def test_no_files_offers_nothing():
-    assert column_options(()) == {"ref": [], "test": [], "group": [], "join": []}
+    assert column_options(()) == {
+        "ref": [],
+        "test": [],
+        "group": [],
+        "join": [],
+        "color_column": [],
+        "hover_columns": [],
+    }
 
 
 def test_an_unreadable_file_yields_empty_rather_than_raising(tmp_path):
     assert column_options((tmp_path / "ghost.csv",)) == {
-        "ref": [], "test": [], "group": [], "join": [],
+        "ref": [],
+        "test": [],
+        "group": [],
+        "join": [],
+        "color_column": [],
+        "hover_columns": [],
     }
+
+
+def test_options_include_numeric_colour_column(tmp_path):
+    f = write(tmp_path, "d.csv", "id,voltage,batch\nA1,10,x\nA2,20,y\n")
+    opts = column_options((f,))
+    assert "color_column" in opts
+    assert opts["color_column"] == ["d.csv:voltage"]  # numeric only (id is text)
+
+
+def test_group_excludes_the_ref_and_test_columns(tmp_path):
+    f = write(tmp_path, "d.csv", "id,reference,test,batch\nA1,10,11,x\nA2,20,22,y\n")
+    opts = column_options((f,), ref="d.csv:reference", test="d.csv:test")
+    assert "reference" not in opts["group"]
+    assert "test" not in opts["group"]
+    assert opts["group"] == ["id", "batch"]
+
+
+def test_group_without_ref_test_still_offers_everything(tmp_path):
+    f = write(tmp_path, "d.csv", "id,reference,test,batch\nA1,10,11,x\n")
+    # no ref/test passed -> nothing excluded (back-compat)
+    assert column_options((f,))["group"] == ["id", "reference", "test", "batch"]
+
+
+def test_build_data_panel_returns_a_problem_mark_hook():
+    """The panel exposes a callable so app.refresh can mark the join field."""
+    import inspect
+
+    from parity_plot.designer.panels.data_panel import build_data_panel
+
+    sig = inspect.signature(build_data_panel)
+    assert sig.return_annotation is not inspect.Signature.empty
+
+
+def test_hover_columns_offers_ref_test_file_columns_minus_ref_test_join(tmp_path):
+    f = write(
+        tmp_path,
+        "d.csv",
+        "id,reference,test,package,vendor\nA1,10,11,SMD,Acme\n",
+    )
+    opts = column_options((f,), ref="d.csv:reference", test="d.csv:test", join="id")
+    # ref, test and join are structural hover rows, never offered; package and
+    # vendor are the candidates.
+    assert opts["hover_columns"] == ["d.csv:package", "d.csv:vendor"]
+
+
+def test_hover_columns_exclude_a_third_open_file(tmp_path):
+    a = write(tmp_path, "ref.csv", "id,value,package\nA,10,SMD\n")
+    b = write(tmp_path, "meas.csv", "id,value\nA,11\n")
+    extra = write(tmp_path, "extra.csv", "id,note\nA,hello\n")
+    opts = column_options(
+        (a, b, extra), ref="ref.csv:value", test="meas.csv:value", join="id"
+    )
+    assert all(not c.startswith("extra.csv:") for c in opts["hover_columns"])
+    assert opts["hover_columns"] == ["ref.csv:package"]
+
+
+def test_hover_columns_empty_when_ref_or_test_unset(tmp_path):
+    f = write(tmp_path, "d.csv", "id,reference,test,package\nA1,10,11,SMD\n")
+    # Without a resolvable ref and test, hover_candidates cannot be derived.
+    assert column_options((f,))["hover_columns"] == []
+    assert column_options((f,), ref="d.csv:reference")["hover_columns"] == []

@@ -9,11 +9,15 @@ render correctly under both dark and light themes.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Sequence
+
+import plotly.colors as _pcolors
 
 __all__ = [
     "CHANNELS",
+    "COLOR_CHANNELS",
+    "SYMBOL_CHANNELS",
     "Encoding",
     "EncodingError",
     "TraceSpec",
@@ -22,7 +26,26 @@ __all__ = [
     "symbol_key_of",
 ]
 
-CHANNELS: tuple[str, str, str] = ("single", "pass-fail", "group")
+COLOR_CHANNELS: tuple[str, ...] = ("single", "pass-fail", "group", "colorscale")
+SYMBOL_CHANNELS: tuple[str, ...] = ("single", "pass-fail", "group")
+# Back-compat alias for callers that referenced the old single tuple.
+CHANNELS = SYMBOL_CHANNELS
+
+_NAMED_COLORSCALES: frozenset[str] = frozenset(_pcolors.named_colorscales())
+
+
+def _validate_colorscale(name: str) -> None:
+    if not isinstance(name, str) or not name.strip():
+        raise EncodingError(f"colorscale must be a non-empty name, got {name!r}")
+    base = name.lower()
+    if base.endswith("_r"):
+        base = base[:-2]
+    if base not in _NAMED_COLORSCALES:
+        raise EncodingError(
+            f"unknown colorscale {name!r}; use a Plotly named scale "
+            f"(e.g. viridis, cividis, plasma, turbo)"
+        )
+
 
 # The default symbol cycle used when ``symbol_by = "group"`` and no explicit
 # ``symbol_sequence`` is given. Ordered for maximum shape contrast early, so the
@@ -56,23 +79,65 @@ SYMBOL_CATALOG: tuple[str, ...] = DEFAULT_SYMBOLS
 # this set (after stripping a variant suffix) so a typo is caught with a named
 # error rather than rendering an invisible marker. This mirrors the colour-token
 # check in ``themes`` and the project's "unknown key is an error" stance.
-_BASE_SYMBOLS: frozenset[str] = frozenset({
-    "circle", "square", "diamond", "cross", "x",
-    "triangle-up", "triangle-down", "triangle-left", "triangle-right",
-    "triangle-ne", "triangle-se", "triangle-sw", "triangle-nw",
-    "pentagon", "hexagon", "hexagon2", "octagon",
-    "star", "hexagram",
-    "star-triangle-up", "star-triangle-down", "star-square", "star-diamond",
-    "diamond-tall", "diamond-wide", "hourglass", "bowtie",
-    "circle-cross", "circle-x", "square-cross", "square-x",
-    "diamond-cross", "diamond-x", "cross-thin", "x-thin",
-    "asterisk", "hash",
-    "y-up", "y-down", "y-left", "y-right",
-    "line-ew", "line-ns", "line-ne", "line-nw",
-    "arrow-up", "arrow-down", "arrow-left", "arrow-right",
-    "arrow-bar-up", "arrow-bar-down", "arrow-bar-left", "arrow-bar-right",
-    "arrow", "arrow-wide",
-})
+_BASE_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "circle",
+        "square",
+        "diamond",
+        "cross",
+        "x",
+        "triangle-up",
+        "triangle-down",
+        "triangle-left",
+        "triangle-right",
+        "triangle-ne",
+        "triangle-se",
+        "triangle-sw",
+        "triangle-nw",
+        "pentagon",
+        "hexagon",
+        "hexagon2",
+        "octagon",
+        "star",
+        "hexagram",
+        "star-triangle-up",
+        "star-triangle-down",
+        "star-square",
+        "star-diamond",
+        "diamond-tall",
+        "diamond-wide",
+        "hourglass",
+        "bowtie",
+        "circle-cross",
+        "circle-x",
+        "square-cross",
+        "square-x",
+        "diamond-cross",
+        "diamond-x",
+        "cross-thin",
+        "x-thin",
+        "asterisk",
+        "hash",
+        "y-up",
+        "y-down",
+        "y-left",
+        "y-right",
+        "line-ew",
+        "line-ns",
+        "line-ne",
+        "line-nw",
+        "arrow-up",
+        "arrow-down",
+        "arrow-left",
+        "arrow-right",
+        "arrow-bar-up",
+        "arrow-bar-down",
+        "arrow-bar-left",
+        "arrow-bar-right",
+        "arrow",
+        "arrow-wide",
+    }
+)
 _SYMBOL_VARIANTS: tuple[str, ...] = ("-open-dot", "-open", "-dot")
 
 
@@ -94,6 +159,7 @@ def _validate_symbol(symbol: str, *, where: str) -> None:
             f"{where}: unknown symbol {symbol!r}; base name {base!r} is not a "
             f"Plotly marker symbol"
         )
+
 
 # Bucket keys for the group channel.
 _NO_COLUMN_BUCKET = "ungrouped"
@@ -129,17 +195,19 @@ class Encoding:
     color: str = "blue"
     symbol: str = "circle"
     symbol_sequence: tuple[str, ...] = ()
+    colorscale: str = "viridis"
 
     def __post_init__(self) -> None:
-        if self.color_by not in CHANNELS:
+        if self.color_by not in COLOR_CHANNELS:
             raise EncodingError(
-                f"color_by must be one of {CHANNELS!r}, got {self.color_by!r}"
+                f"color_by must be one of {COLOR_CHANNELS!r}, got {self.color_by!r}"
             )
-        if self.symbol_by not in CHANNELS:
+        if self.symbol_by not in SYMBOL_CHANNELS:
             raise EncodingError(
-                f"symbol_by must be one of {CHANNELS!r}, got {self.symbol_by!r}"
+                f"symbol_by must be one of {SYMBOL_CHANNELS!r}, got {self.symbol_by!r}"
             )
         _validate_symbol(self.symbol, where="symbol")
+        _validate_colorscale(self.colorscale)
         # TOML (and the designer's multi-select) hand over a list; normalise to a
         # tuple so the frozen dataclass is hashable and compares by value.
         object.__setattr__(self, "symbol_sequence", tuple(self.symbol_sequence))
@@ -175,6 +243,8 @@ def color_key_of(
         return enc.color
     if enc.color_by == "pass-fail":
         return "pass" if verdict else "fail"
+    if enc.color_by == "colorscale":
+        return "colorscale"  # constant: colour is per-point, must not split traces
     # group
     if not has_group_column:
         return _NO_COLUMN_BUCKET
@@ -218,9 +288,13 @@ def _channel_label(
 
     ``pass-fail`` labels by verdict ("pass"/"fail") even on the symbol channel,
     where the key is a symbol name ("circle"/"x") — the name should read as the
-    verdict, not the glyph. ``single`` contributes nothing.
+    verdict, not the glyph. ``single`` and ``colorscale`` contribute nothing:
+    ``single`` because every point shares the value, ``colorscale`` because the
+    per-point colour is shown by the colorbar, not the legend — so a trace under
+    ``color_by = "colorscale", symbol_by = "group"`` is named for the group
+    ("BGA"), never "colorscale · BGA".
     """
-    if channel == "single":
+    if channel in ("single", "colorscale"):
         return None
     if channel == "pass-fail":
         return "pass" if verdict else "fail"
@@ -235,9 +309,7 @@ def _trace_name(
     verdict: bool,
     group: str | None,
 ) -> str:
-    color_label = _channel_label(
-        enc.color_by, color_key, verdict=verdict, group=group
-    )
+    color_label = _channel_label(enc.color_by, color_key, verdict=verdict, group=group)
     symbol_label = _channel_label(
         enc.symbol_by, symbol_key, verdict=verdict, group=group
     )
@@ -266,9 +338,7 @@ def partition(
     if n < 0:
         raise ValueError(f"n must be non-negative, got {n}")
     if len(verdicts) != n:
-        raise ValueError(
-            f"verdicts length {len(verdicts)} does not match n={n}"
-        )
+        raise ValueError(f"verdicts length {len(verdicts)} does not match n={n}")
     has_group_column = groups is not None
     if has_group_column and len(groups) != n:  # type: ignore[arg-type]
         raise ValueError(
@@ -276,19 +346,13 @@ def partition(
         )
 
     # (color_key, symbol_key) -> (indices, insertion_order, verdict, group)
-    buckets: dict[
-        tuple[str, str], tuple[list[int], int, bool, str | None]
-    ] = {}
+    buckets: dict[tuple[str, str], tuple[list[int], int, bool, str | None]] = {}
     next_order = 0
     for i in range(n):
         verdict = bool(verdicts[i])
         group = groups[i] if has_group_column else None
-        ck = color_key_of(
-            i, verdict, group, enc, has_group_column=has_group_column
-        )
-        sk = symbol_key_of(
-            i, verdict, group, enc, has_group_column=has_group_column
-        )
+        ck = color_key_of(i, verdict, group, enc, has_group_column=has_group_column)
+        sk = symbol_key_of(i, verdict, group, enc, has_group_column=has_group_column)
         key = (ck, sk)
         bucket = buckets.get(key)
         if bucket is None:
@@ -300,9 +364,7 @@ def partition(
     ordered = sorted(buckets.items(), key=lambda kv: kv[1][1])
     return [
         TraceSpec(
-            name=_trace_name(
-                enc, ck, sk, verdict=verdict, group=group
-            ),
+            name=_trace_name(enc, ck, sk, verdict=verdict, group=group),
             indices=indices,
             color_key=ck,
             symbol_key=sk,

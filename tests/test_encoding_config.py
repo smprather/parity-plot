@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import pytest
 
+from parity_plot import themes
 from parity_plot.config import EXAMPLE_TOML, ConfigError, ParityConfig
 from parity_plot.encoding import Encoding
-from parity_plot import themes
 
 
 def test_default_encoding_is_a_default_encoding():
@@ -35,9 +35,7 @@ def test_encoding_table_parses_all_four_fields():
 
 def test_invalid_channel_value_raises_config_error():
     with pytest.raises(ConfigError):
-        ParityConfig.from_dict(
-            {"plot": {"encoding": {"color_by": "hue"}}}
-        )
+        ParityConfig.from_dict({"plot": {"encoding": {"color_by": "hue"}}})
 
 
 def test_symbol_sequence_parses_from_a_toml_list_into_a_tuple():
@@ -57,16 +55,12 @@ def test_symbol_sequence_parses_from_a_toml_list_into_a_tuple():
 
 def test_unknown_symbol_in_sequence_raises_config_error():
     with pytest.raises(ConfigError, match="unknown symbol"):
-        ParityConfig.from_dict(
-            {"plot": {"encoding": {"symbol_sequence": ["crcle"]}}}
-        )
+        ParityConfig.from_dict({"plot": {"encoding": {"symbol_sequence": ["crcle"]}}})
 
 
 def test_unknown_encoding_key_raises_config_error():
     with pytest.raises(ConfigError, match="unknown key"):
-        ParityConfig.from_dict(
-            {"plot": {"encoding": {"shape": "circle"}}}
-        )
+        ParityConfig.from_dict({"plot": {"encoding": {"shape": "circle"}}})
 
 
 def test_merge_with_an_encoding_object_works():
@@ -78,9 +72,7 @@ def test_merge_with_an_encoding_object_works():
 
 
 def test_example_toml_has_an_encoding_block():
-    cfg = ParityConfig.from_dict(
-        __import__("tomllib").loads(EXAMPLE_TOML)
-    )
+    cfg = ParityConfig.from_dict(__import__("tomllib").loads(EXAMPLE_TOML))
     assert cfg.plot.encoding == Encoding()
 
 
@@ -102,3 +94,21 @@ def test_pass_and_fail_colours_differ_from_identity(theme_name):
     theme = themes.get(theme_name)
     assert theme.pass_color.lower() != theme.identity.lower()
     assert theme.fail_color.lower() != theme.identity.lower()
+
+
+def test_colorscale_key_loads():
+    cfg = ParityConfig.from_dict(
+        {"plot": {"encoding": {"color_by": "colorscale", "colorscale": "plasma"}}}
+    )
+    assert cfg.plot.encoding.color_by == "colorscale"
+    assert cfg.plot.encoding.colorscale == "plasma"
+
+
+def test_bad_colorscale_raises_configerror():
+    with pytest.raises(ConfigError):
+        ParityConfig.from_dict({"plot": {"encoding": {"colorscale": "nope"}}})
+
+
+def test_color_column_loads_in_data_section():
+    cfg = ParityConfig.from_dict({"data": {"color_column": "d.csv:temp"}})
+    assert cfg.data.color_column == "d.csv:temp"

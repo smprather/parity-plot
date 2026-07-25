@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from parity_plot.config import ParityConfig
-from parity_plot.designer.session import Session, StaleFileError
+from parity_plot.designer.session import Session
 
 WIDE = """\
 id,reference,test
@@ -98,25 +98,60 @@ def test_save_reuses_the_loaded_path(csv, tmp_path: Path):
     assert ParityConfig.from_toml(cfg_path).plot.theme == "light"
 
 
-def test_stale_when_the_file_changed_underneath(csv, tmp_path: Path):
-    cfg_path = tmp_path / "parity.toml"
-    cfg_path.write_text('[plot]\ntheme = "dark"\n', encoding="utf-8")
-    session, config, _ = Session.start((csv,), cfg_path)
+def test_config_choices_returns_only_valid_parity_configs(tmp_path):
+    from parity_plot.designer.session import config_choices
 
-    assert not session.is_stale()
-    cfg_path.write_text('[plot]\ntheme = "light"\n', encoding="utf-8")
-    assert session.is_stale()
+    (tmp_path / "good.toml").write_text(
+        '[data]\nfiles = ["d.csv"]\nref = "d.csv:a"\ntest = "d.csv:b"\n',
+        encoding="utf-8",
+    )
+    # parses but names no files -> not a parity-plot config
+    (tmp_path / "nofiles.toml").write_text(
+        '[plot]\ntheme = "light"\n', encoding="utf-8"
+    )
+    # not even valid TOML
+    (tmp_path / "broken.toml").write_text("this = = nonsense\n", encoding="utf-8")
+    # unrelated extension
+    (tmp_path / "data.csv").write_text("id\n1\n", encoding="utf-8")
+
+    names = [p.name for p in config_choices(tmp_path)]
+    assert names == ["good.toml"]
 
 
-def test_saving_over_a_changed_file_refuses_until_forced(csv, tmp_path: Path):
-    """Silently clobbering an edit made in another window loses work."""
-    cfg_path = tmp_path / "parity.toml"
-    cfg_path.write_text('[plot]\ntheme = "dark"\n', encoding="utf-8")
-    session, config, _ = Session.start((csv,), cfg_path)
-    cfg_path.write_text("[plot]\n# edited elsewhere\n", encoding="utf-8")
+def test_config_choices_empty_dir_is_empty(tmp_path):
+    from parity_plot.designer.session import config_choices
 
-    with pytest.raises(StaleFileError):
-        session.save(config)
+    assert config_choices(tmp_path) == []
 
-    session.save(config, force=True)
-    assert "dark" in cfg_path.read_text(encoding="utf-8")
+
+def test_autosave_writes_when_bound(csv, tmp_path):
+    out = tmp_path / "bound.toml"
+    out.write_text(
+        f'[data]\nfiles = ["{csv.as_posix()}"]\n'
+        f'ref = "wide.csv:reference"\ntest = "wide.csv:test"\n',
+        encoding="utf-8",
+    )
+    session, config, _ = Session.start((), out)
+
+    edited = config.merge(plot={"theme": "light"})
+    written = session.autosave(edited)
+
+    assert written == out
+    from parity_plot.config import ParityConfig
+
+    assert ParityConfig.from_toml(out).plot.theme == "light"
+    assert not session.is_dirty(edited)  # disk now matches
+
+
+def test_autosave_is_a_noop_when_unbound(csv):
+    session, config, _ = Session.start((), None)  # no file bound
+    assert session.autosave(config.merge(plot={"theme": "light"})) is None
+
+
+def test_save_over_a_changed_file_no_longer_refuses(csv, tmp_path):
+    out = tmp_path / "c.toml"
+    session, config, _ = Session.start((), None)
+    session.save(config, out)
+    out.write_text(out.read_text() + "\n# edited externally\n", encoding="utf-8")
+    # No StaleFileError any more: the designer owns the file.
+    assert session.save(config.merge(plot={"theme": "light"}), out) == out

@@ -213,7 +213,9 @@ def _safe_load(doc: Any) -> ParityConfig | None:
         return None
 
 
-def _already_equals(current: ParityConfig | None, section: str, key: str, value: Any) -> bool:
+def _already_equals(
+    current: ParityConfig | None, section: str, key: str, value: Any
+) -> bool:
     if current is None:
         return False
     return getattr(getattr(current, section), key) == value
@@ -540,9 +542,10 @@ def test_figure_comes_from_the_cli_code_path(state):
     """The preview must be the CLI's own figure, or the two can drift."""
     from parity_plot.plot import build_figure
 
-    assert state.figure().to_dict() == build_figure(
-        state.data, state.config.plot, state.config.stats
-    ).to_dict()
+    assert (
+        state.figure().to_dict()
+        == build_figure(state.data, state.config.plot, state.config.stats).to_dict()
+    )
 
 
 def test_update_applies_a_setting(state):
@@ -759,7 +762,9 @@ def test_design_starts_a_session_without_running_a_server(csv, monkeypatch):
 
     monkeypatch.setattr("parity_plot.designer.launch.run", fake_run)
 
-    result = CliRunner().invoke(cli, ["design", str(csv), "--port", "9123", "--no-open-browser"])
+    result = CliRunner().invoke(
+        cli, ["design", str(csv), "--port", "9123", "--no-open-browser"]
+    )
 
     assert result.exit_code == 0, result.output
     assert captured["data_paths"] == (csv,)
@@ -867,9 +872,25 @@ Add to `parity_plot/cli.py`, after the `init_config` command and before `def mai
     nargs=-1,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
-@click.option("-c", "--config", type=click.Path(dir_okay=False, path_type=Path), help="TOML config file to open and save back to.")
-@click.option("--port", type=int, default=8080, show_default=True, help="Port to serve on.  Falls back to a free port if taken.")
-@click.option("--open-browser/--no-open-browser", "open_browser", default=True, help="Open the designer in the default browser.  [default: open]")
+@click.option(
+    "-c",
+    "--config",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="TOML config file to open and save back to.",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8080,
+    show_default=True,
+    help="Port to serve on.  Falls back to a free port if taken.",
+)
+@click.option(
+    "--open-browser/--no-open-browser",
+    "open_browser",
+    default=True,
+    help="Open the designer in the default browser.  [default: open]",
+)
 def design(
     paths: tuple[Path, ...],
     config: Path | None,
@@ -907,7 +928,7 @@ Add to `HELP_CONFIG`'s `option_groups`, alongside the other commands:
 And add `design` to the `command_groups` "Plotting" list so it appears grouped:
 
 ```python
-            {"name": "Plotting", "commands": ["plot", "design"]},
+({"name": "Plotting", "commands": ["plot", "design"]},)
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1072,34 +1093,100 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
     ControlSpec("plot", "x_label", "X label", "text", "Defaults to the column name."),
     ControlSpec("plot", "y_label", "Y label", "text", "Defaults to the column name."),
     ControlSpec("plot", "theme", "Theme", "choice", "Colour theme.", THEMES),
-    ControlSpec("plot", "legend", "Legend", "choice", "Where the legend sits.", LEGEND_POSITIONS),
-    ControlSpec("plot", "nulls", "Unpaired records", "choice", "Rug ticks, or hidden.", NULL_MODES),
+    ControlSpec(
+        "plot", "legend", "Legend", "choice", "Where the legend sits.", LEGEND_POSITIONS
+    ),
+    ControlSpec(
+        "plot",
+        "nulls",
+        "Unpaired records",
+        "choice",
+        "Rug ticks, or hidden.",
+        NULL_MODES,
+    ),
     ControlSpec("plot", "log", "Log axes", "switch", "Logarithmic x and y."),
-    ControlSpec("plot", "equal_axes", "Lock 45°", "switch", "Share one range and a 1:1 pixel scale."),
-    ControlSpec("plot", "identity_line", "Show y = x", "switch", "Draw the zero-error line."),
+    ControlSpec(
+        "plot",
+        "equal_axes",
+        "Lock 45°",
+        "switch",
+        "Share one range and a 1:1 pixel scale.",
+    ),
+    ControlSpec(
+        "plot", "identity_line", "Show y = x", "switch", "Draw the zero-error line."
+    ),
     # --- Tolerances -------------------------------------------------------
     ControlSpec(
-        "plot", "abstol", "Absolute tolerance", "number",
+        "plot",
+        "abstol",
+        "Absolute tolerance",
+        "number",
         "In the data's own units. Draws lines parallel to y = x.",
         group="Tolerances",
     ),
     ControlSpec(
-        "plot", "reltol", "Relative tolerance", "text",
+        "plot",
+        "reltol",
+        "Relative tolerance",
+        "text",
         "A ratio (0.1), or a percentage written out (10pct).",
         group="Tolerances",
     ),
     ControlSpec(
-        "plot", "band_style", "Limit style", "choice",
-        "Lines, or a shaded band.", BAND_STYLES, group="Tolerances",
+        "plot",
+        "band_style",
+        "Limit style",
+        "choice",
+        "Lines, or a shaded band.",
+        BAND_STYLES,
+        group="Tolerances",
     ),
     # --- Statistics -------------------------------------------------------
-    ControlSpec("stats", "show", "Show statistics", "switch", "Display the metrics box.", group="Statistics"),
-    ControlSpec("stats", "metrics", "Metrics", "text", "Comma-separated: n, r2, rmse, mae, bias.", group="Statistics"),
+    ControlSpec(
+        "stats",
+        "show",
+        "Show statistics",
+        "switch",
+        "Display the metrics box.",
+        group="Statistics",
+    ),
+    ControlSpec(
+        "stats",
+        "metrics",
+        "Metrics",
+        "text",
+        "Comma-separated: n, r2, rmse, mae, bias.",
+        group="Statistics",
+    ),
     # --- Output -----------------------------------------------------------
-    ControlSpec("output", "path", "Output file", "text", "Where `plot` writes to.", group="Output"),
-    ControlSpec("output", "format", "Format", "choice", "html needs nothing; the rest need kaleido.", OUTPUT_FORMATS, group="Output"),
-    ControlSpec("output", "width", "Width", "number", "Figure width in pixels.", group="Output"),
-    ControlSpec("output", "height", "Height", "number", "Figure height in pixels.", group="Output"),
+    ControlSpec(
+        "output",
+        "path",
+        "Output file",
+        "text",
+        "Where `plot` writes to.",
+        group="Output",
+    ),
+    ControlSpec(
+        "output",
+        "format",
+        "Format",
+        "choice",
+        "html needs nothing; the rest need kaleido.",
+        OUTPUT_FORMATS,
+        group="Output",
+    ),
+    ControlSpec(
+        "output", "width", "Width", "number", "Figure width in pixels.", group="Output"
+    ),
+    ControlSpec(
+        "output",
+        "height",
+        "Height",
+        "number",
+        "Figure height in pixels.",
+        group="Output",
+    ),
 )
 
 GROUPS = ("Appearance", "Tolerances", "Statistics", "Output")
@@ -1118,7 +1205,9 @@ def build_controls(state: DesignerState, on_change: Callable[[], None]) -> None:
                 _build_one(state, spec, on_change)
 
 
-def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], None]) -> None:
+def _build_one(
+    state: DesignerState, spec: ControlSpec, on_change: Callable[[], None]
+) -> None:
     from nicegui import ui
 
     current = getattr(getattr(state.config, spec.section), spec.key)
@@ -1129,16 +1218,24 @@ def _build_one(state: DesignerState, spec: ControlSpec, on_change: Callable[[], 
         on_change()
 
     if spec.kind == "switch":
-        ui.switch(spec.label, value=bool(current), on_change=lambda e: apply(e.value)).tooltip(spec.help)
+        ui.switch(
+            spec.label, value=bool(current), on_change=lambda e: apply(e.value)
+        ).tooltip(spec.help)
     elif spec.kind == "choice":
-        ui.select(list(spec.choices), value=current, label=spec.label,
-                  on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.select(
+            list(spec.choices),
+            value=current,
+            label=spec.label,
+            on_change=lambda e: apply(e.value),
+        ).classes("w-full").tooltip(spec.help)
     elif spec.kind == "number":
-        ui.number(spec.label, value=current,
-                  on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.number(
+            spec.label, value=current, on_change=lambda e: apply(e.value)
+        ).classes("w-full").tooltip(spec.help)
     else:
-        ui.input(spec.label, value=_as_text(current),
-                 on_change=lambda e: apply(e.value)).classes("w-full").tooltip(spec.help)
+        ui.input(
+            spec.label, value=_as_text(current), on_change=lambda e: apply(e.value)
+        ).classes("w-full").tooltip(spec.help)
 
 
 def _clean(spec: ControlSpec, value: Any) -> Any:
@@ -1209,7 +1306,9 @@ pytest_plugins = ("nicegui.testing.plugin",)
 @pytest.fixture
 def session_and_data(tmp_path: Path):
     csv = tmp_path / "wide.csv"
-    csv.write_text("id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n", encoding="utf-8")
+    csv.write_text(
+        "id,reference,measured\nA1,10.0,11.0\nA2,20.0,21.0\n", encoding="utf-8"
+    )
     return Session.start((csv,), None)
 
 
@@ -1280,7 +1379,9 @@ from .session import Session, StaleFileError
 from .state import DesignerState
 
 
-def build_app(session: Session, config: ParityConfig, data: ParityData) -> DesignerState:
+def build_app(
+    session: Session, config: ParityConfig, data: ParityData
+) -> DesignerState:
     """Register the designer page and return the state it drives."""
     from nicegui import ui
 
@@ -1310,7 +1411,9 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
         def refresh() -> None:
             plot_view.update_figure(state.figure())
             error_banner.text = state.last_error or ""
-            status.text = "unsaved changes" if session.is_dirty(state.config) else "saved"
+            status.text = (
+                "unsaved changes" if session.is_dirty(state.config) else "saved"
+            )
 
         def save(path: Path | None, force: bool = False) -> None:
             try:
@@ -1338,7 +1441,9 @@ def build_app(session: Session, config: ParityConfig, data: ParityData) -> Desig
         def ask_where_to_save() -> None:
             with ui.dialog() as dialog, ui.card():
                 ui.label("Save configuration as")
-                target = ui.input("Path", value=str(session.config_path or "parity.toml"))
+                target = ui.input(
+                    "Path", value=str(session.config_path or "parity.toml")
+                )
                 with ui.row():
                     ui.button("Cancel", on_click=dialog.close)
                     ui.button(

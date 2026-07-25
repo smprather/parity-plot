@@ -15,22 +15,22 @@ from __future__ import annotations
 
 from typing import Callable
 
+from ...themes import COLOR_TOKENS
 from ...tolerances import (
-    KINDS,
     PARITY_NAME,
     STYLES,
     NamedTolerance,
 )
-from ...themes import COLOR_TOKENS
 from .. import tolerance_ops as ops
 from ..state import DesignerState
+from .section import section
 
 
 def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
     """Render the tolerance list and the controls that edit it."""
     from nicegui import ui
 
-    with ui.expansion("Tolerances", value=True).classes("w-full"):
+    with section("Tolerances"):
         container = ui.column().classes("w-full gap-1")
 
         def current() -> tuple[NamedTolerance, ...]:
@@ -48,14 +48,19 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
             with container:
                 for tol in current():
                     _row(tol)
-                ui.button("Add tolerance", icon="add",
-                          on_click=lambda: commit(ops.add(current()))).props("flat dense")
+                ui.button(
+                    "Add tolerance",
+                    icon="add",
+                    on_click=lambda: commit(ops.add(current())),
+                ).props("flat dense")
 
         def _row(tol: NamedTolerance) -> None:
             with ui.row().classes("w-full items-center gap-2 no-wrap"):
                 ui.checkbox(
                     value=tol.enabled,
-                    on_change=lambda e, n=tol.name: commit(ops.set_enabled(current(), n, e.value)),
+                    on_change=lambda e, n=tol.name: commit(
+                        ops.set_enabled(current(), n, e.value)
+                    ),
                 ).props("dense").tooltip("Draw this tolerance")
 
                 _swatch(tol)
@@ -109,16 +114,22 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                 label_in.bind_visibility_from(label_mode, "value", value="manual")
 
                 with ui.row().classes("w-full gap-2 no-wrap items-center"):
-                    abstol_in = ui.number("abstol", value=tol.abstol, format="%.4g").classes("grow")
+                    abstol_in = ui.number(
+                        "abstol", value=tol.abstol, format="%.4g"
+                    ).classes("grow")
                     # Left to right: the reltol value, then the % checkbox, then a
                     # "%" label. Checked (default) the field is a percentage;
                     # unchecked it is a bare ratio. Toggling converts in place so
                     # the underlying value never changes just from flipping it.
                     reltol_in = ui.number(
-                        "reltol", value=_reltol_display(tol, percent=True), format="%.4g"
+                        "reltol",
+                        value=_reltol_display(tol, percent=True),
+                        format="%.4g",
                     ).classes("grow")
-                    pct_in = ui.checkbox(value=True).props("dense").tooltip(
-                        "Enter reltol as a percentage"
+                    pct_in = (
+                        ui.checkbox(value=True)
+                        .props("dense")
+                        .tooltip("Enter reltol as a percentage")
                     )
                     ui.label("%").classes("text-sm")
 
@@ -128,23 +139,34 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                         reltol_in.value = (
                             reltol_in.value * 100 if e.value else reltol_in.value / 100
                         )
+
                     pct_in.on_value_change(_convert)
                 if locked:
-                    abstol_in.props("readonly").tooltip("The parity line is a zero tolerance")
+                    abstol_in.props("readonly").tooltip(
+                        "The parity line is a zero tolerance"
+                    )
                     reltol_in.props("readonly")
                     pct_in.props("disable")
 
                 kind_sel = ui.select(
-                    {"pass": "pass-fail", "info": "info"}, value=tol.kind, label="Kind",
+                    {"pass": "pass-fail", "info": "info"},
+                    value=tol.kind,
+                    label="Kind",
                 ).classes("w-full")
                 if locked:
-                    kind_sel.props("readonly").tooltip("The parity line is informational")
+                    kind_sel.props("readonly").tooltip(
+                        "The parity line is informational"
+                    )
 
                 def _refresh_auto_preview() -> None:
                     """Show what an auto label would read, from the fields as they
                     stand -- so editing a bound updates the preview live."""
                     reltol = _reltol_from_field(reltol_in.value, pct_in.value)
-                    abstol = float(abstol_in.value) if abstol_in.value not in (None, "") else None
+                    abstol = (
+                        float(abstol_in.value)
+                        if abstol_in.value not in (None, "")
+                        else None
+                    )
                     auto_preview.text = _auto_label_preview(abstol, reltol)
 
                 for widget in (abstol_in, reltol_in, pct_in):
@@ -153,13 +175,19 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
 
                 with ui.row().classes("w-full gap-2 no-wrap"):
                     color_sel = ui.select(
-                        list(COLOR_TOKENS), value=_color_value(tol), label="Colour",
+                        list(COLOR_TOKENS),
+                        value=_color_value(tol),
+                        label="Colour",
                     ).classes("grow")
-                    style_sel = ui.select(list(STYLES), value=tol.style, label="Draw as").classes("grow")
+                    style_sel = ui.select(
+                        list(STYLES), value=tol.style, label="Draw as"
+                    ).classes("grow")
                 if locked:
                     # Parity is a single zero-width line; lines-vs-shaded has
                     # nothing to fill between, so the choice is meaningless.
-                    style_sel.props("readonly").tooltip("The parity line is always a line")
+                    style_sel.props("readonly").tooltip(
+                        "The parity line is always a line"
+                    )
 
                 legend_sw = ui.switch("Show in legend", value=tol.show_in_legend)
 
@@ -168,9 +196,17 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                 def save() -> None:
                     reltol = _reltol_from_field(reltol_in.value, pct_in.value)
                     edited = _from_editor(
-                        tol, locked, name_in.value, label_mode.value, label_in.value,
-                        abstol_in.value, reltol, kind_sel.value,
-                        color_sel.value, style_sel.value, legend_sw.value,
+                        tol,
+                        locked,
+                        name_in.value,
+                        label_mode.value,
+                        label_in.value,
+                        abstol_in.value,
+                        reltol,
+                        kind_sel.value,
+                        color_sel.value,
+                        style_sel.value,
+                        legend_sw.value,
                     )
                     if isinstance(edited, str):  # an error message
                         error.text = edited
@@ -222,7 +258,17 @@ def _color_value(tol: NamedTolerance) -> str:
 
 
 def _from_editor(
-    original, locked, name, label_mode, label, abstol, reltol, kind, color, style, in_legend,
+    original,
+    locked,
+    name,
+    label_mode,
+    label,
+    abstol,
+    reltol,
+    kind,
+    color,
+    style,
+    in_legend,
 ):
     """Assemble an edited NamedTolerance, or return an error string.
 

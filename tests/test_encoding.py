@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from parity_plot.encoding import CHANNELS, Encoding, partition
+from parity_plot.encoding import Encoding, partition
 
 
 def test_default_is_a_single_trace():
@@ -37,7 +37,7 @@ def test_pass_fail_symbol_uses_circle_and_x():
 
 def test_group_colour_makes_one_trace_per_group_in_first_seen_order():
     specs = partition(4, [True] * 4, ["b", "a", "b", "a"], Encoding(color_by="group"))
-    assert [s.color_key for s in specs] == ["b", "a"]     # first-seen order
+    assert [s.color_key for s in specs] == ["b", "a"]  # first-seen order
     assert specs[0].indices == [0, 2]
     assert specs[1].indices == [1, 3]
 
@@ -45,7 +45,9 @@ def test_group_colour_makes_one_trace_per_group_in_first_seen_order():
 def test_colour_by_group_and_symbol_by_pass_fail_cross():
     """The headline case: batch colour, verdict symbol -- one trace per pair."""
     specs = partition(
-        4, [True, False, True, False], ["a", "a", "b", "b"],
+        4,
+        [True, False, True, False],
+        ["a", "a", "b", "b"],
         Encoding(color_by="group", symbol_by="pass-fail"),
     )
     got = {(s.color_key, s.symbol_key): s.indices for s in specs}
@@ -63,7 +65,9 @@ def test_trace_name_reflects_the_meaningful_dimensions():
     assert {s.name for s in pf} == {"pass", "fail"}
 
     crossed = partition(
-        2, [True, False], ["a", "a"],
+        2,
+        [True, False],
+        ["a", "a"],
         Encoding(color_by="group", symbol_by="pass-fail"),
     )
     assert {s.name for s in crossed} == {"a · pass", "a · fail"}
@@ -80,12 +84,14 @@ def test_a_none_group_value_is_its_own_bucket():
     specs = partition(3, [True] * 3, ["a", None, "a"], Encoding(color_by="group"))
     by = {s.color_key: s.indices for s in specs}
     assert by["a"] == [0, 2]
-    assert set(by) - {"a"}                       # a bucket for the None too
+    assert set(by) - {"a"}  # a bucket for the None too
 
 
 def test_every_point_lands_in_exactly_one_trace():
     specs = partition(
-        5, [True, False, True, False, True], ["a", "b", "a", "c", "b"],
+        5,
+        [True, False, True, False, True],
+        ["a", "b", "a", "c", "b"],
         Encoding(color_by="group", symbol_by="pass-fail"),
     )
     seen = sorted(i for s in specs for i in s.indices)
@@ -104,7 +110,9 @@ def test_symbol_by_group_keys_by_group_value_not_glyph():
     """The symbol channel now buckets by the group value, so a trace is named
     for the group -- the headline case: colour by verdict, shape by group."""
     specs = partition(
-        4, [True, False, True, False], ["a", "a", "b", "b"],
+        4,
+        [True, False, True, False],
+        ["a", "a", "b", "b"],
         Encoding(color_by="pass-fail", symbol_by="group"),
     )
     got = {(s.color_key, s.symbol_key): s.indices for s in specs}
@@ -125,7 +133,9 @@ def test_symbol_sequence_accepts_variant_suffixes():
     Encoding(symbol_sequence=["circle-open", "square-dot", "diamond-open-dot"])
 
 
-@pytest.mark.parametrize("bad", [["crcle"], ["circle", "definitely-not-a-symbol"], [""]])
+@pytest.mark.parametrize(
+    "bad", [["crcle"], ["circle", "definitely-not-a-symbol"], [""]]
+)
 def test_symbol_sequence_rejects_unknown_symbols(bad):
     from parity_plot.encoding import EncodingError
 
@@ -138,3 +148,60 @@ def test_single_symbol_is_validated_too():
 
     with pytest.raises(EncodingError):
         Encoding(symbol="nonsense")
+
+
+def test_colorscale_is_a_colour_channel_only():
+    from parity_plot.encoding import COLOR_CHANNELS, SYMBOL_CHANNELS
+
+    assert "colorscale" in COLOR_CHANNELS
+    assert "colorscale" not in SYMBOL_CHANNELS
+
+
+def test_symbol_by_rejects_colorscale():
+    from parity_plot.encoding import EncodingError
+
+    with pytest.raises(EncodingError):
+        Encoding(symbol_by="colorscale")
+
+
+def test_colorscale_name_validates_and_strips_reverse_suffix():
+    Encoding(color_by="colorscale", colorscale="Viridis")  # case-insensitive
+    Encoding(color_by="colorscale", colorscale="viridis_r")  # reverse suffix ok
+    from parity_plot.encoding import EncodingError
+
+    with pytest.raises(EncodingError):
+        Encoding(color_by="colorscale", colorscale="notascale")
+
+
+def test_colorscale_color_key_is_constant():
+    from parity_plot.encoding import color_key_of
+
+    k0 = color_key_of(
+        0, True, "a", Encoding(color_by="colorscale"), has_group_column=True
+    )
+    k1 = color_key_of(
+        1, False, "b", Encoding(color_by="colorscale"), has_group_column=True
+    )
+    assert k0 == k1 == "colorscale"
+
+
+def test_colorscale_partitions_by_symbol_only():
+    specs = partition(
+        4,
+        [True] * 4,
+        ["a", "b", "a", "b"],
+        Encoding(color_by="colorscale", symbol_by="group"),
+    )
+    assert len(specs) == 2  # one trace per symbol group; colour does not split
+
+
+def test_colorscale_contributes_no_name_the_colorbar_does():
+    """Colour is shown by the colorbar, so a trace is named for its symbol group
+    only -- "BGA", never "colorscale · BGA"."""
+    specs = partition(
+        4,
+        [True] * 4,
+        ["BGA", "DIP", "BGA", "DIP"],
+        Encoding(color_by="colorscale", symbol_by="group"),
+    )
+    assert {s.name for s in specs} == {"BGA", "DIP"}
