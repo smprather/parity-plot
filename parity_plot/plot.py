@@ -565,22 +565,80 @@ def _add_stats_box(
     )
 
 
+# How `[output].plotlyjs` maps onto plotly's own `include_plotlyjs` argument.
+# True inlines the library, False emits none, the rest are plotly's spellings.
+_PLOTLYJS_ARG: dict[str, bool | str] = {
+    "inline": True,
+    "cdn": "cdn",
+    "directory": "directory",
+    "none": False,
+}
+
+
+def to_fragment(
+    fig: go.Figure, div_id: str | None = None, plotlyjs: str = "none"
+) -> str:
+    """The figure as an HTML fragment, for embedding in a page you own.
+
+    A ``<div>`` and its ``<script>`` with no ``<html>``/``<head>`` wrapper, so any
+    number of plots can share the one copy of plotly.js the page loads itself. A
+    fragment carries only the data, so it costs a few KB for a small plot and tens
+    of KB for a large one -- against the flat ~4.9 MB of library that a standalone
+    inlined document repeats per file.
+
+    Pass an explicit ``div_id`` when the output is cached or diffed: plotly
+    invents a random UUID otherwise, so identical data produces a different
+    fragment on every run.
+
+    The fragment carries **no width or height** -- the container sizes it. That
+    matters more here than it looks: the 45 degree parity line survives only
+    while both axes share a range *and* their pixel scales are locked *and*
+    ``constrain="domain"`` is set. Baking in pixels the container does not have
+    makes Plotly lay the axes out for the wrong box, and the diagonal quietly
+    stops being diagonal. Call ``Plotly.Plots.resize(div)`` when the container
+    changes size.
+    """
+    if plotlyjs not in _PLOTLYJS_ARG:
+        raise ValueError(
+            f"unknown plotlyjs mode {plotlyjs!r}; valid modes are "
+            f"{sorted(_PLOTLYJS_ARG)}"
+        )
+    return fig.to_html(
+        full_html=False,
+        include_plotlyjs=_PLOTLYJS_ARG[plotlyjs],
+        div_id=div_id,
+    )
+
+
 def save(fig: go.Figure, output: OutputConfig) -> Path:
     """Write the figure to disk in the configured format."""
     path = Path(output.path)
     if path.parent != Path(""):
         path.parent.mkdir(parents=True, exist_ok=True)
 
+    fmt = output.resolved_format
+    if fmt == "html" and output.embed:
+        # Deliberately before the width/height update: a fragment is sized by
+        # the page it lands in, and forcing pixels here is what breaks the
+        # 45 degree invariant in a responsive container (see to_fragment).
+        path.write_text(
+            to_fragment(fig, div_id=output.div_id, plotlyjs=output.resolved_plotlyjs),
+            encoding="utf-8",
+        )
+        return path
+
     fig.update_layout(width=output.width, height=output.height)
 
-    if output.format == "html":
-        fig.write_html(str(path), include_plotlyjs="cdn")
+    if fmt == "html":
+        fig.write_html(
+            str(path), include_plotlyjs=_PLOTLYJS_ARG[output.resolved_plotlyjs]
+        )
         return path
 
     try:
-        fig.write_image(str(path), format=output.format)
+        fig.write_image(str(path), format=fmt)
     except Exception as exc:
-        raise ExportError(_export_hint(output.format, exc)) from exc
+        raise ExportError(_export_hint(fmt, exc)) from exc
     return path
 
 

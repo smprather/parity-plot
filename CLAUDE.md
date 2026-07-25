@@ -379,9 +379,42 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   code uses `RichHelpConfiguration(option_groups=...)`. In those groups, flag
   pairs are matched by their **first** declaration (`--log`, not
   `--log/--no-log`) or they fall into a leftover "Options" panel.
-- Both `plot` and `example` write images, so both must route their output path
-  through `cli._infer_format`. Without it `-o out.png` silently writes HTML into
-  a `.png` file — that bug shipped once already on `example`.
+- **`[output].format` is tri-state and read through `resolved_format`, never
+  directly.** `None` (an absent key) means "take it from the path's extension,
+  else html", so `path = "shot.png"` writes a PNG. An explicit format that
+  *contradicts* the extension raises in `__post_init__` rather than picking a
+  winner — either resolution would silently discard one of the two things the
+  user wrote. `cli._infer_format` still exists and is still needed: it makes an
+  explicit `-o out.png` **override** a format the TOML set, which the config-level
+  inference alone cannot do. The silent-HTML-into-`.png` bug shipped twice — once
+  on `example`'s `-o`, once via the TOML path.
+- **`embed = true` writes an HTML fragment, not a document** — `plot.to_fragment`
+  (public, exported from `parity_plot`) returns a `<div>` + `<script>` with no
+  `<html>` wrapper — data only, so a few KB to tens of KB, against the flat
+  ~4.9 MB of library an inlined document repeats per file. `save()` routes
+  through it so there is
+  one implementation. Two things there are load-bearing: `plotlyjs` resolves to
+  `"none"` when embedding (via `resolved_plotlyjs` — the point of fragments is
+  that the *page* loads plotly.js once), and the embed branch sits **before**
+  `fig.update_layout(width=…, height=…)` on purpose. A fragment must stay
+  autosizing: bake in pixels the container does not have and Plotly lays the axes
+  out for the wrong box, `constrain="domain"` shrinks against stale numbers, and
+  **the 45° line silently stops being diagonal**. Consumers must call
+  `Plotly.Plots.resize(div)` on container resize. `div_id` exists so cached or
+  diffed fragments do not churn on plotly's random UUID.
+- **`parity_plot(config=<toml path>)` is a supported entry point** — a config is a
+  complete instruction, no `ref`/`test`/paths needed (keyword options still win
+  over it). It is what an app embedding many plots uses, so one committed TOML
+  renders identically through the CLI, the designer, and library code.
+- **HTML exports are self-contained by default** (`[output].plotlyjs = "inline"`,
+  `PLOTLYJS_MODES`): ~4.8 MB per file, but it opens air-gapped, emailed, or years
+  later when the pinned CDN build is gone. `"cdn"` is 84 KB and needs a network;
+  `"directory"` writes `plotly.min.js` once per folder. `plot._PLOTLYJS_ARG` maps
+  these onto plotly's own `include_plotlyjs` spellings. **The designer needs no
+  CDN either** — NiceGUI serves its own assets, a vendored plotly ESM bundle, and
+  AG-Grid *community* from the venv. When testing offline-ness, do not assert on
+  a bare `cdn.plot.ly`: the inlined bundle contains that host as plotly's
+  topojson default for geo maps. Assert on the `src="https://cdn.plot.ly` tag.
 - `data/` and rendered plots are gitignored; regenerate with `parity-plot example`.
 - **Tolerance band shading is the per-tolerance `style` key** (`"lines"` |
   `"shaded"`), living inside a `[[plot.tolerances]]` table. `band_style` is a
@@ -417,11 +450,12 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
 ## Releases
 
 Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
-GitHub Releases. Current line: **0.6.0** (`main`). History: 0.1.0 → multi-file
+GitHub Releases. Current line: **0.7.0** (`main`). History: 0.1.0 → multi-file
 data model & encoding (0.3.0) → file-independent group + persistent designer
 status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
 value (0.5.0) → composite group, colorscale channel, TOML-only CLI, designer
-auto-save/config picker, hover-text columns (0.6.0). Tags `v0.1.0`–`v0.3.0`
+auto-save/config picker, hover-text columns (0.6.0) → offline-by-default HTML,
+output-format inference, embeddable fragments (0.7.0). Tags `v0.1.0`–`v0.3.0`
 predate the GitHub Releases; `v0.4.0` onward have them.
 
 The ship flow (only when the user asks): branch off `main`, commit, bump the

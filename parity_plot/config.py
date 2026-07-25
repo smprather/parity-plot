@@ -36,6 +36,14 @@ DEFAULT_NA_VALUES: tuple[str, ...] = (
 THEMES = ("dark", "light")
 NULL_MODES = ("rug", "drop")
 OUTPUT_FORMATS = ("html", "png", "svg", "pdf")
+# How an exported HTML file gets plotly.js. "inline" is the default for a
+# standalone document, because a plot is something you email, archive, or open on
+# a machine with no network -- a "cdn" file is 84 KB and a blank page the moment
+# any of that is true (and eventually when that pinned CDN build stops being
+# served). "directory" writes plotly.min.js once beside the HTML, so a folder of
+# plots shares it. "none" emits no library at all: the page supplies its own,
+# which is the point of embedding several plots in one document.
+PLOTLYJS_MODES = ("inline", "cdn", "directory", "none")
 # "top" is deliberately absent: the title carries a subtitle, and a legend
 # above the axes lands on top of it.
 LEGEND_POSITIONS = ("right", "bottom", "none")
@@ -44,6 +52,12 @@ BAND_STYLES = ("lines", "shaded")
 
 class ConfigError(ValueError):
     """Raised for malformed or invalid configuration."""
+
+
+def _format_of(path: Path | str) -> str | None:
+    """The output format a path's extension names, or None if it names none."""
+    suffix = Path(path).suffix.lstrip(".").lower()
+    return suffix if suffix in OUTPUT_FORMATS else None
 
 
 @dataclass(frozen=True)
@@ -112,9 +126,54 @@ class StatsConfig:
 @dataclass(frozen=True)
 class OutputConfig:
     path: Path = Path("parity.html")
-    format: str = "html"
+    # None means "take it from the path's extension" (falling back to html).
+    # Without that, `path = "shot.png"` and no format wrote HTML into a .png --
+    # the exact bug `cli._infer_format` fixes for `-o`, which never covered the
+    # TOML path. Read it through `resolved_format`, never directly.
+    format: str | None = None
+    # None resolves per `embed` (see resolved_plotlyjs). Read it through that
+    # property, never directly.
+    plotlyjs: str | None = None
+    # True writes an HTML *fragment* -- a div and its script, no <html> wrapper --
+    # for embedding several plots in one page you own.
+    embed: bool = False
+    # The fragment's container id. Plotly invents a random UUID when this is
+    # unset, so identical data yields a different fragment every run; pin it if
+    # you cache or diff the output.
+    div_id: str | None = None
     width: int = 900
     height: int = 900
+
+    def __post_init__(self) -> None:
+        # An explicit format that contradicts the extension is a mistake worth
+        # refusing rather than resolving: whichever way it were resolved, one of
+        # the two things the user wrote would be silently ignored.
+        if self.format is None:
+            return
+        suffix = _format_of(self.path)
+        if suffix is not None and suffix != self.format:
+            raise ConfigError(
+                f"[output]: format is {self.format!r} but path {str(self.path)!r} "
+                f"ends in .{suffix} -- drop one of them"
+            )
+
+    @property
+    def resolved_format(self) -> str:
+        """The format to write: the explicit one, else the path's, else html."""
+        return self.format or _format_of(self.path) or "html"
+
+    @property
+    def resolved_plotlyjs(self) -> str:
+        """Which library mode to use: the explicit one, else per ``embed``.
+
+        A fragment defaults to ``"none"``: embedding several plots in one page is
+        the reason to make fragments at all, and the page loads plotly.js once
+        itself -- inlining it per fragment would defeat the exercise. A
+        standalone document defaults to ``"inline"`` so it opens with no network.
+        """
+        if self.plotlyjs is not None:
+            return self.plotlyjs
+        return "none" if self.embed else "inline"
 
 
 @dataclass(frozen=True)
@@ -231,6 +290,7 @@ _CHOICES = {
     "nulls": NULL_MODES,
     "format": OUTPUT_FORMATS,
     "legend": LEGEND_POSITIONS,
+    "plotlyjs": PLOTLYJS_MODES,
 }
 
 RETIRED_PLOT_KEYS = ("abstol", "reltol", "band_style", "identity_line")
@@ -278,7 +338,7 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         if size <= 0:
             raise ConfigError(f"{where}: must be positive, got {size}")
         return size
-    if key in {"log", "equal_axes", "show"}:
+    if key in {"log", "equal_axes", "show", "embed"}:
         if not isinstance(value, bool):
             raise ConfigError(f"{where}: expected true or false, got {value!r}")
         return value
@@ -486,7 +546,19 @@ metrics = ["n", "r2", "rmse", "mae", "bias", "std", "max_abs_err"]
 
 [output]
 path = "parity.html"
-format = "html"         # html | png | svg | pdf (non-html needs parity-plot[static])
+# format is taken from the path's extension; set it only to override, and never
+# to something the extension contradicts (that raises rather than picking one).
+# format = "html"       # html | png | svg | pdf (non-html needs a headless Chrome)
+# How an HTML export gets plotly.js. Unset means inline for a standalone file --
+# self-contained, opens with no network, ~4.8 MB. "none" emits no library, for a
+# page that loads its own; embedded fragments default to that.
+# plotlyjs = "inline"   # inline | cdn | directory | none
+# Embedding several plots in one app? Write fragments (a div + script, ~3 KB, no
+# <html> wrapper) and let the page load plotly.js once. width/height are ignored
+# for a fragment: the container sizes it, and baking in pixels it does not have
+# is what makes the 45 degree line drift. Pin div_id if you cache the output.
+# embed = true
+# div_id = "parity-run7"
 width = 900
 height = 900
 """
