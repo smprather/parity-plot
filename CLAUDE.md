@@ -402,6 +402,12 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   **the 45° line silently stops being diagonal**. Consumers must call
   `Plotly.Plots.resize(div)` on container resize. `div_id` exists so cached or
   diffed fragments do not churn on plotly's random UUID.
+- **`docs/embedding.md` is the consumer-facing embedding contract** — written for
+  whoever builds the app that hosts the fragments, and the place to record
+  anything learned about multi-plot pages. Its claims are all measured against the
+  real output (fragment structure, the exact 5,000/5,001 `scatter`→`scattergl`
+  boundary, compressed library sizes); if the fragment shape or the threshold ever
+  changes, that file goes stale silently, so update it in the same commit.
 - **`parity_plot(config=<toml path>)` is a supported entry point** — a config is a
   complete instruction, no `ref`/`test`/paths needed (keyword options still win
   over it). It is what an app embedding many plots uses, so one committed TOML

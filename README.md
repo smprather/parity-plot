@@ -319,17 +319,31 @@ For a **dynamic** app, skip HTML entirely: `parity_plot(...)` returns a plain
 Plotly figure, so `fig.to_json()` on the server and `Plotly.newPlot(div, data,
 layout)` on the client ships only the data.
 
-Two things specific to parity plots:
+The library itself is minified (`plotly.min.js`, 4.85 MB) and already sits in the
+plotly wheel — copy it out rather than fetching it, and it is guaranteed to match
+the version that rendered your figures:
 
-- **Call `Plotly.Plots.resize(div)` when the container resizes.** The 45° line
-  holds only while both axes share a range, their pixel scales are locked, *and*
-  `constrain="domain"` is set. Stale dimensions make Plotly lay the axes out for
-  a box the page doesn't have and the diagonal quietly stops being diagonal.
-  Fragments deliberately carry no width/height so the container governs.
-- **Watch WebGL contexts.** Above 5,000 paired points a plot switches to
-  `Scattergl`. Browsers allow only ~8–16 live WebGL contexts, so a page of many
-  large plots will start rendering blank tiles. Render lazily on scroll, or cap
-  how many are live at once.
+```bash
+uv run python -c "import plotly, pathlib, shutil; \
+shutil.copy(pathlib.Path(plotly.__file__).parent / 'package_data' / 'plotly.min.js', \
+            'static/plotly.min.js')"
+```
+
+**→ [docs/embedding.md](docs/embedding.md) is the full guide**, and worth reading
+before wiring this up. It covers the failure modes that are silent rather than
+loud, each verified against the real output:
+
+- a fragment is `height: 100%`, so a container without a **definite height**
+  renders nothing, with no console error;
+- fragments run from a plain inline `<script>`, so loading plotly.js with
+  `defer` or `type="module"` gives `Plotly is not defined`;
+- **`innerHTML` never executes inline scripts**, so runtime-injected fragments
+  are permanently blank — dynamic apps must use `to_json()`;
+- `responsive: true` is already set, so window resizes are handled, but
+  container-only resizes need `Plotly.Plots.resize` — and a stale layout breaks
+  the 45° geometry *silently*;
+- above 5,000 points traces become `scattergl`, and browsers cap live WebGL
+  contexts at roughly 8–16, so a page of large plots starts rendering blank.
 
 ## Config file
 
