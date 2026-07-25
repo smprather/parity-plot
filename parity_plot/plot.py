@@ -89,19 +89,18 @@ def build_figure(
 
 def _drop_non_positive(data: ParityData) -> ParityData:
     """Remove values a log axis cannot show, reporting how many were lost."""
-    colors = (
-        data.color_values if data.color_values is not None else [None] * data.n_paired
+    # Re-slice every per-paired-point list by kept indices so hover text and
+    # colour stay aligned to x/y. group is deliberately left alone: re-slicing
+    # it is a pre-existing gap tracked separately, not this feature's to close.
+    kept = [i for i in range(data.n_paired) if data.x[i] > 0 and data.y[i] > 0]
+    hovers = (
+        [data.hover_values[i] for i in kept] if data.hover_values is not None else None
     )
-    paired = [
-        (k, xi, yi, ci)
-        for k, xi, yi, ci in zip(data.keys, data.x, data.y, colors)
-        if xi > 0 and yi > 0
-    ]
     missing_y = _filter_unpaired(data.missing_y)
     missing_x = _filter_unpaired(data.missing_x)
 
     removed = (
-        (data.n_paired - len(paired))
+        (data.n_paired - len(kept))
         + (len(data.missing_y) - len(missing_y))
         + (len(data.missing_x) - len(missing_x))
     )
@@ -113,12 +112,15 @@ def _drop_non_positive(data: ParityData) -> ParityData:
 
     return replace(
         data,
-        keys=[k for k, _, _, _ in paired],
-        x=[xi for _, xi, _, _ in paired],
-        y=[yi for _, _, yi, _ in paired],
+        keys=[data.keys[i] for i in kept],
+        x=[data.x[i] for i in kept],
+        y=[data.y[i] for i in kept],
         color_values=(
-            [ci for _, _, _, ci in paired] if data.color_values is not None else None
+            [data.color_values[i] for i in kept]
+            if data.color_values is not None
+            else None
         ),
+        hover_values=hovers,
         missing_y=missing_y,
         missing_x=missing_x,
     )
@@ -246,6 +248,25 @@ def _add_one_tolerance(
     )
 
 
+def _paired_hovertemplate(data: ParityData) -> str:
+    """The hover layout for a paired point.
+
+    customdata is (key, difference, verdict, *hover cells), so the configured
+    columns start at index 3. The verdict stays last: it reads as the
+    conclusion, and the metadata belongs with the record's identity above it.
+    """
+    rows = [
+        "<b>%{customdata[0]}</b>",
+        f"{data.x_label}: %{{x:.4g}}",
+        f"{data.y_label}: %{{y:.4g}}",
+        "difference: %{customdata[1]:+.4g}",
+    ]
+    for i, label in enumerate(data.hover_labels):
+        rows.append(f"{label}: %{{customdata[{3 + i}]}}")
+    rows.append("%{customdata[2]}<extra></extra>")
+    return "<br>".join(rows)
+
+
 def _add_paired(
     fig: go.Figure,
     data: ParityData,
@@ -281,6 +302,7 @@ def _add_paired(
         finite = [c for c in color_values if c is not None]
         cmin, cmax = (min(finite), max(finite)) if finite else (0.0, 1.0)
 
+    template = _paired_hovertemplate(data)
     for i, spec in enumerate(specs):
         idx = spec.indices
         name = spec.name if len(specs) > 1 else f"paired (n={data.n_paired:,})"
@@ -321,15 +343,17 @@ def _add_paired(
                 y=[data.y[j] for j in idx],
                 mode="markers",
                 name=name,
-                customdata=[(data.keys[j], diffs[j], verdicts[j]) for j in idx],
+                customdata=[
+                    (
+                        data.keys[j],
+                        diffs[j],
+                        verdicts[j],
+                        *(data.hover_values[j] if data.hover_values else ()),
+                    )
+                    for j in idx
+                ],
                 marker=marker,
-                hovertemplate=(
-                    "<b>%{customdata[0]}</b><br>"
-                    f"{data.x_label}: %{{x:.4g}}<br>"
-                    f"{data.y_label}: %{{y:.4g}}<br>"
-                    "difference: %{customdata[1]:+.4g}<br>"
-                    "%{customdata[2]}<extra></extra>"
-                ),
+                hovertemplate=template,
             )
         )
 

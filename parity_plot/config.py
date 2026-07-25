@@ -64,6 +64,10 @@ class DataConfig:
     # A single file:column numeric ref driving the colorscale channel. Pinned to
     # one file (unlike group) because the same column can differ across files.
     color_column: str | None = None
+    # Extra per-point rows in the hover box, as pinned `file:column` refs.
+    # None = auto (every candidate column of the ref/test files); an explicit
+    # empty tuple suppresses them; a tuple pins that set, in that order.
+    hover_columns: tuple[str, ...] | None = None
     na_values: tuple[str, ...] = DEFAULT_NA_VALUES
 
     def __post_init__(self) -> None:
@@ -260,6 +264,11 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         return _coerce_tolerances(value, where)
     if key == "encoding":
         return _coerce_encoding(value, where)
+    if key == "hover_columns":
+        # None (an absent key) means "auto", so it is not a list to coerce.
+        if value is None:
+            return None
+        return tuple(str(v) for v in _as_sequence(value, where))
     if key in _CHOICES:
         if value not in _CHOICES[key]:
             raise ConfigError(f"{where}: {value!r} is not one of {list(_CHOICES[key])}")
@@ -408,6 +417,11 @@ test = "data/example.csv:measured"    # file:column, a numeric column
 #                                     # joined into one label ("SMD, Acme")
 # color_column = "data/example.csv:temperature"  # optional; a numeric file:column
 #                                     # driving the colorscale colour mode below
+# hover_columns = ["data/example.csv:package"]   # optional; extra rows in the
+#                                     # hover box, as pinned file:column refs.
+#                                     # Omit the key entirely for the default:
+#                                     # every other column of the ref/test
+#                                     # files. Set it to [] for none.
 na_values = ["", "NA", "N/A", "null", "none", "nan", "-"]
 
 [plot]

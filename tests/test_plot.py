@@ -483,3 +483,73 @@ def test_public_api_accepts_a_list_of_group_columns(tmp_path):
     )
     marker_names = {t.name for t in fig.data if t.mode == "markers"}
     assert marker_names == {"SMD, Acme", "DIP, Beta"}
+
+
+# --- hover columns in the figure ---
+
+
+def _hover_data():
+    """Paired points carrying two hover columns, package and temperature."""
+    from parity_plot.data import ParityData
+
+    return ParityData(
+        keys=["a", "b"],
+        x=[1.0, 2.0],
+        y=[1.1, 2.2],
+        x_label="ref",
+        y_label="test",
+        hover_labels=("package", "temperature"),
+        hover_values=[("SMD", "25"), ("DIP", "80")],
+    )
+
+
+def test_hovertemplate_contains_each_label_and_customdata_index():
+    fig = build_figure(_hover_data(), PlotConfig())
+    paired = trace_named(fig, "paired")
+    template = paired.hovertemplate
+    assert "package: %{customdata[3]}" in template
+    assert "temperature: %{customdata[4]}" in template
+    # The verdict stays last.
+    assert template.index("%{customdata[2]}") > template.index("%{customdata[4]}")
+
+
+def test_customdata_width_is_three_plus_hover_labels():
+    fig = build_figure(_hover_data(), PlotConfig())
+    paired = trace_named(fig, "paired")
+    row = paired.customdata[0]
+    assert len(row) == 3 + 2  # key, diff, verdict, package, temperature
+    assert row[3] == "SMD"
+    assert row[4] == "25"
+
+
+def test_no_hover_columns_keeps_the_three_row_template():
+    """An empty hover set must not leave a dangling <br> or empty row."""
+    data = from_sequences(x=[1.0, 2.0], y=[1.1, 2.2], keys=["a", "b"])
+    fig = build_figure(data, PlotConfig())
+    paired = trace_named(fig, "paired")
+    template = paired.hovertemplate
+    # exactly the structural rows, nothing past the verdict.
+    assert template.count("<br>") == 4
+    assert "%{customdata[3]}" not in template
+    assert "customdata[2]" in template  # verdict present
+
+
+def test_log_mode_keeps_hover_aligned_after_dropping_non_positive():
+    """hover_values must be re-sliced in step with x/y on a log axis."""
+    from parity_plot.data import ParityData
+
+    data = ParityData(
+        keys=["a", "b", "c"],
+        x=[1.0, -5.0, 10.0],
+        y=[1.1, -4.0, 11.0],
+        x_label="ref",
+        y_label="test",
+        hover_labels=("note",),
+        hover_values=[("first",), ("dropped",), ("third",)],
+    )
+    with pytest.warns(UserWarning, match="zero or negative"):
+        fig = build_figure(data, PlotConfig(log=True))
+    paired = trace_named(fig, "paired")
+    # b dropped; a and c remain, in order.
+    assert list(paired.x) == [1.0, 10.0]
+    assert [row[3] for row in paired.customdata] == ["first", "third"]

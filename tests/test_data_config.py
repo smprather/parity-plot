@@ -91,3 +91,43 @@ def test_merge_overrides_data_fields():
     merged = cfg.merge(data={"ref": "a.csv:y"})
     assert merged.data.ref == "a.csv:y"
     assert merged.data.files == (Path("a.csv"),)
+
+
+# --- hover_columns tri-state ---
+
+
+def test_hover_columns_absent_defaults_to_none():
+    d = DataConfig()
+    assert d.hover_columns is None
+
+
+def test_hover_columns_empty_list_becomes_empty_tuple(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text('[data]\nfiles = ["d.csv"]\nhover_columns = []\n', encoding="utf-8")
+    d = ParityConfig.from_toml(p).data
+    assert d.hover_columns == ()
+
+
+def test_hover_columns_list_becomes_tuple_of_str(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text(
+        '[data]\nfiles = ["d.csv"]\nhover_columns = ["d.csv:a", "d.csv:b"]\n',
+        encoding="utf-8",
+    )
+    d = ParityConfig.from_toml(p).data
+    assert d.hover_columns == ("d.csv:a", "d.csv:b")
+
+
+def test_hover_columns_bare_string_raises(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text(
+        '[data]\nfiles = ["d.csv"]\nhover_columns = "package"\n', encoding="utf-8"
+    )
+    with pytest.raises(ConfigError, match="expected a list"):
+        ParityConfig.from_toml(p)
+
+
+def test_hover_columns_absent_in_toml_is_none(tmp_path):
+    p = tmp_path / "c.toml"
+    p.write_text('[data]\nfiles = ["d.csv"]\n', encoding="utf-8")
+    assert ParityConfig.from_toml(p).data.hover_columns is None
