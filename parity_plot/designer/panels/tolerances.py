@@ -23,13 +23,14 @@ from ...tolerances import (
 )
 from .. import tolerance_ops as ops
 from ..state import DesignerState
+from .section import section
 
 
 def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
     """Render the tolerance list and the controls that edit it."""
     from nicegui import ui
 
-    with ui.expansion("Tolerances", value=True).classes("w-full"):
+    with section("Tolerances"):
         container = ui.column().classes("w-full gap-1")
 
         def current() -> tuple[NamedTolerance, ...]:

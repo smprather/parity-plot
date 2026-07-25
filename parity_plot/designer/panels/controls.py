@@ -25,6 +25,7 @@ from ...config import (
 )
 from ...data import ParityData
 from ..state import DesignerState
+from .section import section
 
 
 @dataclass(frozen=True)
@@ -139,13 +140,11 @@ def _placeholder(spec: ControlSpec, data: ParityData | None) -> str:
 
 def build_controls(state: DesignerState, on_change: Callable[[], None]) -> None:
     """Render every control, grouped, wired straight into ``state``."""
-    from nicegui import ui
-
     for group in GROUPS:
         specs = [s for s in CONTROL_SPECS if s.group == group]
         if not specs:
             continue
-        with ui.expansion(group, value=True).classes("w-full"):
+        with section(group):
             for spec in specs:
                 _build_one(state, spec, on_change)
 

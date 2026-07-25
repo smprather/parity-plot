@@ -13,6 +13,7 @@ from typing import Callable
 from ...encoding import COLOR_CHANNELS, SYMBOL_CATALOG, SYMBOL_CHANNELS, Encoding
 from ...themes import COLOR_TOKENS
 from ..state import DesignerState
+from .section import section
 
 _CHANNEL_LABELS = {
     "single": "one value",
@@ -28,7 +29,7 @@ def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) ->
 
     enc = state.config.plot.encoding
 
-    with ui.expansion("Encoding", value=False).classes("w-full"):
+    with section("Encoding", value=False):
 
         def commit() -> None:
             new = Encoding(

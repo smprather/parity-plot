@@ -15,6 +15,7 @@ from typing import Callable
 from ...data import DataError
 from ...sources import open_sources
 from ..state import DesignerState
+from .section import section
 
 _NONE = "— none —"
 
@@ -83,7 +84,7 @@ def build_data_panel(
     """
     from nicegui import ui
 
-    with ui.expansion("Data", value=True).classes("w-full"):
+    with section("Data"):
         files = list(state.config.data.files)
         options = column_options(
             tuple(files), state.config.data.ref, state.config.data.test

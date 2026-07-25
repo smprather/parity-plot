@@ -77,8 +77,8 @@ test-file columns in header order.
 and `color_values` are:
 
 ```python
-hover_labels: tuple[str, ...] = ()                   # display text, one per column
-hover_values: list[tuple[str, ...]] | None = None    # one tuple per paired point
+hover_labels: tuple[str, ...] = ()  # display text, one per column
+hover_values: list[tuple[str, ...]] | None = None  # one tuple per paired point
 ```
 
 Row-major (a tuple per point, not per column) because that is the shape
