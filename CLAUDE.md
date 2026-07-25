@@ -95,6 +95,36 @@ resolves it (no cross-file `_agree`) into `ParityData.color_values`
 plus `color_label` (the colorbar title). `_drop_non_positive` re-slices
 `color_values` in log mode; it still does **not** re-slice `group` (pre-existing).
 
+**`hover_columns` is the hover box's extra rows — pinned `file:column` refs, and
+tri-state.** `DataConfig.hover_columns` is `tuple[str, ...] | None`: `None` (an
+absent key) means **auto** — every candidate column — `()` suppresses, a tuple
+pins that set in order. Do **not** normalise `None` to `()` in `__post_init__`;
+the three states are the feature. Auto is resolved in `load`, never stored, so it
+follows a ref/test change instead of going stale — which is also why the designer
+writes nothing for it (`serialize` deletes a `None`-valued key) and why
+`DesignerState.set_data_source` needs `clear=` (`merge` drops `None` overrides by
+design, and here `None` is the meaningful value).
+
+**Candidates** = every column of the *ref file and test file* only, minus ref,
+test and join — the hover already shows those three as the x row, the y row and
+the bold key line, so they are never offered, not merely off by default. Axis
+exclusion is **per file**: a column sharing the other file's axis name is a
+different measurement and stays offered. `data.hover_candidates` is public
+because the designer's picker must use the same list — deriving it twice is how
+picker and renderer drift apart. `hover_labels_for` gives the shortest
+unambiguous label (bare name; `file:col` only when a bare name repeats, prefixed
+with `Path.name`). `_hover_lookup` mirrors `_color_lookup` — pinned per file, no
+`_agree`. Cells are **raw stripped text**, nulls an em dash; per-column float
+formatting needs a schema and is deferred (see the spec's Future work).
+
+`customdata` is `(key, diff, verdict, *hover)`, so hover rows start at index 3
+and `key_from_customdata` (index 0) is unaffected. `plot._drop_non_positive`
+re-slices by kept **indices** and covers `hover_values` and `color_values` — but
+still not `group` (pre-existing). `load` also checks the join column is in both
+axis files up front: `_index_by_key` enforced it already, but that runs after the
+per-point lookups are built, so an auto-hover column from the same file would
+otherwise report a missing join key in the hover channel's language.
+
 **Marker encoding** (`encoding.py`, pure) partitions paired points into traces by
 their `(colour-key, symbol-key)`. Channels split: `COLOR_CHANNELS = single |
 pass-fail | group | colorscale`, `SYMBOL_CHANNELS = single | pass-fail | group`

@@ -106,6 +106,45 @@ A separate `color_column` (a single numeric `file:column`) drives the *colorscal
 colour mode — see [Encoding](#encoding). Unlike `group`, it is pinned to one file,
 since the same column can legitimately differ between the reference and test files.
 
+### Hover text
+
+Hovering a point always shows its key, both axis values, their difference and the
+tolerance verdict. Everything else in the row can be shown too — by default,
+**it already is**:
+
+```
+S0000
+reference: 11.01
+test: 11.33
+difference: +0.3209
+package: BGA
+vendor: Acme
+temperature: 111.3864
+pass
+```
+
+The extra rows come from `hover_columns`, whose default is every *other* column
+of the files backing `ref` and `test`:
+
+```toml
+[data]
+# hover_columns = ["example.csv:package", "example.csv:temperature"]
+```
+
+- **Omit the key** for the default: all the context in those files, so you rarely
+  have to configure anything.
+- **Give a list** to pin exactly those columns, in that order. They are
+  `file:column` refs, so a column present in both files can be shown from each —
+  the hover labels them `reference.csv:temperature` and `measured.csv:temperature`
+  only when it would otherwise be ambiguous.
+- **Give `[]`** for no extra rows.
+
+`ref`, `test` and the `join` column are never candidates: the hover already shows
+all three, as the two axis rows and the bold key line. A third open file is not a
+candidate either — without a join into it, its rows cannot be aligned to a point.
+Cells are shown as the file's own text, so `111.3864` hovers exactly as written;
+per-column number formatting is not yet configurable.
+
 ### Unpaired records
 
 An unpaired record has only one coordinate, so it cannot be a point on the plot.
@@ -253,6 +292,8 @@ test  = "example.csv:test"
 # join  = "id"                     # optional; omit to pair by row order
 # group = ["package", "vendor"]    # optional; one or more bare column names
 # color_column = "example.csv:temperature"  # optional; numeric, for colorscale
+# hover_columns = ["example.csv:package"]   # optional; omit for every other
+#                                  # column of the ref/test files, [] for none
 
 [plot]
 theme = "dark"                 # dark | light
