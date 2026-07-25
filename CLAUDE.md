@@ -417,11 +417,12 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
 ## Releases
 
 Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
-GitHub Releases. Current line: **0.5.0** (`main`). History: 0.1.0 → multi-file
+GitHub Releases. Current line: **0.6.0** (`main`). History: 0.1.0 → multi-file
 data model & encoding (0.3.0) → file-independent group + persistent designer
 status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
-value (0.5.0). Tags `v0.1.0`–`v0.3.0` predate the GitHub Releases; `v0.4.0`
-onward have them.
+value (0.5.0) → composite group, colorscale channel, TOML-only CLI, designer
+auto-save/config picker, hover-text columns (0.6.0). Tags `v0.1.0`–`v0.3.0`
+predate the GitHub Releases; `v0.4.0` onward have them.
 
 The ship flow (only when the user asks): branch off `main`, commit, bump the
 version on the branch, `git checkout main && git merge --no-ff`, `git tag -a`,
