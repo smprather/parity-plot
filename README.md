@@ -277,6 +277,60 @@ arrays — with `None` or `NaN` marking a missing value. (No numpy or pandas
 required; they're just accepted.) Keyword `options` are `PlotConfig` fields
 (`theme`, `legend`, `encoding`, …); an unknown one is rejected.
 
+### Driving the API from a config file
+
+A TOML config is a complete instruction — pass it and nothing else:
+
+```python
+fig = parity_plot(config="lab/run7.toml")  # data, encoding, tolerances, all of it
+fig = parity_plot(config="lab/run7.toml", theme="dark")  # keywords win over the file
+fig = parity_plot(config=cfg, ref="meas.csv:v2")  # or a ParityConfig, partly overridden
+```
+
+So a plot can be **defined once in a committed TOML** and rendered by the CLI,
+the designer, or your own code, with no chance of the three disagreeing.
+
+## Embedding in an app
+
+To put several plots in one page, don't ship a standalone document each — they'd
+carry a copy of plotly.js apiece. Write **fragments** and let the page load the
+library once:
+
+```python
+from parity_plot import parity_plot, to_fragment
+
+frag = to_fragment(parity_plot(config="run7.toml"), div_id="parity-run7")
+```
+
+A fragment is a `<div>` plus its `<script>`, no `<html>` wrapper. It carries only
+your data, so its size scales with the point count — a few KB for a small plot,
+~77 KB for a thousand points — against a flat **4.9 MB** of library in every
+standalone inlined file. Ten plots: ~0.8 MB of fragments plus one shared library,
+versus 49 MB. Or straight from a config, via `[output]`:
+
+```toml
+[output]
+path = "site/_includes/run7.html"
+embed = true                       # plotlyjs defaults to "none" when embedding
+div_id = "parity-run7"             # pin it, or cached output churns on a random UUID
+```
+
+For a **dynamic** app, skip HTML entirely: `parity_plot(...)` returns a plain
+Plotly figure, so `fig.to_json()` on the server and `Plotly.newPlot(div, data,
+layout)` on the client ships only the data.
+
+Two things specific to parity plots:
+
+- **Call `Plotly.Plots.resize(div)` when the container resizes.** The 45° line
+  holds only while both axes share a range, their pixel scales are locked, *and*
+  `constrain="domain"` is set. Stale dimensions make Plotly lay the axes out for
+  a box the page doesn't have and the diagonal quietly stops being diagonal.
+  Fragments deliberately carry no width/height so the container governs.
+- **Watch WebGL contexts.** Above 5,000 paired points a plot switches to
+  `Scattergl`. Browsers allow only ~8–16 live WebGL contexts, so a page of many
+  large plots will start rendering blank tiles. Render lazily on scroll, or cap
+  how many are live at once.
+
 ## Config file
 
 `uv run parity-plot init` writes a documented `parity.toml`. **The TOML is the
@@ -333,9 +387,10 @@ Everything works with no network, by design:
 - **Exported HTML inlines plotly.js** (`[output].plotlyjs = "inline"`, the
   default), so the file opens on an air-gapped machine, survives being emailed,
   and still renders years later when that CDN build is gone. It costs ~4.8 MB per
-  file. Set `plotlyjs = "cdn"` for an 84 KB file that needs a network, or
+  file. Set `plotlyjs = "cdn"` for an 84 KB file that needs a network,
   `"directory"` to write `plotly.min.js` once beside the HTML and share it across
-  every plot in that folder.
+  every plot in that folder, or `"none"` for a page that loads its own (see
+  [Embedding in an app](#embedding-in-an-app)).
 - **The designer** serves its own assets — no CDN.
 - **`png`/`svg`/`pdf` export** drives a local headless Chrome
   (`uv run plotly_get_chrome`), which is the only piece you have to fetch, once.

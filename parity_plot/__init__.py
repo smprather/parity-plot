@@ -25,7 +25,7 @@ from .data import DataError, ParityData, Unpaired, from_sequences, load
 from .examples import ExampleSpec, SpecError
 from .examples import generate as generate_example
 from .examples import write_all as write_example_data
-from .plot import build_figure, save
+from .plot import build_figure, save, to_fragment
 from .stats import Stats
 from .stats import compute as compute_stats
 from .themes import THEMES as THEME_NAMES
@@ -38,6 +38,7 @@ __all__ = [
     "parity_plot",
     "build_figure",
     "save",
+    "to_fragment",
     "load",
     "from_sequences",
     "compute_stats",

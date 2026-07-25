@@ -7,7 +7,7 @@ from parity_plot import parity_plot
 from parity_plot.config import ConfigError, OutputConfig, PlotConfig, StatsConfig
 from parity_plot.data import ParityData, Unpaired, from_sequences
 from parity_plot.encoding import Encoding
-from parity_plot.plot import build_figure, save
+from parity_plot.plot import build_figure, save, to_fragment
 from parity_plot.tolerances import NamedTolerance, parity, with_parity
 
 
@@ -392,6 +392,64 @@ def test_plotlyjs_directory_writes_the_library_beside_the_html(data, tmp_path):
     assert out.stat().st_size < 1_000_000
 
 
+def test_fragment_has_no_document_wrapper_and_no_library(data):
+    frag = to_fragment(build_figure(data, PlotConfig()))
+    assert "<html" not in frag.lower()
+    assert "<head" not in frag.lower()
+    assert "Plotly.newPlot" in frag  # the call, not the library
+    assert _CDN_TAG not in frag
+    # Three orders of magnitude smaller than a standalone inlined document.
+    assert len(frag) < 20_000
+
+
+def test_fragment_honours_an_explicit_div_id(data):
+    """Unpinned, plotly invents a UUID and cached output churns every run."""
+    fig = build_figure(data, PlotConfig())
+    assert 'id="parity-run7"' in to_fragment(fig, div_id="parity-run7")
+    assert to_fragment(fig) != to_fragment(fig)  # random ids differ
+
+
+def test_fragment_can_still_carry_the_library_if_asked(data):
+    frag = to_fragment(build_figure(data, PlotConfig()), plotlyjs="cdn")
+    assert _CDN_TAG in frag
+    assert "<html" not in frag.lower()
+
+
+def test_to_fragment_rejects_an_unknown_plotlyjs_mode(data):
+    with pytest.raises(ValueError, match="unknown plotlyjs mode"):
+        to_fragment(build_figure(data, PlotConfig()), plotlyjs="cnd")
+
+
+def test_embed_writes_a_fragment_and_leaves_the_figure_unsized(data, tmp_path):
+    """A fragment must stay autosizing or the 45 degree line drifts in a page."""
+    out = tmp_path / "frag.html"
+    fig = build_figure(data, PlotConfig())
+    save(fig, OutputConfig(path=out, embed=True, div_id="p1"))
+    text = out.read_text(encoding="utf-8")
+    assert "<html" not in text.lower()
+    assert 'id="p1"' in text
+    assert fig.layout.width is None and fig.layout.height is None
+
+
+def test_embed_defaults_to_no_library_but_a_document_inlines(tmp_path):
+    assert (
+        OutputConfig(path=tmp_path / "a.html", embed=True).resolved_plotlyjs == "none"
+    )
+    assert OutputConfig(path=tmp_path / "a.html").resolved_plotlyjs == "inline"
+    # An explicit mode always wins over the embed-derived default.
+    explicit = OutputConfig(path=tmp_path / "a.html", embed=True, plotlyjs="cdn")
+    assert explicit.resolved_plotlyjs == "cdn"
+
+
+def test_a_full_document_can_omit_the_library_too(data, tmp_path):
+    out = tmp_path / "p.html"
+    save(build_figure(data, PlotConfig()), OutputConfig(path=out, plotlyjs="none"))
+    text = out.read_text(encoding="utf-8")
+    assert "<html" in text.lower()
+    assert _CDN_TAG not in text
+    assert out.stat().st_size < 100_000
+
+
 def test_a_png_path_writes_a_png_not_html(data, tmp_path, monkeypatch):
     """The bug this guards: `path = "x.png"` with no format wrote HTML into it.
 
@@ -423,6 +481,37 @@ def test_an_extension_contradicting_an_explicit_format_raises(tmp_path):
 
 def test_an_unknown_extension_falls_back_to_html(tmp_path):
     assert OutputConfig(path=tmp_path / "shot.xyz").resolved_format == "html"
+
+
+def test_public_api_runs_from_a_toml_config_alone(wide_csv, tmp_path):
+    """A config file is a complete instruction: no ref/test/paths kwargs needed.
+
+    This is the path an app embedding several plots takes -- one committed TOML
+    per plot, rendered through the API rather than the CLI.
+    """
+    cfg = tmp_path / "parity.toml"
+    cfg.write_text(
+        f'[data]\nfiles = ["{wide_csv.as_posix()}"]\n'
+        f'ref = "{wide_csv.name}:reference"\ntest = "{wide_csv.name}:test"\n'
+        f'join = "id"\n\n[plot]\ntitle = "From TOML"\ntheme = "light"\n',
+        encoding="utf-8",
+    )
+    fig = parity_plot(config=cfg)
+    assert trace_named(fig, "paired").x == (10.0, 30.0)
+    assert "From TOML" in fig.layout.title.text
+    assert fig.layout.template.layout.paper_bgcolor == "#ffffff"
+
+
+def test_keyword_options_beat_the_toml_config(wide_csv, tmp_path):
+    cfg = tmp_path / "parity.toml"
+    cfg.write_text(
+        f'[data]\nfiles = ["{wide_csv.as_posix()}"]\n'
+        f'ref = "{wide_csv.name}:reference"\ntest = "{wide_csv.name}:test"\n'
+        f'join = "id"\n\n[plot]\ntheme = "light"\n',
+        encoding="utf-8",
+    )
+    fig = parity_plot(config=cfg, theme="dark")
+    assert fig.layout.template.layout.paper_bgcolor != "#ffffff"
 
 
 def test_public_api_accepts_sequences_and_paths(wide_csv):

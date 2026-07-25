@@ -111,6 +111,24 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
         group="Output",
     ),
     ControlSpec(
+        "output",
+        "embed",
+        "Embed fragment",
+        "switch",
+        "Write a bare div + script instead of a whole page, for embedding "
+        "several plots in one app. Ignores width/height -- the container sizes it.",
+        group="Output",
+    ),
+    ControlSpec(
+        "output",
+        "div_id",
+        "Fragment div id",
+        "text",
+        "Container id for an embedded fragment; pin it so cached output does "
+        "not churn on a random UUID.",
+        group="Output",
+    ),
+    ControlSpec(
         "output", "width", "Width", "number", "Figure width in pixels.", group="Output"
     ),
     ControlSpec(

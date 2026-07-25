@@ -388,6 +388,24 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   explicit `-o out.png` **override** a format the TOML set, which the config-level
   inference alone cannot do. The silent-HTML-into-`.png` bug shipped twice — once
   on `example`'s `-o`, once via the TOML path.
+- **`embed = true` writes an HTML fragment, not a document** — `plot.to_fragment`
+  (public, exported from `parity_plot`) returns a `<div>` + `<script>` with no
+  `<html>` wrapper — data only, so a few KB to tens of KB, against the flat
+  ~4.9 MB of library an inlined document repeats per file. `save()` routes
+  through it so there is
+  one implementation. Two things there are load-bearing: `plotlyjs` resolves to
+  `"none"` when embedding (via `resolved_plotlyjs` — the point of fragments is
+  that the *page* loads plotly.js once), and the embed branch sits **before**
+  `fig.update_layout(width=…, height=…)` on purpose. A fragment must stay
+  autosizing: bake in pixels the container does not have and Plotly lays the axes
+  out for the wrong box, `constrain="domain"` shrinks against stale numbers, and
+  **the 45° line silently stops being diagonal**. Consumers must call
+  `Plotly.Plots.resize(div)` on container resize. `div_id` exists so cached or
+  diffed fragments do not churn on plotly's random UUID.
+- **`parity_plot(config=<toml path>)` is a supported entry point** — a config is a
+  complete instruction, no `ref`/`test`/paths needed (keyword options still win
+  over it). It is what an app embedding many plots uses, so one committed TOML
+  renders identically through the CLI, the designer, and library code.
 - **HTML exports are self-contained by default** (`[output].plotlyjs = "inline"`,
   `PLOTLYJS_MODES`): ~4.8 MB per file, but it opens air-gapped, emailed, or years
   later when the pinned CDN build is gone. `"cdn"` is 84 KB and needs a network;
@@ -432,11 +450,12 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
 ## Releases
 
 Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
-GitHub Releases. Current line: **0.6.0** (`main`). History: 0.1.0 → multi-file
+GitHub Releases. Current line: **0.7.0** (`main`). History: 0.1.0 → multi-file
 data model & encoding (0.3.0) → file-independent group + persistent designer
 status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
 value (0.5.0) → composite group, colorscale channel, TOML-only CLI, designer
-auto-save/config picker, hover-text columns (0.6.0). Tags `v0.1.0`–`v0.3.0`
+auto-save/config picker, hover-text columns (0.6.0) → offline-by-default HTML,
+output-format inference, embeddable fragments (0.7.0). Tags `v0.1.0`–`v0.3.0`
 predate the GitHub Releases; `v0.4.0` onward have them.
 
 The ship flow (only when the user asks): branch off `main`, commit, bump the
