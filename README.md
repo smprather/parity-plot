@@ -329,6 +329,13 @@ shutil.copy(pathlib.Path(plotly.__file__).parent / 'package_data' / 'plotly.min.
             'static/plotly.min.js')"
 ```
 
+**→ [`examples/tabbed-report/`](examples/tabbed-report/) is a complete working
+app** — three plots in a tabbed static page, one shared library, no server:
+
+```bash
+uv run python examples/tabbed-report/build.py     # → dist/index.html
+```
+
 **→ [docs/embedding.md](docs/embedding.md) is the full guide**, and worth reading
 before wiring this up. It covers the failure modes that are silent rather than
 loud, each verified against the real output:

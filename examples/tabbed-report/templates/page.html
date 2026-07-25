@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parity report</title>
+
+<!--
+  ONE copy of plotly.js for the whole page, and it must be a PLAIN script.
+
+  Each fragment below draws itself from an inline <script> that runs the moment
+  the parser reaches it. Add `defer`, `async` or `type="module"` here and the
+  library is still queued when that inline script runs, so every plot dies with
+  `Uncaught ReferenceError: Plotly is not defined`.
+-->
+<script src="static/plotly.min.js"></script>
+
+<style>
+  :root { color-scheme: dark; --bg:#12161c; --fg:#e6e6e6; --dim:#9aa4b2; --line:#2a313b; --accent:#6fa8ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:2rem 1.5rem; background:var(--bg); color:var(--fg);
+         font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size:1.35rem; margin:0 0 .25rem; }
+  p.sub { margin:0 0 1.5rem; color:var(--dim); font-size:.9rem; }
+
+  [role="tablist"] { display:flex; gap:.25rem; border-bottom:1px solid var(--line); }
+  [role="tab"] {
+    appearance:none; background:none; border:none; border-bottom:2px solid transparent;
+    color:var(--dim); font:inherit; padding:.6rem 1rem; cursor:pointer;
+  }
+  [role="tab"]:hover { color:var(--fg); }
+  [role="tab"][aria-selected="true"] { color:var(--fg); border-bottom-color:var(--accent); }
+  [role="tab"]:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+
+  /*
+    The panel gives the plot a DEFINITE height. A parity-plot fragment is
+    `height:100%`, and 100% of a height:auto parent resolves to ZERO -- the plot
+    would be inserted, its script would run without error, and you would see
+    nothing at all. This one rule is the most common way an embed fails.
+  */
+  [role="tabpanel"] { height: 620px; padding-top: 1rem; }
+  [role="tabpanel"][hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Parity report</h1>
+  <p class="sub">Three runs against the same &plusmn;10% spec. One page, one copy of plotly.js.</p>
+
+  <div role="tablist" aria-label="Runs">
+<!--TABS-->
+  </div>
+
+<!--PANELS-->
+</main>
+
+<script>
+(function () {
+  const tabs   = Array.from(document.querySelectorAll('[role="tab"]'));
+  const panels = Array.from(document.querySelectorAll('[role="tabpanel"]'));
+
+  function show(slug) {
+    for (const t of tabs) {
+      t.setAttribute('aria-selected', String(t.dataset.slug === slug));
+      t.tabIndex = t.dataset.slug === slug ? 0 : -1;
+    }
+    for (const p of panels) p.hidden = p.dataset.slug !== slug;
+
+    // THE TAB-SPECIFIC BIT.
+    //
+    // A hidden panel is `display:none`, so the plot inside it was laid out at
+    // zero size. Revealing it does not re-lay it out, and for a parity plot that
+    // is worse than cosmetic: the 45 degree line is only true while both axes
+    // share one range AND their pixel scales are locked AND constrain="domain"
+    // is set. Against stale dimensions Plotly satisfies the pixel ratio for a
+    // box the page no longer has, and the identity line stops being the
+    // diagonal -- silently. The plot still looks like a plot.
+    //
+    // One resize on reveal fixes it. It is cheap and idempotent, so there is no
+    // reason to track which panels have already been shown.
+    const div = document.querySelector('[data-slug="' + slug + '"] .plotly-graph-div');
+    if (div) Plotly.Plots.resize(div);
+  }
+
+  tabs.forEach((tab, i) => {
+    tab.addEventListener('click', () => show(tab.dataset.slug));
+    // Arrow-key navigation is what makes role="tablist" honest rather than
+    // decorative: screen-reader users expect the roving tabindex to work.
+    tab.addEventListener('keydown', (e) => {
+      const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const next = tabs[(i + step + tabs.length) % tabs.length];
+      next.focus();
+      show(next.dataset.slug);
+    });
+  });
+
+  // Covers the container changing size while the window does not: a sidebar
+  // collapsing, a grid reflowing, this page in a resizable iframe. Plotly's own
+  // `responsive: true` -- already set on every fragment -- handles *window*
+  // resizes, so this is the remaining case rather than a duplicate of it.
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(entries => {
+      for (const e of entries) Plotly.Plots.resize(e.target);
+    });
+    document.querySelectorAll('.plotly-graph-div').forEach(d => ro.observe(d));
+  }
+
+  show(tabs[0].dataset.slug);
+})();
+</script>
+</body>
+</html>

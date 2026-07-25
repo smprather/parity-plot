@@ -1,0 +1,128 @@
+#!/usr/bin/env python
+"""Build a static tabbed three-plot report: a minimal parity-plot consumer app.
+
+    uv run python examples/tabbed-report/build.py
+
+Writes ``dist/index.html`` plus ``dist/static/plotly.min.js`` and prints where.
+Open the file directly -- no server, no network.
+
+What it demonstrates (the reasoning is in ``docs/embedding.md``):
+
+* **Three plots, one library.** Each plot is emitted as a *fragment* -- a div and
+  its script, no plotly.js -- and the page loads the library once itself. Three
+  standalone documents would carry three 4.9 MB copies of the same thing.
+* **The library is copied out of the installed plotly wheel**, not fetched from a
+  CDN, so the report opens offline and the runtime is guaranteed to be the version
+  that rendered the figures.
+* **Fragments, not JSON**, because this page is generated ahead of time. An app
+  that inserted plots after load would have to use ``fig.to_json()``: inline
+  scripts added via ``innerHTML`` never execute, so a runtime-injected fragment is
+  a permanently blank div.
+* **Tabs are the interesting case.** A hidden panel is ``display:none``, so its
+  plot is laid out at zero size and must be resized when its tab is first shown.
+  See the comment in ``templates/page.html``.
+
+Layout: the plot definitions are committed TOML in ``configs/``, one per run. The
+app supplies only what a plot should not know about -- which div id it gets, where
+the output lands. That split is why the same config renders identically from the
+CLI, from the designer, and from here.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import shutil
+from pathlib import Path
+
+import plotly
+
+from parity_plot import parity_plot, to_fragment
+from parity_plot.examples import ExampleSpec, generate, write_wide
+
+HERE = Path(__file__).resolve().parent
+
+# (slug, tab label, how to shape the synthetic data).
+#
+# The slug is the CSV name, the config name and the fragment's div id all at once,
+# so there is nothing to keep in sync by hand. Real data would replace `generate`;
+# everything downstream is unchanged.
+RUNS: tuple[tuple[str, str, ExampleSpec], ...] = (
+    (
+        "run-a",
+        "Run A · baseline",
+        ExampleSpec(n=400, seed=11, noise=0.04, bias=0.0),
+    ),
+    (
+        "run-b",
+        "Run B · biased high",
+        ExampleSpec(n=400, seed=12, noise=0.04, bias=0.06),
+    ),
+    (
+        "run-c",
+        "Run C · noisy",
+        ExampleSpec(n=400, seed=13, noise=0.18, outlier_rate=0.03),
+    ),
+)
+
+
+def build(dist: Path | None = None) -> Path:
+    """Generate the data, render the fragments, assemble the page. Returns it."""
+    dist = Path(dist) if dist is not None else HERE / "dist"
+
+    fragments: list[tuple[str, str, str]] = []
+    # The configs name their inputs relatively (`data/run-a.csv`), which is what
+    # makes them equally runnable by `parity-plot plot`. Anchor to this directory
+    # so the build works from any cwd -- and put it back afterwards, since
+    # leaving the process somewhere else is a trap for whatever calls this.
+    with contextlib.chdir(HERE):
+        for slug, label, spec in RUNS:
+            write_wide(generate(spec), HERE / "data" / f"{slug}.csv")
+
+            # A config file is a complete instruction -- no ref/test/paths needed.
+            fig = parity_plot(config=f"configs/{slug}.toml")
+
+            # Pin div_id. Left unset, plotly invents a UUID per fragment, so an
+            # unchanged input produces a byte-different page on every build and
+            # defeats content hashing, ETags, and diffs on generated output.
+            fragments.append((slug, label, to_fragment(fig, div_id=slug)))
+
+    static = dist / "static"
+    static.mkdir(parents=True, exist_ok=True)
+    library = Path(plotly.__file__).parent / "package_data" / "plotly.min.js"
+    shutil.copy(library, static / "plotly.min.js")
+
+    page = _render(
+        (HERE / "templates" / "page.html").read_text(encoding="utf-8"), fragments
+    )
+    out = dist / "index.html"
+    out.write_text(page, encoding="utf-8")
+    return out
+
+
+def _render(template: str, fragments: list[tuple[str, str, str]]) -> str:
+    """Fill the template's two placeholders. Plain string substitution.
+
+    A real app would use its own template engine; this stays dependency-free so
+    the example is about the embedding, not about Jinja.
+    """
+    tabs = "\n".join(
+        f'    <button role="tab" id="tab-{slug}" data-slug="{slug}"'
+        f' aria-controls="panel-{slug}" aria-selected="false" tabindex="-1">'
+        f"{label}</button>"
+        for slug, label, _ in fragments
+    )
+    panels = "\n".join(
+        f'  <div role="tabpanel" id="panel-{slug}" data-slug="{slug}"'
+        f' aria-labelledby="tab-{slug}" hidden>\n{fragment}\n  </div>'
+        for slug, _, fragment in fragments
+    )
+    return template.replace("<!--TABS-->", tabs).replace("<!--PANELS-->", panels)
+
+
+if __name__ == "__main__":
+    written = build()
+    size = written.stat().st_size
+    library = written.parent / "static" / "plotly.min.js"
+    print(f"wrote {written}  ({size:,} bytes for {len(RUNS)} plots)")
+    print(f"      {library}  ({library.stat().st_size:,} bytes, shared by all of them)")
+    print(f"\nopen file://{written}")

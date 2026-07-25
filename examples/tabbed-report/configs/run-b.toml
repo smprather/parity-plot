@@ -1,0 +1,24 @@
+# Run B -- the same spec, against a rig biased high. The points sit above y = x
+# and the failures all land on one side, which is the shape a calibration error
+# makes.
+
+[data]
+files = ["data/run-b.csv"]
+ref = "run-b.csv:reference"
+test = "run-b.csv:test"
+join = "id"
+group = ["package"]
+
+[plot]
+title = "Run B — biased high"
+theme = "dark"
+legend = "right"
+
+[[plot.tolerances]]
+name = "spec"
+reltol = "10pct"
+style = "shaded"
+
+[plot.encoding]
+color_by = "pass-fail"
+symbol_by = "group"

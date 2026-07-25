@@ -1,0 +1,31 @@
+# Run A -- the baseline.
+#
+# One committed TOML per plot. This file is the *whole* definition of Run A, and
+# it renders identically through `parity-plot plot configs/run-a.toml`, through
+# `parity-plot design configs/run-a.toml`, and through this app's build.py. The
+# app supplies only presentation choices the plot itself should not care about
+# (which div id, where the file lands).
+
+[data]
+files = ["data/run-a.csv"]
+ref = "run-a.csv:reference"
+test = "run-a.csv:test"
+join = "id"
+group = ["package"]
+# hover_columns is deliberately absent: the default shows every other column of
+# the file (package, vendor, temperature), which is what you want in a report
+# nobody is going to reconfigure.
+
+[plot]
+title = "Run A — baseline"
+theme = "dark"
+legend = "right"
+
+[[plot.tolerances]]
+name = "spec"
+reltol = "10pct"
+style = "shaded"
+
+[plot.encoding]
+color_by = "pass-fail"
+symbol_by = "group"

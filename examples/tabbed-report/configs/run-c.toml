@@ -1,0 +1,32 @@
+# Run C -- noisy, with outliers. Colour is the measured temperature rather than
+# the verdict, to show that each tab is an independent plot: different encoding,
+# different colour channel, its own colorbar. Nothing about the page changes.
+
+[data]
+files = ["data/run-c.csv"]
+ref = "run-c.csv:reference"
+test = "run-c.csv:test"
+join = "id"
+group = ["package"]
+color_column = "run-c.csv:temperature"
+
+[plot]
+title = "Run C — noisy, coloured by temperature"
+theme = "dark"
+legend = "right"
+
+[[plot.tolerances]]
+name = "spec"
+reltol = "10pct"
+style = "shaded"
+
+[[plot.tolerances]]
+name = "goal"
+reltol = "5pct"
+kind = "info"
+color = "yellow"
+
+[plot.encoding]
+color_by = "colorscale"
+symbol_by = "group"
+colorscale = "viridis"

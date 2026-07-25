@@ -155,15 +155,28 @@ const ro = new ResizeObserver(entries => {
 document.querySelectorAll('.plotly-graph-div').forEach(d => ro.observe(d));
 ```
 
-This matters more for parity plots than for ordinary charts. The 45° line is
-true only while both axes share one range, their pixel scales are locked
-(`scaleanchor`/`scaleratio`), **and** `constrain="domain"` is set. Lay those axes
-out for a box the page no longer has and Plotly satisfies the pixel ratio against
-stale numbers — the parity line stops being the diagonal. **It fails silently:
-the plot still looks like a plot.** Never assume it is fine because nothing threw.
+A plot revealed inside a previously-hidden tab or accordion needs one
+`Plotly.Plots.resize(div)` when it becomes visible, because it was laid out at
+zero size. **This does not fail loudly — it fails plausibly.**
 
-A plot revealed inside a previously-hidden tab needs one `Plotly.Plots.resize(div)`
-when it becomes visible, since it was laid out at zero size.
+Here is the same plot revealed from a `display:none` tab panel, with and without
+that one call. Both were captured from `examples/tabbed-report`:
+
+| with `Plotly.Plots.resize` | without it |
+|---|---|
+| ![Correctly sized parity plot filling its tab panel, with a complete legend.](images/embed-tab-resized.png) | ![The same plot at a stale smaller layout: subtitle overlapping the modebar and the legend clipped behind a scrollbar.](images/embed-tab-stale.png) |
+
+Note what the broken one is *not*: it is not blank, and it throws nothing. It is
+laid out for the box the panel had while hidden — undersized, the subtitle
+colliding with the modebar, and **three legend entries clipped behind a
+scrollbar**, so a reader silently loses the fact that some groups exist at all.
+
+The geometry is at risk for the same reason. The 45° line is true only while both
+axes share one range, their pixel scales are locked (`scaleanchor`/`scaleratio`),
+**and** `constrain="domain"` is set. Against stale dimensions Plotly satisfies the
+pixel ratio for a box the page no longer has, so when the real container's aspect
+ratio differs from the stale one the parity line stops being the diagonal. Never
+conclude the plot is fine because nothing threw.
 
 ### 5. WebGL context limits on a page of large plots
 
