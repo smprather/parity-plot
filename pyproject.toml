@@ -34,6 +34,7 @@ packages = ["parity_plot"]
 [tool.ruff]
 line-length = 88
 target-version = "py314"
+extend-include = ["examples/tabbed-report/build-report"]
 
 [tool.ruff.lint]
 # E/F/I: pycodestyle errors, pyflakes, isort. Line length (E501) is owned by

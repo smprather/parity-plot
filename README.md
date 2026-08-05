@@ -333,7 +333,7 @@ shutil.copy(pathlib.Path(plotly.__file__).parent / 'package_data' / 'plotly.min.
 app** — three plots in a tabbed static page, one shared library, no server:
 
 ```bash
-uv run python examples/tabbed-report/build.py     # → dist/index.html
+uv run examples/tabbed-report/build-report        # → dist/index.html
 ```
 
 **→ [docs/embedding.md](docs/embedding.md) is the full guide**, and worth reading

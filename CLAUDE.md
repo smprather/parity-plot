@@ -15,6 +15,9 @@ uv run parity-plot init          # write a documented parity.toml
 uv run parity-plot plot parity.toml --no-open-browser -o out.html   # CONFIG is positional
 ```
 
+Executable names are kebab-case (`parity-plot`, `build-report`). Python modules
+and import paths stay snake_case.
+
 `plot` and `example` **open the result in a browser by default**
 (`--no-open-browser` to suppress), matching the sibling `time-plot` project.
 `tests/conftest.py` has an autouse `no_real_browser` fixture that intercepts

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Build a static tabbed three-plot report: a minimal parity-plot consumer app.
 
-    uv run python examples/tabbed-report/build.py
+    uv run examples/tabbed-report/build-report
 
 Writes ``dist/index.html`` plus ``dist/static/plotly.min.js`` and prints where.
 Open the file directly -- no server, no network.

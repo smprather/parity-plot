@@ -4,7 +4,7 @@ A complete, minimal consumer app. Three parity plots, three tabs, one static HTM
 file that opens with no server and no network.
 
 ```bash
-uv run python examples/tabbed-report/build.py
+uv run examples/tabbed-report/build-report
 # → dist/index.html  (120 KB for 3 plots)
 #   dist/static/plotly.min.js  (4.85 MB, shared by all of them)
 ```
@@ -19,7 +19,7 @@ that document made executable.
 ```
 configs/run-{a,b,c}.toml   the plot definitions — committed, one per run
 templates/page.html        the page shell: tabs, CSS, tab JS
-build.py                   generates data, renders fragments, assembles the page
+build-report               generates data, renders fragments, assembles the page
 data/                      generated CSVs           (gitignored)
 dist/                      the built report         (gitignored)
 ```
@@ -74,7 +74,7 @@ the container changing while the window does not.
 
 ## Adapting it
 
-- **Real data** replaces `generate`/`write_wide` in `build.py`; nothing downstream
+- **Real data** replaces `generate`/`write_wide` in `build-report`; nothing downstream
   changes.
 - **More plots** means one more entry in `RUNS` and one more config. The template
   and the JS are already N-agnostic.

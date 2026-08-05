@@ -8,18 +8,22 @@ fragment shape breaks a test rather than quietly invalidating the guide.
 
 from __future__ import annotations
 
+import importlib.machinery
 import importlib.util
 import sys
 from pathlib import Path
 
 import pytest
 
-BUILD = Path(__file__).resolve().parents[1] / "examples" / "tabbed-report" / "build.py"
+BUILD = (
+    Path(__file__).resolve().parents[1] / "examples" / "tabbed-report" / "build-report"
+)
 
 
 def _load_build_module():
-    """Import build.py by path -- examples/ is deliberately not a package."""
-    spec = importlib.util.spec_from_file_location("tabbed_report_build", BUILD)
+    """Import build-report by path -- examples/ is deliberately not a package."""
+    loader = importlib.machinery.SourceFileLoader("tabbed_report_build", str(BUILD))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module

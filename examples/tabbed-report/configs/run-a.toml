@@ -2,7 +2,7 @@
 #
 # One committed TOML per plot. This file is the *whole* definition of Run A, and
 # it renders identically through `parity-plot plot configs/run-a.toml`, through
-# `parity-plot design configs/run-a.toml`, and through this app's build.py. The
+# `parity-plot design configs/run-a.toml`, and through this app's build-report. The
 # app supplies only presentation choices the plot itself should not care about
 # (which div id, where the file lands).
 
