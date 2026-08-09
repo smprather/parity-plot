@@ -30,6 +30,9 @@ uv run parity-plot example      # generate 1000 sample points, plot, open the br
   failures" in one glance.
 - **Unpaired records aren't dropped.** A value with no partner is drawn as a rug
   tick on the axis whose value is known — a data-quality signal, not silent loss.
+- **Delta histogram.** Optionally add a lower histogram of signed paired
+  differences (`test - reference`) to see bias and spread without leaving the
+  parity plot.
 - **Identity-line R².** Measured about `y = x`, not a best-fit line — the
   distinction that makes a parity plot meaningful (see [Statistics](#statistics)).
 - **Live designer.** Edit every setting in a browser and watch the plot update,
@@ -374,6 +377,7 @@ test  = "example.csv:test"
 theme = "dark"                 # dark | light
 nulls = "rug"                  # rug | drop
 legend = "right"               # right | bottom | none
+delta_histogram = false        # true adds a lower histogram of test - ref
 
 [plot.encoding]
 color_by  = "single"           # single | pass-fail | group | colorscale

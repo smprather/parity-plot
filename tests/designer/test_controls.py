@@ -58,7 +58,7 @@ def test_choice_controls_offer_exactly_the_valid_values(section, key, expected):
 
 
 def test_booleans_are_switches():
-    for key in ("log", "equal_axes"):
+    for key in ("log", "equal_axes", "delta_histogram"):
         assert specs_for("plot")[key].kind == "switch"
     assert specs_for("stats")["show"].kind == "switch"
 

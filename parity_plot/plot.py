@@ -53,6 +53,9 @@ _LEGEND_LAYOUTS = {
     "none": (None, dict(l=80, r=50, t=100, b=80)),
 }
 
+_PARITY_DOMAIN_WITH_DELTA_HISTOGRAM = [0.34, 1.0]
+_DELTA_HISTOGRAM_DOMAIN = [0.0, 0.20]
+
 
 def build_figure(
     data: ParityData,
@@ -80,6 +83,8 @@ def build_figure(
     _add_paired(fig, data, plot.tolerances, plot.encoding, theme)
     if plot.nulls == "rug":
         _add_rugs(fig, data, lo, hi, plot.log, theme)
+    if plot.delta_histogram:
+        _add_delta_histogram(fig, data, plot, theme)
 
     _apply_layout(fig, data, plot, theme, summary, lo, hi, has_colorbar=is_scale)
     if stats_cfg.show:
@@ -459,6 +464,57 @@ def _add_rugs(
         )
 
 
+def _add_delta_histogram(
+    fig: go.Figure,
+    data: ParityData,
+    plot: PlotConfig,
+    theme: themes.Theme,
+) -> None:
+    """Draw the signed paired deltas in a compact lower panel."""
+    deltas = [yi - xi for xi, yi in zip(data.x, data.y)]
+    if not deltas:
+        return
+
+    fig.add_trace(
+        go.Histogram(
+            x=deltas,
+            xaxis="x2",
+            yaxis="y2",
+            name="delta histogram",
+            showlegend=False,
+            marker=dict(
+                color=theme.marker,
+                opacity=0.75,
+                line=dict(color=theme.marker_line, width=0.5),
+            ),
+            hovertemplate="delta: %{x:.4g}<br>count: %{y}<extra></extra>",
+        )
+    )
+    fig.add_shape(
+        type="line",
+        xref="x2",
+        yref="y2 domain",
+        x0=0,
+        x1=0,
+        y0=0,
+        y1=1,
+        line=dict(color=theme.identity, width=1.5),
+    )
+    y_label = plot.y_label or data.y_label
+    x_label = plot.x_label or data.x_label
+    fig.add_annotation(
+        xref="paper",
+        yref="paper",
+        x=0,
+        y=_DELTA_HISTOGRAM_DOMAIN[1],
+        xanchor="left",
+        yanchor="bottom",
+        text=f"Delta distribution ({y_label} - {x_label})",
+        showarrow=False,
+        font=dict(color=theme.font_muted, size=12),
+    )
+
+
 def _apply_layout(
     fig: go.Figure,
     data: ParityData,
@@ -485,6 +541,23 @@ def _apply_layout(
         y_axis |= dict(scaleanchor="x", scaleratio=1, constrain="domain")
         x_axis |= dict(constrain="domain")
 
+    hist_x_axis: dict[str, Any] | None = None
+    hist_y_axis: dict[str, Any] | None = None
+    if plot.delta_histogram:
+        y_axis["domain"] = _PARITY_DOMAIN_WITH_DELTA_HISTOGRAM
+        hist_x_axis = dict(
+            title=f"{plot.y_label or data.y_label} - {plot.x_label or data.x_label}",
+            domain=[0.0, 1.0],
+            zeroline=True,
+            zerolinecolor=theme.identity,
+            zerolinewidth=1.5,
+        )
+        hist_y_axis = dict(
+            title="count",
+            domain=_DELTA_HISTOGRAM_DOMAIN,
+            rangemode="tozero",
+        )
+
     try:
         placement, margin = _LEGEND_LAYOUTS[plot.legend]
     except KeyError:
@@ -499,8 +572,10 @@ def _apply_layout(
             margin = {**margin, "r": 300}
         else:
             margin = {**margin, "r": max(margin["r"], 110)}
+    if plot.delta_histogram:
+        margin = {**margin, "b": max(margin["b"], 140)}
 
-    fig.update_layout(
+    layout: dict[str, Any] = dict(
         template=theme.template_name,
         title=dict(
             text=plot.title,
@@ -522,6 +597,10 @@ def _apply_layout(
         showlegend=placement is not None,
         margin=margin,
     )
+    if hist_x_axis is not None and hist_y_axis is not None:
+        layout["xaxis2"] = hist_x_axis
+        layout["yaxis2"] = hist_y_axis
+    fig.update_layout(**layout)
     if placement is not None:
         fig.update_layout(legend=placement)
 

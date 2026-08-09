@@ -128,6 +128,26 @@ def test_drop_mode_omits_the_rugs_but_still_counts_them(data):
     assert "1 missing x" in fig.layout.title.subtitle.text
 
 
+def test_delta_histogram_is_optional_by_default(data):
+    fig = build_figure(data, PlotConfig())
+
+    assert not any(isinstance(trace, go.Histogram) for trace in fig.data)
+    assert "xaxis2" not in fig.layout
+
+
+def test_delta_histogram_draws_paired_differences_in_a_lower_panel(data):
+    fig = build_figure(data, PlotConfig(delta_histogram=True))
+
+    histogram = next(trace for trace in fig.data if isinstance(trace, go.Histogram))
+    assert list(histogram.x) == pytest.approx([0.1, 0.2, -0.1])
+    assert histogram.xaxis == "x2"
+    assert histogram.yaxis == "y2"
+    assert histogram.showlegend is False
+    assert list(fig.layout.yaxis.domain) == pytest.approx([0.34, 1.0])
+    assert list(fig.layout.yaxis2.domain) == pytest.approx([0.0, 0.20])
+    assert fig.layout.xaxis2.title.text == "y - x"
+
+
 def test_parity_line_spans_the_full_range(data):
     """The parity entry is a zero-width tolerance, so its envelope is y = x."""
     fig = build_figure(data, PlotConfig())

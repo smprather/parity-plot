@@ -112,6 +112,7 @@ class PlotConfig:
     tolerances: tuple[NamedTolerance, ...] = field(default_factory=lambda: (parity(),))
     nulls: str = "rug"
     legend: str = "right"
+    delta_histogram: bool = False
     # How marker colour/symbol are driven from the data (single | pass-fail |
     # group). Default is the behaviour-preserving one-trace plot.
     encoding: Encoding = field(default_factory=Encoding)
@@ -338,7 +339,7 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         if size <= 0:
             raise ConfigError(f"{where}: must be positive, got {size}")
         return size
-    if key in {"log", "equal_axes", "show", "embed"}:
+    if key in {"log", "equal_axes", "delta_histogram", "show", "embed"}:
         if not isinstance(value, bool):
             raise ConfigError(f"{where}: expected true or false, got {value!r}")
         return value
@@ -492,6 +493,7 @@ log = false
 equal_axes = true
 nulls = "rug"           # rug | drop
 legend = "right"        # right | bottom | none
+delta_histogram = false # true adds a histogram of paired deltas (test - ref)
 
 # A plot may carry several specifications at once. Each is one
 # [[plot.tolerances]] table; order drives legend order and the order
