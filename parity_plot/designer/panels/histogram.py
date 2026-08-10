@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Callable
 
+from ...plot import delta_histogram_bin_count
 from ..state import DesignerState
 from .section import section
 
@@ -14,6 +16,21 @@ HISTOGRAM_FIELDS = (
     "delta_histogram_bucket_labels",
     "delta_histogram_sigma_lines",
 )
+
+
+def _displayed_auto_bucket_count(state: DesignerState) -> int | None:
+    data = state.visible_data()
+    deltas = [yi - xi for xi, yi in zip(data.x, data.y)]
+    if not deltas:
+        return None
+    plot = replace(state.config.plot, delta_histogram_bins_auto=True)
+    return delta_histogram_bin_count(deltas, plot)
+
+
+def _bucket_field_value(state: DesignerState) -> int | None:
+    if state.config.plot.delta_histogram_bins_auto:
+        return _displayed_auto_bucket_count(state)
+    return state.config.plot.delta_histogram_bins
 
 
 def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
@@ -30,7 +47,7 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
         ).tooltip("Choose the bucket count from the visible paired data.")
         buckets = ui.number(
             "Buckets",
-            value=plot.delta_histogram_bins,
+            value=_bucket_field_value(state),
             min=1,
             step=1,
             precision=0,
@@ -58,9 +75,18 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
                 return None
             return int(buckets.value)
 
+        def prefill_manual_buckets() -> None:
+            if auto_bins.value:
+                return
+            count = _displayed_auto_bucket_count(state)
+            if count is None:
+                return
+            buckets.value = count
+            buckets.update()
+
         def commit() -> None:
             value = bucket_value()
-            if value is None:
+            if auto_bins.value or value is None:
                 state.reset_fields("plot", "delta_histogram_bins")
                 state.update(
                     "plot",
@@ -85,8 +111,12 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
             sync_enabled()
             commit()
 
+        def auto_changed() -> None:
+            prefill_manual_buckets()
+            changed()
+
         enabled.on_value_change(lambda _: changed())
-        auto_bins.on_value_change(lambda _: changed())
+        auto_bins.on_value_change(lambda _: auto_changed())
         buckets.on_value_change(lambda _: changed())
         bucket_labels.on_value_change(lambda _: changed())
         sigma_lines.on_value_change(lambda _: changed())

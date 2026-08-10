@@ -474,7 +474,7 @@ def _add_delta_histogram(
     deltas = [yi - xi for xi, yi in zip(data.x, data.y)]
     if not deltas:
         return
-    centers, counts, width = _histogram(deltas, _delta_histogram_bins(deltas, plot))
+    centers, counts, width = _histogram(deltas, delta_histogram_bin_count(deltas, plot))
 
     fig.add_trace(
         go.Bar(
@@ -516,7 +516,8 @@ def _add_delta_histogram(
     )
 
 
-def _delta_histogram_bins(deltas: Sequence[float], plot: PlotConfig) -> int:
+def delta_histogram_bin_count(deltas: Sequence[float], plot: PlotConfig) -> int:
+    """The effective delta-histogram bucket count for this data and config."""
     if not plot.delta_histogram_bins_auto and plot.delta_histogram_bins is not None:
         return max(1, int(plot.delta_histogram_bins))
     return max(1, math.ceil(math.sqrt(len(deltas))))
@@ -601,7 +602,9 @@ def _apply_layout(
         if plot.delta_histogram_bucket_labels:
             deltas = [yi - xi for xi, yi in zip(data.x, data.y)]
             if deltas:
-                centers, _, _ = _histogram(deltas, _delta_histogram_bins(deltas, plot))
+                centers, _, _ = _histogram(
+                    deltas, delta_histogram_bin_count(deltas, plot)
+                )
                 tick_labels = centers
         y_axis["domain"] = _PARITY_DOMAIN_WITH_DELTA_HISTOGRAM
         hist_x_axis = dict(
