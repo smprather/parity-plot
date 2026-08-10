@@ -474,10 +474,13 @@ def _add_delta_histogram(
     deltas = [yi - xi for xi, yi in zip(data.x, data.y)]
     if not deltas:
         return
+    centers, counts, width = _histogram(deltas, _delta_histogram_bins(deltas, plot))
 
     fig.add_trace(
-        go.Histogram(
-            x=deltas,
+        go.Bar(
+            x=centers,
+            y=counts,
+            width=[width] * len(centers),
             xaxis="x2",
             yaxis="y2",
             name="delta histogram",
@@ -490,16 +493,14 @@ def _add_delta_histogram(
             hovertemplate="delta: %{x:.4g}<br>count: %{y}<extra></extra>",
         )
     )
-    fig.add_shape(
-        type="line",
-        xref="x2",
-        yref="y2 domain",
-        x0=0,
-        x1=0,
-        y0=0,
-        y1=1,
-        line=dict(color=theme.identity, width=1.5),
-    )
+    _add_delta_reference_line(fig, 0.0, theme.identity, width=1.5)
+    if plot.delta_histogram_sigma_lines:
+        sigma = _stddev(deltas)
+        if sigma > 0:
+            for x in (-sigma, sigma):
+                _add_delta_reference_line(
+                    fig, x, theme.font_muted, width=1.25, dash="dash"
+                )
     y_label = plot.y_label or data.y_label
     x_label = plot.x_label or data.x_label
     fig.add_annotation(
@@ -512,6 +513,58 @@ def _add_delta_histogram(
         text=f"Delta distribution ({y_label} - {x_label})",
         showarrow=False,
         font=dict(color=theme.font_muted, size=12),
+    )
+
+
+def _delta_histogram_bins(deltas: Sequence[float], plot: PlotConfig) -> int:
+    if not plot.delta_histogram_bins_auto and plot.delta_histogram_bins is not None:
+        return max(1, int(plot.delta_histogram_bins))
+    return max(1, math.ceil(math.sqrt(len(deltas))))
+
+
+def _histogram(
+    deltas: Sequence[float], bins: int
+) -> tuple[list[float], list[int], float]:
+    lo, hi = min(deltas), max(deltas)
+    if lo == hi:
+        pad = abs(lo) * 0.05 or 0.5
+        lo -= pad
+        hi += pad
+
+    width = (hi - lo) / bins
+    counts = [0] * bins
+    for delta in deltas:
+        index = int((delta - lo) / width)
+        counts[min(index, bins - 1)] += 1
+    centers = [lo + (i + 0.5) * width for i in range(bins)]
+    return centers, counts, width
+
+
+def _stddev(values: Sequence[float]) -> float:
+    mean = sum(values) / len(values)
+    return math.sqrt(sum((value - mean) ** 2 for value in values) / len(values))
+
+
+def _add_delta_reference_line(
+    fig: go.Figure,
+    x: float,
+    color: str,
+    *,
+    width: float,
+    dash: str | None = None,
+) -> None:
+    line: dict[str, Any] = dict(color=color, width=width)
+    if dash is not None:
+        line["dash"] = dash
+    fig.add_shape(
+        type="line",
+        xref="x2",
+        yref="y2 domain",
+        x0=x,
+        x1=x,
+        y0=0,
+        y1=1,
+        line=line,
     )
 
 
@@ -544,6 +597,12 @@ def _apply_layout(
     hist_x_axis: dict[str, Any] | None = None
     hist_y_axis: dict[str, Any] | None = None
     if plot.delta_histogram:
+        tick_labels = None
+        if plot.delta_histogram_bucket_labels:
+            deltas = [yi - xi for xi, yi in zip(data.x, data.y)]
+            if deltas:
+                centers, _, _ = _histogram(deltas, _delta_histogram_bins(deltas, plot))
+                tick_labels = centers
         y_axis["domain"] = _PARITY_DOMAIN_WITH_DELTA_HISTOGRAM
         hist_x_axis = dict(
             title=f"{plot.y_label or data.y_label} - {plot.x_label or data.x_label}",
@@ -557,6 +616,13 @@ def _apply_layout(
             domain=_DELTA_HISTOGRAM_DOMAIN,
             rangemode="tozero",
         )
+        if tick_labels is not None:
+            hist_x_axis |= dict(
+                tickmode="array",
+                tickvals=tick_labels,
+                ticktext=[f"{value:.4g}" for value in tick_labels],
+                tickangle=90,
+            )
 
     try:
         placement, margin = _LEGEND_LAYOUTS[plot.legend]

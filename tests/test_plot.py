@@ -131,21 +131,67 @@ def test_drop_mode_omits_the_rugs_but_still_counts_them(data):
 def test_delta_histogram_is_optional_by_default(data):
     fig = build_figure(data, PlotConfig())
 
-    assert not any(isinstance(trace, go.Histogram) for trace in fig.data)
+    assert trace_named(fig, "delta histogram") is None
     assert "xaxis2" not in fig.layout
 
 
 def test_delta_histogram_draws_paired_differences_in_a_lower_panel(data):
     fig = build_figure(data, PlotConfig(delta_histogram=True))
 
-    histogram = next(trace for trace in fig.data if isinstance(trace, go.Histogram))
-    assert list(histogram.x) == pytest.approx([0.1, 0.2, -0.1])
+    histogram = trace_named(fig, "delta histogram")
+    assert isinstance(histogram, go.Bar)
     assert histogram.xaxis == "x2"
     assert histogram.yaxis == "y2"
     assert histogram.showlegend is False
     assert list(fig.layout.yaxis.domain) == pytest.approx([0.34, 1.0])
     assert list(fig.layout.yaxis2.domain) == pytest.approx([0.0, 0.20])
     assert fig.layout.xaxis2.title.text == "y - x"
+
+
+def test_delta_histogram_manual_bucket_count_sets_bucket_centres():
+    d = from_sequences(x=[10, 20, 30, 40], y=[9, 20, 31, 42])
+    fig = build_figure(
+        d,
+        PlotConfig(
+            delta_histogram=True,
+            delta_histogram_bins_auto=False,
+            delta_histogram_bins=3,
+        ),
+    )
+
+    histogram = trace_named(fig, "delta histogram")
+    assert list(histogram.x) == pytest.approx([-0.5, 0.5, 1.5])
+    assert list(histogram.y) == [1, 1, 2]
+
+
+def test_delta_histogram_can_label_bucket_centres_vertically():
+    d = from_sequences(x=[10, 20, 30, 40], y=[9, 20, 31, 42])
+    fig = build_figure(
+        d,
+        PlotConfig(
+            delta_histogram=True,
+            delta_histogram_bins_auto=False,
+            delta_histogram_bins=3,
+            delta_histogram_bucket_labels=True,
+        ),
+    )
+
+    assert list(fig.layout.xaxis2.tickvals) == pytest.approx([-0.5, 0.5, 1.5])
+    assert fig.layout.xaxis2.tickangle == 90
+
+
+def test_delta_histogram_sigma_lines_are_optional():
+    d = from_sequences(x=[10, 20, 30, 40], y=[9, 20, 31, 42])
+    fig = build_figure(d, PlotConfig(delta_histogram=True))
+    assert not [s for s in fig.layout.shapes if s.line.dash == "dash"]
+
+    fig = build_figure(
+        d, PlotConfig(delta_histogram=True, delta_histogram_sigma_lines=True)
+    )
+    dashed = [s for s in fig.layout.shapes if s.line.dash == "dash"]
+    sigma = (1.25) ** 0.5
+    assert len(dashed) == 2
+    assert sorted(s.x0 for s in dashed) == pytest.approx([-sigma, sigma])
 
 
 def test_parity_line_spans_the_full_range(data):

@@ -27,6 +27,10 @@ def test_round_trip_of_the_shipped_example(tmp_path: Path):
     assert cfg.data.test == "data/example.csv:measured"
     assert cfg.plot.theme == "dark"
     assert cfg.plot.delta_histogram is False
+    assert cfg.plot.delta_histogram_bins_auto is True
+    assert cfg.plot.delta_histogram_bins is None
+    assert cfg.plot.delta_histogram_bucket_labels is False
+    assert cfg.plot.delta_histogram_sigma_lines is False
     tols = cfg.plot.tolerances
     # The built-in y = x line is guaranteed first; the shipped example adds "spec".
     assert len(tols) == 2
@@ -40,8 +44,22 @@ def test_round_trip_of_the_shipped_example(tmp_path: Path):
 
 
 def test_delta_histogram_can_be_enabled_from_toml():
-    cfg = ParityConfig.from_dict({"plot": {"delta_histogram": True}})
+    cfg = ParityConfig.from_dict(
+        {
+            "plot": {
+                "delta_histogram": True,
+                "delta_histogram_bins_auto": False,
+                "delta_histogram_bins": 24,
+                "delta_histogram_bucket_labels": True,
+                "delta_histogram_sigma_lines": True,
+            }
+        }
+    )
     assert cfg.plot.delta_histogram is True
+    assert cfg.plot.delta_histogram_bins_auto is False
+    assert cfg.plot.delta_histogram_bins == 24
+    assert cfg.plot.delta_histogram_bucket_labels is True
+    assert cfg.plot.delta_histogram_sigma_lines is True
 
 
 def test_unknown_key_is_rejected_with_the_valid_names():
@@ -77,6 +95,8 @@ def test_invalid_scalars_are_rejected():
         ParityConfig.from_dict({"plot": {"reltol": 0}})
     with pytest.raises(ConfigError, match="true or false"):
         ParityConfig.from_dict({"plot": {"log": "yes"}})
+    with pytest.raises(ConfigError, match="positive"):
+        ParityConfig.from_dict({"plot": {"delta_histogram_bins": 0}})
 
 
 def test_overrides_beat_the_file_but_none_is_ignored():

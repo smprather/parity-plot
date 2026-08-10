@@ -113,6 +113,10 @@ class PlotConfig:
     nulls: str = "rug"
     legend: str = "right"
     delta_histogram: bool = False
+    delta_histogram_bins_auto: bool = True
+    delta_histogram_bins: int | None = None
+    delta_histogram_bucket_labels: bool = False
+    delta_histogram_sigma_lines: bool = False
     # How marker colour/symbol are driven from the data (single | pass-fail |
     # group). Default is the behaviour-preserving one-trace plot.
     encoding: Encoding = field(default_factory=Encoding)
@@ -334,12 +338,23 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         if value not in _CHOICES[key]:
             raise ConfigError(f"{where}: {value!r} is not one of {list(_CHOICES[key])}")
         return value
-    if key in {"width", "height"}:
+    if key in {"width", "height", "delta_histogram_bins"}:
+        if value is None and key == "delta_histogram_bins":
+            return None
         size = int(value)
         if size <= 0:
             raise ConfigError(f"{where}: must be positive, got {size}")
         return size
-    if key in {"log", "equal_axes", "delta_histogram", "show", "embed"}:
+    if key in {
+        "log",
+        "equal_axes",
+        "delta_histogram",
+        "delta_histogram_bins_auto",
+        "delta_histogram_bucket_labels",
+        "delta_histogram_sigma_lines",
+        "show",
+        "embed",
+    }:
         if not isinstance(value, bool):
             raise ConfigError(f"{where}: expected true or false, got {value!r}")
         return value
@@ -494,6 +509,10 @@ equal_axes = true
 nulls = "rug"           # rug | drop
 legend = "right"        # right | bottom | none
 delta_histogram = false # true adds a histogram of paired deltas (test - ref)
+delta_histogram_bins_auto = true   # choose the bucket count from the data
+# delta_histogram_bins = 24         # used when delta_histogram_bins_auto = false
+delta_histogram_bucket_labels = false  # vertical x-axis labels at bucket centres
+delta_histogram_sigma_lines = false    # dashed vertical lines at ±1σ
 
 # A plot may carry several specifications at once. Each is one
 # [[plot.tolerances]] table; order drives legend order and the order

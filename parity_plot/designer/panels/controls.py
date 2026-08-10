@@ -65,13 +65,6 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
         "switch",
         "Share one range and a 1:1 pixel scale.",
     ),
-    ControlSpec(
-        "plot",
-        "delta_histogram",
-        "Delta histogram",
-        "switch",
-        "Add a lower histogram of paired differences.",
-    ),
     # --- Statistics -------------------------------------------------------
     ControlSpec(
         "stats",

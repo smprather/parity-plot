@@ -15,6 +15,7 @@ from parity_plot.config import (
     StatsConfig,
 )
 from parity_plot.designer.panels.controls import CONTROL_SPECS, ControlSpec
+from parity_plot.designer.panels.histogram import HISTOGRAM_FIELDS
 
 
 def specs_for(section: str) -> dict[str, ControlSpec]:
@@ -25,10 +26,13 @@ def test_every_plot_setting_has_a_control():
     """A setting with no control is a setting the designer silently cannot
     reach, which makes the saved config differ from what was on screen.
 
-    `tolerances` has its own list panel, and `encoding` gets a dedicated panel
-    in the data-sources Phase 3 work; neither is a plain control, so both are
-    excluded here (a saved config still carries whatever the CLI or TOML set)."""
-    plot_fields = {f.name for f in fields(PlotConfig)} - {"tolerances", "encoding"}
+    `tolerances`, `encoding`, and histogram settings have dedicated panels; none
+    is a plain control, so they are excluded here."""
+    plot_fields = {f.name for f in fields(PlotConfig)} - {
+        "tolerances",
+        "encoding",
+        *HISTOGRAM_FIELDS,
+    }
     assert specs_for("plot").keys() == plot_fields
 
 
@@ -58,7 +62,7 @@ def test_choice_controls_offer_exactly_the_valid_values(section, key, expected):
 
 
 def test_booleans_are_switches():
-    for key in ("log", "equal_axes", "delta_histogram"):
+    for key in ("log", "equal_axes"):
         assert specs_for("plot")[key].kind == "switch"
     assert specs_for("stats")["show"].kind == "switch"
 

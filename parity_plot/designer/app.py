@@ -17,6 +17,7 @@ from ..data import DataError, ParityData
 from .panels.controls import build_controls
 from .panels.data_panel import build_data_panel
 from .panels.encoding import build_encoding_panel
+from .panels.histogram import build_histogram_panel
 from .panels.inspector import build_inspector
 from .panels.table import build_table
 from .panels.tolerances import build_tolerances_panel
@@ -93,6 +94,7 @@ def build_app(
         def settings_column() -> None:
             marks["join"] = build_data_panel(state, lambda: reload_everything())
             build_tolerances_panel(state, lambda: refresh())
+            build_histogram_panel(state, lambda: refresh())
             build_encoding_panel(state, lambda: refresh())
             build_controls(state, lambda: refresh())
 
