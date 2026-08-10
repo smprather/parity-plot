@@ -606,6 +606,7 @@ def _apply_layout(
         y_axis["domain"] = _PARITY_DOMAIN_WITH_DELTA_HISTOGRAM
         hist_x_axis = dict(
             title=f"{plot.y_label or data.y_label} - {plot.x_label or data.x_label}",
+            anchor="y2",
             domain=[0.0, 1.0],
             zeroline=True,
             zerolinecolor=theme.identity,
@@ -613,6 +614,7 @@ def _apply_layout(
         )
         hist_y_axis = dict(
             title="count",
+            anchor="x2",
             domain=_DELTA_HISTOGRAM_DOMAIN,
             rangemode="tozero",
         )

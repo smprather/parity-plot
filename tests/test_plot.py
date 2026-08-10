@@ -180,6 +180,17 @@ def test_delta_histogram_can_label_bucket_centres_vertically():
     assert fig.layout.xaxis2.tickangle == 90
 
 
+def test_delta_histogram_axes_are_anchored_to_the_histogram_panel():
+    d = from_sequences(x=[10, 20, 30, 40], y=[9, 20, 31, 42])
+    fig = build_figure(
+        d,
+        PlotConfig(delta_histogram=True, delta_histogram_bucket_labels=True),
+    )
+
+    assert fig.layout.xaxis2.anchor == "y2"
+    assert fig.layout.yaxis2.anchor == "x2"
+
+
 def test_delta_histogram_sigma_lines_are_optional():
     d = from_sequences(x=[10, 20, 30, 40], y=[9, 20, 31, 42])
     fig = build_figure(d, PlotConfig(delta_histogram=True))
