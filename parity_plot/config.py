@@ -117,9 +117,22 @@ class PlotConfig:
     delta_histogram_bins: int | None = None
     delta_histogram_bucket_labels: bool = False
     delta_histogram_sigma_lines: bool = False
+    delta_histogram_log_y: bool = False
     # How marker colour/symbol are driven from the data (single | pass-fail |
     # group). Default is the behaviour-preserving one-trace plot.
     encoding: Encoding = field(default_factory=Encoding)
+
+    def __post_init__(self) -> None:
+        if self.delta_histogram_bins is None:
+            return
+        if self.delta_histogram_bins <= 0:
+            raise ConfigError(
+                f"delta_histogram_bins must be positive, got {self.delta_histogram_bins}"
+            )
+        if self.delta_histogram_bins % 2 == 0:
+            raise ConfigError(
+                f"delta_histogram_bins must be odd, got {self.delta_histogram_bins}"
+            )
 
 
 @dataclass(frozen=True)
@@ -344,6 +357,8 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         size = int(value)
         if size <= 0:
             raise ConfigError(f"{where}: must be positive, got {size}")
+        if key == "delta_histogram_bins" and size % 2 == 0:
+            raise ConfigError(f"{where}: must be odd, got {size}")
         return size
     if key in {
         "log",
@@ -352,6 +367,7 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         "delta_histogram_bins_auto",
         "delta_histogram_bucket_labels",
         "delta_histogram_sigma_lines",
+        "delta_histogram_log_y",
         "show",
         "embed",
     }:
@@ -509,10 +525,11 @@ equal_axes = true
 nulls = "rug"           # rug | drop
 legend = "right"        # right | bottom | none
 delta_histogram = false # true adds a histogram of paired deltas (test - ref)
-delta_histogram_bins_auto = true   # choose the bucket count from the data
-# delta_histogram_bins = 24         # used when delta_histogram_bins_auto = false
+delta_histogram_bins_auto = true   # choose an odd bucket count from the data
+# delta_histogram_bins = 25         # odd; used when delta_histogram_bins_auto = false
 delta_histogram_bucket_labels = false  # vertical x-axis labels at bucket centres
 delta_histogram_sigma_lines = false    # dashed vertical lines at ±1σ
+delta_histogram_log_y = false          # log-scaled histogram counts
 
 # A plot may carry several specifications at once. Each is one
 # [[plot.tolerances]] table; order drives legend order and the order

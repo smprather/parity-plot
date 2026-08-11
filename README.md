@@ -379,9 +379,10 @@ nulls = "rug"                  # rug | drop
 legend = "right"               # right | bottom | none
 delta_histogram = false        # true adds a lower histogram of test - ref
 delta_histogram_bins_auto = true
-# delta_histogram_bins = 24     # used when auto buckets are off
+# delta_histogram_bins = 25     # odd; used when auto buckets are off
 delta_histogram_bucket_labels = false
 delta_histogram_sigma_lines = false
+delta_histogram_log_y = false
 
 [plot.encoding]
 color_by  = "single"           # single | pass-fail | group | colorscale

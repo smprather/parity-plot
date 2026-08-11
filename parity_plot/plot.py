@@ -519,25 +519,27 @@ def _add_delta_histogram(
 def delta_histogram_bin_count(deltas: Sequence[float], plot: PlotConfig) -> int:
     """The effective delta-histogram bucket count for this data and config."""
     if not plot.delta_histogram_bins_auto and plot.delta_histogram_bins is not None:
-        return max(1, int(plot.delta_histogram_bins))
-    return max(1, math.ceil(math.sqrt(len(deltas))))
+        return _odd_bucket_count(int(plot.delta_histogram_bins))
+    return _odd_bucket_count(math.ceil(math.sqrt(len(deltas))))
+
+
+def _odd_bucket_count(count: int) -> int:
+    count = max(1, count)
+    return count if count % 2 == 1 else count + 1
 
 
 def _histogram(
     deltas: Sequence[float], bins: int
 ) -> tuple[list[float], list[int], float]:
-    lo, hi = min(deltas), max(deltas)
-    if lo == hi:
-        pad = abs(lo) * 0.05 or 0.5
-        lo -= pad
-        hi += pad
-
-    width = (hi - lo) / bins
+    bins = _odd_bucket_count(bins)
+    half = bins // 2
+    max_abs = max(abs(delta) for delta in deltas)
+    width = max_abs / (half + 0.5) if max_abs else 1.0
     counts = [0] * bins
     for delta in deltas:
-        index = int((delta - lo) / width)
-        counts[min(index, bins - 1)] += 1
-    centers = [lo + (i + 0.5) * width for i in range(bins)]
+        index = math.floor(delta / width + half + 0.5)
+        counts[min(max(index, 0), bins - 1)] += 1
+    centers = [(i - half) * width for i in range(bins)]
     return centers, counts, width
 
 
@@ -620,6 +622,7 @@ def _apply_layout(
             anchor="x2",
             domain=_DELTA_HISTOGRAM_DOMAIN,
             rangemode="tozero",
+            type="log" if plot.delta_histogram_log_y else "linear",
         )
         if tick_labels is not None:
             hist_x_axis |= dict(

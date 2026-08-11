@@ -160,8 +160,25 @@ def test_delta_histogram_manual_bucket_count_sets_bucket_centres():
     )
 
     histogram = trace_named(fig, "delta histogram")
-    assert list(histogram.x) == pytest.approx([-0.5, 0.5, 1.5])
+    assert list(histogram.x) == pytest.approx([-4 / 3, 0.0, 4 / 3])
     assert list(histogram.y) == [1, 1, 2]
+
+
+def test_delta_histogram_always_has_a_middle_bucket_centred_at_zero():
+    d = from_sequences(x=[0, 0, 0, 0, 0], y=[-10, -5, 0, 5, 10])
+    fig = build_figure(
+        d,
+        PlotConfig(
+            delta_histogram=True,
+            delta_histogram_bins_auto=False,
+            delta_histogram_bins=5,
+        ),
+    )
+
+    histogram = trace_named(fig, "delta histogram")
+    centers = list(histogram.x)
+    assert centers[2] == pytest.approx(0.0)
+    assert centers == pytest.approx([-8, -4, 0, 4, 8])
 
 
 def test_delta_histogram_can_label_bucket_centres_vertically():
@@ -176,7 +193,7 @@ def test_delta_histogram_can_label_bucket_centres_vertically():
         ),
     )
 
-    assert list(fig.layout.xaxis2.tickvals) == pytest.approx([-0.5, 0.5, 1.5])
+    assert list(fig.layout.xaxis2.tickvals) == pytest.approx([-4 / 3, 0.0, 4 / 3])
     assert fig.layout.xaxis2.tickangle == 90
 
 
@@ -203,6 +220,20 @@ def test_delta_histogram_sigma_lines_are_optional():
     sigma = (1.25) ** 0.5
     assert len(dashed) == 2
     assert sorted(s.x0 for s in dashed) == pytest.approx([-sigma, sigma])
+
+
+def test_delta_histogram_count_axis_can_be_log_scaled():
+    d = from_sequences(x=[10, 20, 30], y=[11, 20, 29])
+
+    assert (
+        build_figure(d, PlotConfig(delta_histogram=True)).layout.yaxis2.type == "linear"
+    )
+    assert (
+        build_figure(
+            d, PlotConfig(delta_histogram=True, delta_histogram_log_y=True)
+        ).layout.yaxis2.type
+        == "log"
+    )
 
 
 def test_parity_line_spans_the_full_range(data):

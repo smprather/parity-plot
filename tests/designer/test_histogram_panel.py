@@ -28,6 +28,13 @@ def test_manual_bucket_prefill_uses_the_current_auto_count():
     assert _bucket_field_value(state) == 3
 
 
+def test_auto_bucket_count_is_rounded_up_to_an_odd_count():
+    data = from_sequences(x=range(10), y=range(10))
+    state = DesignerState(config=ParityConfig(), data=data)
+
+    assert _displayed_auto_bucket_count(state) == 5
+
+
 def test_manual_bucket_field_keeps_manual_count_when_auto_is_off():
     data = from_sequences(x=[1, 2, 3, 4, 5], y=[2, 3, 4, 5, 6])
     config = ParityConfig().merge(

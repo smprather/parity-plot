@@ -15,6 +15,7 @@ HISTOGRAM_FIELDS = (
     "delta_histogram_bins",
     "delta_histogram_bucket_labels",
     "delta_histogram_sigma_lines",
+    "delta_histogram_log_y",
 )
 
 
@@ -49,7 +50,7 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
             "Buckets",
             value=_bucket_field_value(state),
             min=1,
-            step=1,
+            step=2,
             precision=0,
             placeholder="",
         ).classes("w-full")
@@ -61,6 +62,9 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
         ).tooltip(
             "Show dashed vertical lines at plus and minus one standard deviation."
         )
+        log_y = ui.switch("Log count axis", value=plot.delta_histogram_log_y).tooltip(
+            "Use a log-scaled histogram count axis so small buckets stay visible."
+        )
 
         def sync_enabled() -> None:
             active = bool(enabled.value)
@@ -69,6 +73,7 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
             buckets.set_enabled(active and not auto)
             bucket_labels.set_enabled(active)
             sigma_lines.set_enabled(active)
+            log_y.set_enabled(active)
 
         def bucket_value() -> int | None:
             if buckets.value in (None, ""):
@@ -94,6 +99,7 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
                     delta_histogram_bins_auto=bool(auto_bins.value),
                     delta_histogram_bucket_labels=bool(bucket_labels.value),
                     delta_histogram_sigma_lines=bool(sigma_lines.value),
+                    delta_histogram_log_y=bool(log_y.value),
                 )
             else:
                 state.update(
@@ -103,6 +109,7 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
                     delta_histogram_bins=value,
                     delta_histogram_bucket_labels=bool(bucket_labels.value),
                     delta_histogram_sigma_lines=bool(sigma_lines.value),
+                    delta_histogram_log_y=bool(log_y.value),
                 )
             sync_enabled()
             on_change()
@@ -120,5 +127,6 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
         buckets.on_value_change(lambda _: changed())
         bucket_labels.on_value_change(lambda _: changed())
         sigma_lines.on_value_change(lambda _: changed())
+        log_y.on_value_change(lambda _: changed())
 
         sync_enabled()
