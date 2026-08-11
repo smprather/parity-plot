@@ -22,11 +22,19 @@ COLOR_TOKENS = ("red", "yellow", "orange", "green", "blue", "purple", "magenta",
 # the symbol cycle and catalog live in ``encoding`` alongside the rest of the
 # marker-encoding logic. See ``encoding.DEFAULT_SYMBOLS`` / ``SYMBOL_CATALOG``.
 
-# Qualitative colour tokens cycled for group colours. Reuse COLOR_TOKENS: they
-# already resolve per theme and sit apart from the reserved identity/marker/rug
-# shades (test_theme_colors.py guards that), so a group colour never impersonates
-# another on-plot element.
-GROUP_PALETTE: tuple[str, ...] = COLOR_TOKENS
+# Qualitative colour tokens cycled for group colours. This is deliberately not
+# COLOR_TOKENS order: red/yellow/orange are too close as the first three groups.
+# Start with separated hues so the common low-cardinality case reads cleanly.
+GROUP_PALETTE: tuple[str, ...] = (
+    "blue",
+    "orange",
+    "purple",
+    "green",
+    "magenta",
+    "yellow",
+    "red",
+    "grey",
+)
 
 
 @dataclass(frozen=True)

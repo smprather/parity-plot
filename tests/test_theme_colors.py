@@ -32,6 +32,14 @@ def test_the_offered_tokens_are_the_curated_set():
     )
 
 
+def test_group_palette_starts_with_high_contrast_hues():
+    assert themes.GROUP_PALETTE[:3] == ("blue", "orange", "purple")
+
+
+def test_group_palette_uses_the_curated_tokens():
+    assert set(themes.GROUP_PALETTE) == set(themes.COLOR_TOKENS)
+
+
 @pytest.mark.parametrize("theme_name", ["dark", "light"])
 def test_no_token_duplicates_a_reserved_colour(theme_name):
     """green is the identity line, blue is the markers, amber is the rug. A
