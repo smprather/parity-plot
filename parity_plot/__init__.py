@@ -32,7 +32,7 @@ from .themes import THEMES as THEME_NAMES
 from .themes import Theme
 from .tolerance import Tolerance
 
-__version__ = "0.1.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "parity_plot",
