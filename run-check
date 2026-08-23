@@ -1,0 +1,3 @@
+#!/bin/bash
+uv run parity-plot design data/parts.csv
+
