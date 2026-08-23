@@ -124,6 +124,16 @@ def test_config_choices_empty_dir_is_empty(tmp_path):
     assert config_choices(tmp_path) == []
 
 
+def test_config_choice_names_include_a_bound_config_outside_the_launch_dir(tmp_path):
+    from parity_plot.designer.session import config_choice_names
+
+    launch_dir = tmp_path / "launch"
+    launch_dir.mkdir()
+    external = tmp_path / "elsewhere" / "outside.toml"
+
+    assert config_choice_names(launch_dir, external) == ["outside.toml"]
+
+
 def test_autosave_writes_when_bound(csv, tmp_path):
     out = tmp_path / "bound.toml"
     out.write_text(

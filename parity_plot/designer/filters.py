@@ -47,10 +47,10 @@ class FilterSet:
         A default FilterSet returns an equal dataset, which the golden tests
         depend on: an unfiltered designer must render exactly what the CLI does.
         """
-        paired = list(zip(data.keys, data.x, data.y))
+        kept = list(range(data.n_paired))
 
         if not self.show_paired:
-            paired = []
+            kept = []
         else:
             if self.outside_tolerance_only and pass_fail(tolerances):
                 # Keep paired records that fail ANY pass/fail tolerance.
@@ -58,18 +58,15 @@ class FilterSet:
                 # a reference band -- so only pass/fail criteria gate here.
                 # An unpaired record has no verdict, so this switch says nothing
                 # about it; show_unpaired governs those.
-                paired = [(k, x, y) for k, x, y in paired if failures(tolerances, x, y)]
+                kept = [i for i in kept if failures(tolerances, data.x[i], data.y[i])]
             if self.x_range is not None:
-                paired = [(k, x, y) for k, x, y in paired if self._in_range(x)]
+                kept = [i for i in kept if self._in_range(data.x[i])]
 
         missing_y = self._filter_unpaired(data.missing_y)
         missing_x = self._filter_unpaired(data.missing_x, has_x=False)
 
         return replace(
-            data,
-            keys=[k for k, _, _ in paired],
-            x=[x for _, x, _ in paired],
-            y=[y for _, _, y in paired],
+            data.select_paired(kept),
             missing_y=missing_y,
             missing_x=missing_x,
         )

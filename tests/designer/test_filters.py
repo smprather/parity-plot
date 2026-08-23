@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from parity_plot.data import from_sequences
+from parity_plot.data import ParityData, from_sequences
 from parity_plot.designer.filters import FilterSet
 from parity_plot.tolerances import NamedTolerance
 
@@ -92,6 +92,26 @@ def test_x_range_keeps_records_inside_the_window(data):
     assert result.keys == ["c"]  # x = 50
     assert result.missing_y.keys == ["d"]  # x = 70, known
     assert result.missing_x.keys == []  # no x at all, so not in any window
+
+
+def test_filtering_keeps_all_paired_metadata_aligned():
+    data = ParityData(
+        keys=["drop", "keep"],
+        x=[10.0, 50.0],
+        y=[11.0, 55.0],
+        group=["wrong", "right"],
+        color_values=[1.0, 2.0],
+        color_label="temperature",
+        hover_labels=("package",),
+        hover_values=[("DIP",), ("SMD",)],
+    )
+
+    result = FilterSet(x_range=(40.0, 60.0)).apply(data)
+
+    assert result.keys == ["keep"]
+    assert result.group == ["right"]
+    assert result.color_values == [2.0]
+    assert result.hover_values == [("SMD",)]
 
 
 def test_x_range_bounds_are_inclusive(data):

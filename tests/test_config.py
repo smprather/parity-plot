@@ -4,7 +4,13 @@ from pathlib import Path
 
 import pytest
 
-from parity_plot.config import EXAMPLE_TOML, ConfigError, ParityConfig, PlotConfig
+from parity_plot.config import (
+    EXAMPLE_TOML,
+    ConfigError,
+    OutputConfig,
+    ParityConfig,
+    PlotConfig,
+)
 
 
 def test_defaults_are_usable_without_any_toml():
@@ -106,6 +112,16 @@ def test_invalid_scalars_are_rejected():
         ParityConfig().merge(plot={"delta_histogram_bins": 24})
     with pytest.raises(ConfigError, match="odd"):
         PlotConfig(delta_histogram_bins=24)
+
+
+@pytest.mark.parametrize("value", [True, 640.9])
+def test_integer_config_fields_reject_booleans_and_fractions(value):
+    with pytest.raises(ConfigError, match="integer"):
+        ParityConfig.from_dict({"output": {"width": value}})
+    with pytest.raises(ConfigError, match="integer"):
+        OutputConfig(width=value)
+    with pytest.raises(ConfigError, match="integer"):
+        PlotConfig(delta_histogram_bins=value)
 
 
 def test_overrides_beat_the_file_but_none_is_ignored():

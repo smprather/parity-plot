@@ -24,7 +24,7 @@ from .panels.table import build_table
 from .panels.tolerances import build_tolerances_panel
 from .records import key_from_customdata
 from .selection import range_from_selection
-from .session import Session, config_choices
+from .session import Session, config_choice_names
 from .state import DesignerState
 from .validation import problems as config_problems
 
@@ -80,9 +80,10 @@ def build_app(
             return s.config_path.name if s.config_path is not None else UNSAVED
 
         def choice_options() -> list[str]:
-            names = [p.name for p in config_choices(launch_dir)]
+            s = sess["session"]
+            names = config_choice_names(launch_dir, s.config_path)
             # The unbound sentinel is offered only while unbound.
-            return ([UNSAVED] if sess["session"].config_path is None else []) + names
+            return ([UNSAVED] if s.config_path is None else []) + names
 
         # The data panel returns a hook that marks its join field; held here so
         # refresh() can call it after each change. Rebuilt with the column.

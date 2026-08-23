@@ -383,6 +383,22 @@ def test_log_mode_drops_non_positive_values_and_warns():
     assert list(paired.x) == [1.0, 10.0]
 
 
+def test_log_mode_keeps_group_labels_aligned_after_dropping_points():
+    data = from_sequences(
+        x=[1.0, -1.0, 10.0],
+        y=[1.1, 1.0, 11.0],
+        group=["first", "drop", "last"],
+    )
+    with pytest.warns(UserWarning, match="zero or negative"):
+        fig = build_figure(
+            data,
+            PlotConfig(log=True, encoding=Encoding(color_by="group")),
+        )
+
+    marker_names = {trace.name for trace in fig.data if trace.mode == "markers"}
+    assert marker_names == {"first", "last"}
+
+
 def test_log_mode_places_the_identity_line_in_data_space():
     """The axis range is in exponents on a log axis; the trace is not."""
     data = from_sequences(x=[1.0, 100.0], y=[1.0, 100.0])
@@ -639,6 +655,8 @@ def test_public_api_rejects_mixed_and_unknown_arguments(wide_csv):
         parity_plot(ref=[1.0], test=[1.0], colour="blue")
     with pytest.raises(TypeError, match="not both"):
         parity_plot(wide_csv, ref=[1.0], test=[1.0])
+    with pytest.raises(TypeError, match="group must be a sequence"):
+        parity_plot(ref=[1.0, 2.0], test=[1.1, 2.1], group="AB")
 
 
 def _scale_data():

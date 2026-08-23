@@ -117,6 +117,23 @@ def test_group_aligns_through_a_join(tmp_path):
     assert dict(zip(data.keys, data.group)) == {"A1": "x", "A2": "y"}
 
 
+def test_group_file_must_carry_the_join_column(tmp_path):
+    ref = write(tmp_path, "ref.csv", "id,v\nA,10\n")
+    test = write(tmp_path, "test.csv", "id,v\nA,11\n")
+    metadata = write(tmp_path, "metadata.csv", "type\ndiode\n")
+
+    with pytest.raises(DataError, match="lacks join column 'id'"):
+        load(
+            DataConfig(
+                files=(ref, test, metadata),
+                ref="ref.csv:v",
+                test="test.csv:v",
+                join="id",
+                group="type",
+            )
+        )
+
+
 def test_a_blank_group_cell_is_none(tmp_path):
     f = write(tmp_path, "d.csv", "reference,test,batch\n10,11,x\n20,22,\n")
     data = load(
@@ -326,3 +343,20 @@ def test_color_column_aligns_through_join(tmp_path):
         )
     )
     assert dict(zip(data.keys, data.color_values)) == {"A1": 25.0, "A2": 80.0}
+
+
+def test_color_column_rejects_duplicate_join_keys_in_its_own_file(tmp_path):
+    ref = write(tmp_path, "ref.csv", "id,v\nA,10\n")
+    test = write(tmp_path, "test.csv", "id,v\nA,11\n")
+    color = write(tmp_path, "color.csv", "id,temp\nA,10\nA,99\n")
+
+    with pytest.raises(DataError, match="duplicate join key"):
+        load(
+            DataConfig(
+                files=(ref, test, color),
+                ref="ref.csv:v",
+                test="test.csv:v",
+                join="id",
+                color_column="color.csv:temp",
+            )
+        )

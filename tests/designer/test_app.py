@@ -84,7 +84,8 @@ def test_build_app_registers_a_page_without_serving(session_and_data):
     assert "/" in after or "/" in before  # the page route exists
 
 
-def test_the_server_actually_serves_the_page(tmp_path: Path):
+@pytest.mark.parametrize("launch_mode", ["data", "external-config"])
+def test_the_server_actually_serves_the_page(tmp_path: Path, launch_mode: str):
     """End-to-end: boot the real CLI command and talk to it over HTTP.
 
     NiceGUI's headless `user` fixture expects a module-level app it can import
@@ -94,6 +95,22 @@ def test_the_server_actually_serves_the_page(tmp_path: Path):
     """
     csv = tmp_path / "wide.csv"
     csv.write_text("id,reference,test\nA1,10.0,11.0\nA2,20.0,21.0\n", encoding="utf-8")
+    launch_dir = tmp_path / "launch"
+    launch_dir.mkdir()
+
+    command = [sys.executable, "-m", "parity_plot.cli", "design"]
+    if launch_mode == "external-config":
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        config = config_dir / "outside.toml"
+        config.write_text(
+            f'[data]\nfiles = ["{csv.as_posix()}"]\n'
+            'ref = "wide.csv:reference"\ntest = "wide.csv:test"\n',
+            encoding="utf-8",
+        )
+        command.extend(["--config", str(config)])
+    else:
+        command.append(str(csv))
 
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -105,20 +122,12 @@ def test_the_server_actually_serves_the_page(tmp_path: Path):
     env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST")}
 
     proc = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "parity_plot.cli",
-            "design",
-            str(csv),
-            "--port",
-            str(port),
-            "--no-open-browser",
-        ],
+        [*command, "--port", str(port), "--no-open-browser"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
+        cwd=launch_dir,
     )
     try:
         body = ""

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import csv
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -75,6 +75,27 @@ class ParityData:
         plotted range.
         """
         return [*self.x, *self.y, *self.missing_y.values, *self.missing_x.values]
+
+    def select_paired(self, indices: Iterable[int]) -> ParityData:
+        """Keep paired rows at ``indices``, preserving every aligned channel."""
+        kept = list(indices)
+        return replace(
+            self,
+            keys=[self.keys[i] for i in kept],
+            x=[self.x[i] for i in kept],
+            y=[self.y[i] for i in kept],
+            group=[self.group[i] for i in kept] if self.group is not None else None,
+            color_values=(
+                [self.color_values[i] for i in kept]
+                if self.color_values is not None
+                else None
+            ),
+            hover_values=(
+                [self.hover_values[i] for i in kept]
+                if self.hover_values is not None
+                else None
+            ),
+        )
 
 
 def load(cfg: DataConfig) -> ParityData:
@@ -203,7 +224,8 @@ def _color_lookup(src, color_col, join: str | None, na: frozenset[str]):
                 f"{color_col.file}: colour column's file lacks join column "
                 f"{join!r}; cannot align colour values"
             )
-        mapping = dict(zip(table[join], color_col.values))
+        indexed = _values_by_key(color_col.file, table, color_col.name, join)
+        mapping = {key: value for key, (_, value) in indexed.items()}
 
         def lookup(key):
             return _color_value(mapping.get(key), na)
@@ -380,11 +402,20 @@ def _one_group_lookup(src, group: str, join: str | None, na: frozenset[str]):
         )
 
     if join:
-        # Only files that ALSO have the join column can be aligned by key.
+        for file in files:
+            if join not in src.tables[file]:
+                raise DataError(
+                    f"{file}: group column {group!r}'s file lacks join column "
+                    f"{join!r}; cannot align group values"
+                )
         keyed = {
-            f: dict(zip(src.tables[f][join], src.tables[f][group]))
-            for f in files
-            if join in src.tables[f]
+            file: {
+                key: value
+                for key, (_, value) in _values_by_key(
+                    file, src.tables[file], group, join
+                ).items()
+            }
+            for file in files
         }
 
         def lookup(key: str, _keyed=keyed, _group=group):
@@ -504,13 +535,23 @@ def _index_by_key(src, col, join: str) -> dict[str, tuple[int, str]]:
         raise DataError(
             f"{col.file}: join column {join!r} not found; available: {sorted(table)}"
         )
+    return _values_by_key(col.file, table, col.name, join)
+
+
+def _values_by_key(
+    path: Path,
+    table: dict[str, list[str]],
+    value_column: str,
+    join: str,
+) -> dict[str, tuple[int, str]]:
+    """Index one column by a unique join key."""
     keys = table[join]
     out: dict[str, tuple[int, str]] = {}
-    for index, (key, value) in enumerate(zip(keys, col.values)):
+    for index, (key, value) in enumerate(zip(keys, table[value_column])):
         key = (key or "").strip()
         if key in out:
             raise DataError(
-                f"{col.file}:{index + 2}: duplicate join key {key!r}; the join "
+                f"{path}:{index + 2}: duplicate join key {key!r}; the join "
                 f"would be ambiguous"
             )
         out[key] = (index + 2, value)
@@ -681,4 +722,8 @@ def _clean(value: float | None) -> float | None:
     if value is None:
         return None
     number = float(value)
-    return None if math.isnan(number) else number
+    if math.isnan(number):
+        return None
+    if math.isinf(number):
+        raise DataError(f"in-memory sequence value {value!r} is infinite")
+    return number

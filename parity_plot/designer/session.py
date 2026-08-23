@@ -29,6 +29,14 @@ def config_choices(directory: Path) -> list[Path]:
     return out
 
 
+def config_choice_names(directory: Path, current: Path | None) -> list[str]:
+    """Picker names, including a bound config outside the scanned directory."""
+    names = [path.name for path in config_choices(directory)]
+    if current is not None and current.name not in names:
+        names.insert(0, current.name)
+    return names
+
+
 @dataclass
 class Session:
     config_path: Path | None = None

@@ -144,6 +144,15 @@ def test_from_sequences_treats_none_and_nan_as_null():
     assert data.n_dropped == 1
 
 
+@pytest.mark.parametrize(
+    ("x", "y"),
+    [([1.0, float("inf")], [1.0, 2.0]), ([1.0, 2.0], [1.0, float("-inf")])],
+)
+def test_from_sequences_rejects_infinite_values(x, y):
+    with pytest.raises(DataError, match="infinite"):
+        from_sequences(x, y)
+
+
 def test_from_sequences_checks_lengths():
     with pytest.raises(DataError, match="differ in length"):
         from_sequences([1.0, 2.0], [1.0])

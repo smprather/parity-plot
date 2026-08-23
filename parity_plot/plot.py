@@ -96,13 +96,7 @@ def build_figure(
 
 def _drop_non_positive(data: ParityData) -> ParityData:
     """Remove values a log axis cannot show, reporting how many were lost."""
-    # Re-slice every per-paired-point list by kept indices so hover text and
-    # colour stay aligned to x/y. group is deliberately left alone: re-slicing
-    # it is a pre-existing gap tracked separately, not this feature's to close.
     kept = [i for i in range(data.n_paired) if data.x[i] > 0 and data.y[i] > 0]
-    hovers = (
-        [data.hover_values[i] for i in kept] if data.hover_values is not None else None
-    )
     missing_y = _filter_unpaired(data.missing_y)
     missing_x = _filter_unpaired(data.missing_x)
 
@@ -118,16 +112,7 @@ def _drop_non_positive(data: ParityData) -> ParityData:
         )
 
     return replace(
-        data,
-        keys=[data.keys[i] for i in kept],
-        x=[data.x[i] for i in kept],
-        y=[data.y[i] for i in kept],
-        color_values=(
-            [data.color_values[i] for i in kept]
-            if data.color_values is not None
-            else None
-        ),
-        hover_values=hovers,
+        data.select_paired(kept),
         missing_y=missing_y,
         missing_x=missing_x,
     )

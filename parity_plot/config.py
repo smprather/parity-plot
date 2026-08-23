@@ -127,14 +127,9 @@ class PlotConfig:
     def __post_init__(self) -> None:
         if self.delta_histogram_bins is None:
             return
-        if self.delta_histogram_bins <= 0:
-            raise ConfigError(
-                f"delta_histogram_bins must be positive, got {self.delta_histogram_bins}"
-            )
-        if self.delta_histogram_bins % 2 == 0:
-            raise ConfigError(
-                f"delta_histogram_bins must be odd, got {self.delta_histogram_bins}"
-            )
+        _positive_integer(
+            self.delta_histogram_bins, "delta_histogram_bins", must_be_odd=True
+        )
 
 
 @dataclass(frozen=True)
@@ -165,6 +160,8 @@ class OutputConfig:
     height: int = 900
 
     def __post_init__(self) -> None:
+        _positive_integer(self.width, "width")
+        _positive_integer(self.height, "height")
         # An explicit format that contradicts the extension is a mistake worth
         # refusing rather than resolving: whichever way it were resolved, one of
         # the two things the user wrote would be silently ignored.
@@ -358,12 +355,9 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
     if key in {"width", "height", "delta_histogram_bins"}:
         if value is None and key == "delta_histogram_bins":
             return None
-        size = int(value)
-        if size <= 0:
-            raise ConfigError(f"{where}: must be positive, got {size}")
-        if key == "delta_histogram_bins" and size % 2 == 0:
-            raise ConfigError(f"{where}: must be odd, got {size}")
-        return size
+        return _positive_integer(
+            value, where, must_be_odd=key == "delta_histogram_bins"
+        )
     if key in {
         "log",
         "equal_axes",
@@ -378,6 +372,16 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         if not isinstance(value, bool):
             raise ConfigError(f"{where}: expected true or false, got {value!r}")
         return value
+    return value
+
+
+def _positive_integer(value: Any, where: str, *, must_be_odd: bool = False) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"{where}: expected an integer, got {value!r}")
+    if value <= 0:
+        raise ConfigError(f"{where}: must be positive, got {value}")
+    if must_be_odd and value % 2 == 0:
+        raise ConfigError(f"{where}: must be odd, got {value}")
     return value
 
 
