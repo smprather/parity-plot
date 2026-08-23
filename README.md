@@ -5,8 +5,9 @@ an interactive designer.
 
 A parity plot scatters one dataset against another with a `y = x` identity line,
 so you can see at a glance how well the two agree. `parity-plot` adds the things a
-plain scatter leaves out: **tolerance bands** with pass/fail verdicts, **encoding**
-by group or verdict, honest **identity-line statistics**, and first-class handling
+plain scatter leaves out: **tolerance bands** with pass/fail verdicts,
+**polynomial reference lines**, **encoding** by group or verdict, honest
+**identity-line statistics**, and first-class handling
 of the case most tools ignore — records that exist in one dataset but have **no
 counterpart** in the other.
 
@@ -25,6 +26,8 @@ uv run parity-plot example      # generate 1000 sample points, plot, open the br
   spec, a tighter internal target, a reference band nobody is graded against.
   Each paired point gets a `pass`/`fail` verdict, and the stats report the pass
   rate per criterion.
+- **Polynomial reference lines.** Overlay any number of equations, with selectable
+  colour and solid, dashed or dotted strokes.
 - **Encoding.** Colour and symbol are driven independently by the group column or
   the pass/fail verdict, so a plot can say "colour by part family, ✕ for
   failures" in one glance.
@@ -60,8 +63,8 @@ Both `example` and `plot` open the result by default; pass `--no-open-browser` t
 suppress that, or (for `example`) `--no-plot` to skip rendering entirely.
 
 **`plot` is TOML-driven.** Everything about how a plot looks — data columns, theme,
-tolerances, encoding — lives in a config file, not on the command line. Start one,
-edit it, render it:
+tolerances, reference lines, encoding — lives in a config file, not on the command
+line. Start one, edit it, render it:
 
 ```bash
 uv run parity-plot init                 # write a documented parity.toml
@@ -254,15 +257,39 @@ style  = "shaded"
 `reltol` is a true ratio: `0.1` is a tenth, `10pct` says the same in percent,
 and a bare `10` means ten times the reading — the unit is stated, never guessed.
 
+## Polynomial reference lines
+
+Reference lines are independent of tolerance grading. Repeat the table to overlay
+several polynomials:
+
+```toml
+[[plot.polynomial_lines]]
+coefficients = [2, -3, 0, 4]
+color = "orange"
+style = "dashed"               # solid | dashed | dotted
+```
+
+Coefficients are ordered from highest degree to constant. This example is
+`y = 2x^3 - 3x^2 + 4`; zero-coefficient terms are omitted from the legend. The
+designer accepts the same coefficients as comma-separated text: `2, -3, 0, 4`.
+Colours use the theme tokens `red`, `yellow`, `orange`, `green`, `blue`, `purple`,
+`magenta`, `grey`, or a hex value in TOML/Python.
+
 ## Python API
 
 ```python
 from parity_plot import parity_plot
 from parity_plot.encoding import Encoding
+from parity_plot.polynomial_lines import PolynomialLine
 
 fig = parity_plot("data.csv", ref="data.csv:reference", test="data.csv:test")
 fig = parity_plot("meas.csv", "sim.csv", ref="meas.csv:v", test="sim.csv:v", join="id")
 fig = parity_plot(ref=[1.0, 2.0, 3.0], test=[1.1, None, 2.9], theme="light")
+fig = parity_plot(
+    ref=[1.0, 2.0, 3.0],
+    test=[1.1, 2.2, 2.9],
+    polynomial_lines=(PolynomialLine((2, 0, -1), style="dotted"),),
+)
 
 # group takes one or more column names; keyword options are PlotConfig fields
 fig = parity_plot(
@@ -397,6 +424,11 @@ kind = "pass"                  # pass | info
 color = "red"
 style = "lines"                # lines | shaded
 
+[[plot.polynomial_lines]]       # coefficients: highest degree to constant
+coefficients = [2, -3, 0, 4]   # legend: y = 2x^3 - 3x^2 + 4
+color = "orange"
+style = "dashed"               # solid | dashed | dotted
+
 [output]
 path = "parity.html"
 # format comes from the extension — `path = "shot.png"` writes a PNG. Set it only
@@ -453,6 +485,8 @@ never a disappearing pop-up.
 - **Data panel** — open any CSV and map its columns; the designer reads just the
   header to offer choices and guesses the mapping from names seen in the wild
   (`reference`/`measured`, `expected`/`actual`, `golden`/`dut`).
+- **Reference lines** — add, edit and remove polynomial overlays; enter coefficients
+  as comma-separated text and choose colour and stroke style.
 - **Inspector** — click any point (or a rug tick) to see both values, the signed
   and relative error, and whether it passes the current tolerance.
 - **Table** — every visible record, sortable by any column, so "which parts are

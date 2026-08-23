@@ -25,6 +25,7 @@ from . import themes
 from .config import OutputConfig, PlotConfig, StatsConfig
 from .data import ParityData, Unpaired
 from .encoding import DEFAULT_SYMBOLS, Encoding, partition
+from .polynomial_lines import PolynomialLine
 from .tolerances import (
     NamedTolerance,
     draw_order,
@@ -80,6 +81,7 @@ def build_figure(
 
     fig = go.Figure()
     _add_tolerances(fig, plot.tolerances, lo, hi, plot.log, theme)
+    _add_polynomial_lines(fig, plot.polynomial_lines, lo, hi, plot.log, theme)
     _add_paired(fig, data, plot.tolerances, plot.encoding, theme)
     if plot.nulls == "rug":
         _add_rugs(fig, data, lo, hi, plot.log, theme)
@@ -178,6 +180,55 @@ def _add_tolerances(
     """Draw every enabled tolerance, parity last so nothing buries it."""
     for tol in draw_order(tolerances):
         _add_one_tolerance(fig, tol, lo, hi, log, theme)
+
+
+_POLYNOMIAL_SAMPLES = 201
+_LINE_DASH = {"solid": None, "dashed": "dash", "dotted": "dot"}
+
+
+def _add_polynomial_lines(
+    fig: go.Figure,
+    lines: Sequence[PolynomialLine],
+    lo: float,
+    hi: float,
+    log: bool,
+    theme: themes.Theme,
+) -> None:
+    """Draw configured polynomials across the visible x-axis range."""
+    if log:
+        xs = [
+            10 ** (lo + (hi - lo) * i / (_POLYNOMIAL_SAMPLES - 1))
+            for i in range(_POLYNOMIAL_SAMPLES)
+        ]
+    else:
+        xs = [
+            lo + (hi - lo) * i / (_POLYNOMIAL_SAMPLES - 1)
+            for i in range(_POLYNOMIAL_SAMPLES)
+        ]
+
+    for polynomial in lines:
+        ys: list[float | None] = []
+        for x in xs:
+            y = polynomial.evaluate(x)
+            ys.append(y if math.isfinite(y) and (not log or y > 0) else None)
+        dash = _LINE_DASH[polynomial.style]
+        line: dict[str, Any] = dict(
+            color=theme.resolve_color(polynomial.color), width=1.8
+        )
+        if dash is not None:
+            line["dash"] = dash
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                name=polynomial.equation,
+                line=line,
+                showlegend=True,
+                hoverinfo="skip",
+                connectgaps=False,
+            )
+        )
 
 
 def _add_one_tolerance(

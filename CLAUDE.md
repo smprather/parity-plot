@@ -210,6 +210,12 @@ needs height. `themes.py` holds only the legend's *styling*; putting position
 there is what made the legend collide with the subtitle once already. `top` is
 deliberately not an option for the same reason.
 
+**Polynomial reference lines are presentation-only overlays.**
+`PlotConfig.polynomial_lines` carries repeatable `PolynomialLine` values whose
+coefficients run highest-degree first. `polynomial_lines.py` owns CSV parsing,
+validation, Horner evaluation and equation labels; `plot.py` only samples them
+over the visible x range. They never affect tolerance verdicts or statistics.
+
 **Log mode passes `log` explicitly** through `_add_identity`, `_add_rugs`, and
 `_add_tolerance`. It cannot be sniffed from the figure: traces are added
 before `_apply_layout` sets the axis type. On a log axis the stored range is in

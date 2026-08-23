@@ -17,6 +17,7 @@ import tomlkit
 from tomlkit.items import AoT
 
 from ..config import EXAMPLE_TOML, ParityConfig
+from ..polynomial_lines import PolynomialLine
 from ..tolerance import parse_reltol
 from ..tolerances import PARITY_NAME, NamedTolerance, parity
 
@@ -43,6 +44,9 @@ def config_to_toml(config: ParityConfig, existing: str | None = None) -> str:
             value = getattr(section, field.name)
             if field.name == "tolerances" and name == "plot":
                 _write_tolerances(table, value, current)
+                continue
+            if field.name == "polynomial_lines" and name == "plot":
+                _write_polynomial_lines(table, value)
                 continue
             if value is None:
                 # An unset option is an absent key, not an explicit null.
@@ -150,6 +154,46 @@ def _write_tolerances(
         else:
             aot.append(_fresh_tolerance_table(tol))
     plot_table["tolerances"] = aot
+
+
+def _write_polynomial_lines(
+    plot_table: Any, polynomial_lines: tuple[PolynomialLine, ...]
+) -> None:
+    """Write polynomial lines as repeatable TOML tables, preserving equal entries."""
+    existing = plot_table.get("polynomial_lines")
+    raw_entries = list(existing) if isinstance(existing, AoT) else []
+
+    if not polynomial_lines:
+        if "polynomial_lines" in plot_table:
+            del plot_table["polynomial_lines"]
+        return
+
+    aot = tomlkit.aot()
+    for index, polynomial in enumerate(polynomial_lines):
+        raw = raw_entries[index] if index < len(raw_entries) else None
+        if raw is not None and _raw_polynomial_matches(raw, polynomial):
+            aot.append(raw)
+        else:
+            aot.append(_fresh_polynomial_table(polynomial))
+    plot_table["polynomial_lines"] = aot
+
+
+def _raw_polynomial_matches(raw: Any, polynomial: PolynomialLine) -> bool:
+    try:
+        return PolynomialLine(**_plain(raw)) == polynomial
+    except TypeError, ValueError:
+        return False
+
+
+def _fresh_polynomial_table(polynomial: PolynomialLine) -> Any:
+    table = tomlkit.table()
+    table["coefficients"] = list(polynomial.coefficients)
+    defaults = {field.name: field.default for field in fields(PolynomialLine)}
+    for name in ("color", "style"):
+        value = getattr(polynomial, name)
+        if value != defaults[name]:
+            table[name] = value
+    return table
 
 
 def _is_default_parity(tol: NamedTolerance) -> bool:

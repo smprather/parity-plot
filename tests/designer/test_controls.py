@@ -26,10 +26,11 @@ def test_every_plot_setting_has_a_control():
     """A setting with no control is a setting the designer silently cannot
     reach, which makes the saved config differ from what was on screen.
 
-    `tolerances`, `encoding`, and histogram settings have dedicated panels; none
-    is a plain control, so they are excluded here."""
+    `tolerances`, polynomial lines, `encoding`, and histogram settings have
+    dedicated panels; none is a plain control, so they are excluded here."""
     plot_fields = {f.name for f in fields(PlotConfig)} - {
         "tolerances",
+        "polynomial_lines",
         "encoding",
         *HISTOGRAM_FIELDS,
     }

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .encoding import Encoding, EncodingError
+from .polynomial_lines import PolynomialLine, PolynomialLineError
 from .tolerance import parse_reltol
 from .tolerances import (
     NamedTolerance,
@@ -110,6 +111,7 @@ class PlotConfig:
     # (the y = x line) is guaranteed first; disabling it replaces the old
     # identity_line = false.
     tolerances: tuple[NamedTolerance, ...] = field(default_factory=lambda: (parity(),))
+    polynomial_lines: tuple[PolynomialLine, ...] = ()
     nulls: str = "rug"
     legend: str = "right"
     delta_histogram: bool = False
@@ -340,6 +342,8 @@ def _coerce(cls: type, key: str, value: Any, source: str) -> Any:
         return Path(value)
     if key == "tolerances":
         return _coerce_tolerances(value, where)
+    if key == "polynomial_lines":
+        return _coerce_polynomial_lines(value, where)
     if key == "encoding":
         return _coerce_encoding(value, where)
     if key == "hover_columns":
@@ -432,6 +436,34 @@ def _coerce_tolerances(value: Any, where: str) -> tuple[NamedTolerance, ...]:
     except ToleranceError as exc:
         raise ConfigError(f"{where}: {exc}") from None
     return with_parity(tuple(built))
+
+
+def _coerce_polynomial_lines(value: Any, where: str) -> tuple[PolynomialLine, ...]:
+    """Build polynomial lines from TOML tables or ready-made objects."""
+    if isinstance(value, PolynomialLine):
+        value = [value]
+    if isinstance(value, str) or not hasattr(value, "__iter__"):
+        raise ConfigError(f"{where}: expected a list of polynomial line tables")
+
+    built: list[PolynomialLine] = []
+    known = set(PolynomialLine.__dataclass_fields__)
+    for index, entry in enumerate(value, start=1):
+        if isinstance(entry, PolynomialLine):
+            built.append(entry)
+            continue
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{where}[{index}]: expected a table, got {entry!r}")
+        unknown = set(entry) - known
+        if unknown:
+            raise ConfigError(
+                f"{where}[{index}]: unknown key(s) {sorted(unknown)}; "
+                f"valid keys are {sorted(known)}"
+            )
+        try:
+            built.append(PolynomialLine(**entry))
+        except (PolynomialLineError, TypeError, ValueError) as exc:
+            raise ConfigError(f"{where}[{index}]: {exc}") from None
+    return tuple(built)
 
 
 def _coerce_encoding(value: Any, where: str) -> Encoding:
@@ -552,6 +584,13 @@ delta_histogram_log_y = false          # log-scaled histogram counts
 [[plot.tolerances]]
 name = "spec"
 reltol = 0.10           # a ratio; write "10pct" if you prefer percent
+
+# Add any number of polynomial reference lines. Coefficients run from highest
+# degree to constant, so [2, 0, -1] means y = 2x^2 - 1.
+# [[plot.polynomial_lines]]
+# coefficients = [2, 0, -1]
+# color = "orange"       # red | yellow | orange | green | blue | purple | magenta | grey
+# style = "dashed"       # solid | dashed | dotted
 
 # Marker colour and symbol can each be driven from the data:
 #   color_by   = "single"     # one colour for all points (see `color` below)
