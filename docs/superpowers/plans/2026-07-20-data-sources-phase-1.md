@@ -1,5 +1,7 @@
 # Data Sources Phase 1 (Multi-file Model) Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 > **For agentic workers:** Implement one task only, as fenced in your prompt.
 
 **Goal:** Replace `DataConfig.paths + x + y + key` with an N-file model where the two

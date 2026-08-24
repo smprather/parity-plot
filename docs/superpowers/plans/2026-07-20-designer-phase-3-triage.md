@@ -1,5 +1,7 @@
 # Designer Phase 3 (Triage) Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A sortable table beside the plot, linked to it in both directions, with filters that narrow both to the records you care about — "which parts failed spec" answered in one look.

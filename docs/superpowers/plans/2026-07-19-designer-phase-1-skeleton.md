@@ -1,5 +1,7 @@
 # Designer Phase 1 (Skeleton) Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A local browser app, `parity-plot design`, that renders a parity plot live while every plot/stats/output setting is edited, and saves the result back to a `parity.toml` without destroying its comments.

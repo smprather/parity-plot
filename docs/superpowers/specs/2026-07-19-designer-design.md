@@ -1,8 +1,9 @@
 # Interactive Designer — Design
 
+> **Status:** Implemented. Historical design; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 **Date:** 2026-07-19
 **Branch:** `designer`
-**Status:** approved for implementation
 
 ## Context
 

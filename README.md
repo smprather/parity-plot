@@ -99,14 +99,18 @@ test  = "data.csv:test"
 
 With `join`, rows are outer-joined on that key, and a key on only one side is
 unpaired. **Without a join, rows pair by position**, and the longer column's tail
-is left unpaired.
+is left unpaired. Join keys must be unique in every participating file. The two
+axis files, the pinned `color_column` file, and every file that supplies a chosen
+group column must carry the join column; ambiguous or unalignable auxiliary data
+raises instead of silently choosing or dropping values.
 
 `group` labels each point for the encoding below. It is one **or more** bare column
 names (not `file:column`): a group names the joined *entity* (a part), so it may
 live in one file or several, and several columns compose into one label —
 `group = ["package", "vendor"]` reads as `"SMD, Acme"`. When two files both carry a
 group column, their values for a paired record must agree — a mismatch is an error
-naming the record and the two values.
+naming the record and the two values. With joined data, every file that carries a
+selected group column must also carry the join column.
 
 A separate `color_column` (a single numeric `file:column`) drives the *colorscale*
 colour mode — see [Encoding](#encoding). Unlike `group`, it is pinned to one file,
@@ -273,7 +277,9 @@ Coefficients are ordered from highest degree to constant. This example is
 `y = 2x^3 - 3x^2 + 4`; zero-coefficient terms are omitted from the legend. The
 designer accepts the same coefficients as comma-separated text: `2, -3, 0, 4`.
 Colours use the theme tokens `red`, `yellow`, `orange`, `green`, `blue`, `purple`,
-`magenta`, `grey`, or a hex value in TOML/Python.
+`magenta`, `grey`, or a hex value in TOML/Python. Coefficients must be finite;
+an all-zero polynomial is shown as `y = 0`. Legend and editor text preserve the
+stored float precision.
 
 ## Python API
 
@@ -285,6 +291,11 @@ from parity_plot.polynomial_lines import PolynomialLine
 fig = parity_plot("data.csv", ref="data.csv:reference", test="data.csv:test")
 fig = parity_plot("meas.csv", "sim.csv", ref="meas.csv:v", test="sim.csv:v", join="id")
 fig = parity_plot(ref=[1.0, 2.0, 3.0], test=[1.1, None, 2.9], theme="light")
+fig = parity_plot(
+    ref=[1.0, 2.0, 3.0],
+    test=[1.1, 2.2, 2.9],
+    group=["control", "trial", "trial"],
+)
 fig = parity_plot(
     ref=[1.0, 2.0, 3.0],
     test=[1.1, 2.2, 2.9],
@@ -304,8 +315,11 @@ fig.show()
 
 Any iterable of numbers works for `ref`/`test` — lists, pandas Series, numpy
 arrays — with `None` or `NaN` marking a missing value. (No numpy or pandas
-required; they're just accepted.) Keyword `options` are `PlotConfig` fields
-(`theme`, `legend`, `encoding`, …); an unknown one is rejected.
+required; they're just accepted.) Other non-finite values are rejected. For
+in-memory data, `group` is a sequence aligned with `ref` and `test`; a bare string
+is rejected because it cannot unambiguously mean one label per point. Keyword
+`options` are `PlotConfig` fields (`theme`, `legend`, `encoding`, …); an unknown
+one is rejected.
 
 ### Driving the API from a config file
 
@@ -435,6 +449,8 @@ path = "parity.html"
 # to override, and never to something the extension contradicts (that raises).
 # format = "html"              # html | png | svg | pdf
 # plotlyjs = "inline"          # inline | cdn | directory — see Offline use
+# width = 900                   # positive integers only
+# height = 900
 ```
 
 ```bash
@@ -471,6 +487,10 @@ always holds the latest valid config. A `‹unsaved›` design (New Design, or a
 data-only launch) writes nowhere until **Save As** binds it a name. Comments in an
 existing config survive the round trip, and a key you have not changed keeps its
 original spelling (`reltol = "10pct"` is not rewritten as `0.1`).
+
+`--config` may point outside the launch directory. That bound file remains the
+active picker entry while the dropdown also offers valid parity configs from the
+launch directory.
 
 The preview is produced by the same `build_figure` the CLI uses, so what you see
 is exactly what `parity-plot plot parity.toml` will render — an equivalence pinned
@@ -534,8 +554,20 @@ uv run parity-plot example --missing-x 100 --missing-y 100   # lots of unpaired 
 Fractions rather than percentages. The null counts scale with `-n` so a small `-n`
 still works; pass explicit counts to override.
 
-## Tests
+## Documentation and development
+
+- [Embedding guide](docs/embedding.md) — static fragments, dynamic JSON, sizing,
+  resize handling, and WebGL limits.
+- [Tabbed report example](examples/tabbed-report/) — a complete offline page with
+  three plots and one shared Plotly library.
+- [Documentation index](docs/README.md) — current guides versus historical design
+  and implementation records.
 
 ```bash
+uv sync
 uv run pytest
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check parity_plot
+./run-check                       # open the designer against data/parts.csv
 ```

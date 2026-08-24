@@ -1,5 +1,7 @@
 # Tolerances Phase 1 (Model & Config) Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 > **For agentic workers:** Implement one task only, as fenced in your prompt. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** A named-tolerance model and the config that carries a list of them. Nothing renders yet; every piece is unit-tested without a browser.

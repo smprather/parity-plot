@@ -1,5 +1,7 @@
 # Tolerances Phase 2 (Rendering & Verdicts) Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 > **For agentic workers:** Implement one task only, as fenced in your prompt.
 
 **Goal:** Teach every consumer to read the tolerance list, add the built-in parity entry, and clear all 103 xfails.

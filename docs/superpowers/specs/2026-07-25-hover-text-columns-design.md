@@ -1,7 +1,8 @@
 # Hover-text column selection — design
 
+> **Status:** Implemented. Historical design; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 **Date:** 2026-07-25
-**Status:** approved, ready to plan
 **Version target:** 0.6.0 (additive feature → minor bump)
 
 ## Problem

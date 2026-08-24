@@ -1,5 +1,7 @@
 # Designer auto-save, config picker, live validation — Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the designer auto-save every valid edit to the bound config file, driven from a top toolbar (config dropdown + Save As + New Design), with a browser-free blocking validation layer and a fix for clearing a field back to its default.

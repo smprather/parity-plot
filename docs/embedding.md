@@ -3,8 +3,8 @@
 How to put several parity plots on one page, minimally and correctly. Written to
 be read start-to-finish by whoever (or whatever) is building the consuming app.
 
-Every number and behaviour here was verified against plotly.js v3.7.0 as shipped
-in the plotly wheel that parity-plot depends on.
+Every number and behaviour here was verified against Plotly.py 6.9.0 and
+plotly.js v3.7.0 as shipped in the locked plotly wheel.
 
 ## The contract
 
@@ -19,6 +19,10 @@ ships a runtime of its own. You get three output shapes:
 
 For a multi-plot page you want the second or third. The first is for handing a
 single self-contained file to a person.
+
+The shape contains the complete figure. Tolerance bands, polynomial reference
+lines, delta histograms, marker encoding, legends and hover rows need no special
+embedding code; only the surrounding page and Plotly library ownership change.
 
 ## Choosing between fragments and JSON
 

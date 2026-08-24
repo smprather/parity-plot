@@ -1,7 +1,8 @@
 # Designer: auto-save session model, config picker, live validation — Design
 
+> **Status:** Implemented. Historical design; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 **Date:** 2026-07-23
-**Status:** approved (pending written-spec review)
 **Area:** `parity_plot/designer/` only. The CLI, plotting, and config-loading paths are untouched.
 
 ## Problem

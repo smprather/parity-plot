@@ -1,5 +1,7 @@
 # Data Sources Phase 3 (Designer GUI) Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 **Goal:** The designer starts with no files, opens them from a server-side browser, maps
 ref/test/join/group from dropdowns across the open files, and sets the colour/symbol
 encoding — all live.

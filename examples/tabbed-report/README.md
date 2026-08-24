@@ -25,9 +25,10 @@ dist/                      the built report         (gitignored)
 ```
 
 The split is the point. A **config defines a plot** and nothing else, so
-`parity-plot plot configs/run-a.toml` and `parity-plot design configs/run-a.toml`
-show you exactly what the report will show. The **app owns presentation** — which
-div id, which tab label, where the file lands. Neither knows about the other.
+`parity-plot plot configs/run-a.toml` and
+`parity-plot design --config configs/run-a.toml` show you exactly what the report
+will show. The **app owns presentation** — which div id, which tab label, where
+the file lands. Neither knows about the other.
 
 ## What it demonstrates
 

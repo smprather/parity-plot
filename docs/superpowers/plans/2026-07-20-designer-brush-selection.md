@@ -1,5 +1,7 @@
 # Brush Selection Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 > **For agentic workers:** Implement one task only, as fenced in your prompt. Steps use checkbox (`- [ ]`) syntax.
 
 **Goal:** Drag a box on the plot to narrow the plot, table and statistics to that x-window; double-click to clear.

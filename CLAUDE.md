@@ -13,10 +13,49 @@ uv run pytest tests/test_data.py::test_wide_sorts_records_into_paired_and_unpair
 uv run parity-plot example       # regenerate data/ sample CSVs, plot, open browser
 uv run parity-plot init          # write a documented parity.toml
 uv run parity-plot plot parity.toml --no-open-browser -o out.html   # CONFIG is positional
+uv run parity-plot design --config parity.toml --no-open-browser
+./run-check                      # designer against data/parts.csv
 ```
 
-Executable names are kebab-case (`parity-plot`, `build-report`). Python modules
-and import paths stay snake_case.
+### Running uv in a filesystem sandbox
+
+Managed agent sandboxes often expose the home directory as read-only while the
+workspace and `/tmp` remain writable. uv normally locks and creates temporary
+files under `~/.cache/uv`, so a command may fail before it runs with:
+
+```text
+error: Could not acquire lock
+Caused by: Could not create temporary file
+Caused by: Read-only file system ... /home/.../.cache/uv/.tmp...
+```
+
+Do not retry the identical command. Point uv at a writable cache **on every tool
+call** (exec calls do not preserve exported environment variables):
+
+```bash
+UV_CACHE_DIR=/tmp/parity-plot-uv-cache uv run pytest
+UV_CACHE_DIR=/tmp/parity-plot-uv-cache uv run ruff check .
+UV_CACHE_DIR=/tmp/parity-plot-uv-cache uv sync
+```
+
+If `.venv` is already synced and no dependency operation is needed, bypass uv
+entirely; this is faster and avoids its cache lock:
+
+```bash
+.venv/bin/pytest
+.venv/bin/ruff check .
+.venv/bin/ty check parity_plot
+.venv/bin/parity-plot --help
+```
+
+Cache writability and network access are separate failures. `UV_CACHE_DIR` fixes
+the read-only-cache error. If uv then needs to download a missing package and the
+sandbox blocks DNS/network, rerun that specific uv command with the environment's
+network/escalation mechanism. Never work around either failure with `pip` or by
+creating a second environment.
+
+Executable names are kebab-case (`parity-plot`, `build-report`, `run-check`).
+Python modules and import paths stay snake_case.
 
 `plot` and `example` **open the result in a browser by default**
 (`--no-open-browser` to suppress), matching the sibling `time-plot` project.
@@ -73,9 +112,12 @@ strings). `data.py`'s `load` picks ref and test columns, then aligns them: with
 a `join` column it outer-joins the two files on the key; without one it pairs by
 row position and leaves the longer column's tail unpaired. Both former modes —
 one wide file, two joined files — are special cases of this one path; there is no
-dispatch on file count. Everything collapses into one `ParityData` struct (now
-carrying an optional per-point `group`), so nothing downstream knows how it was
-loaded. `sources` imports helpers from `data`, so `data.load` imports
+dispatch on file count. Everything collapses into one `ParityData` struct carrying
+the paired axes plus optional aligned group, colour and hover channels, so nothing
+downstream knows how it was loaded. `ParityData.select_paired(indices)` is the one
+owner of slicing those aligned channels; filters and log-mode cleanup must use it
+rather than slicing fields independently. `sources` imports helpers from `data`,
+so `data.load` imports
 `open_sources` **lazily** to break the cycle.
 
 **Group is file-independent, bare column names — not `file:column` — and a
@@ -87,8 +129,11 @@ part), not a per-file measurement, so it may live in one file or several.
 `", "` — `"SMD, Acme"`; a blank slot is `"(none)"`, all-blank is `None`. Each
 column is resolved via `Sources.files_with_column`, keying by the join value (or
 row index when pairing by order); when 2+ files carry a column `_agree` checks the
-values match and raises naming the record. `join` stays a column present in
-*every* file; each `group` column needs only one.
+values match and raises naming the record. A group column needs to exist in only
+one file, but with joined data **every file that carries that selected column must
+also carry the join column**; otherwise its values cannot vote and `load` raises
+instead of silently ignoring the file. `_values_by_key` enforces unique join keys
+for axis, group and pinned colour data.
 
 **`color_column` is the colorscale channel's data — a single pinned `file:column`
 numeric ref** (`DataConfig.color_column`, unlike `group` it names one file, since
@@ -96,7 +141,7 @@ the same column can differ between ref and test files). `data._color_lookup`
 resolves it (no cross-file `_agree`) into `ParityData.color_values`
 (`list[float|None]|None`, aligned to paired points, `None` if unset or all-blank)
 plus `color_label` (the colorbar title). `_drop_non_positive` re-slices
-`color_values` in log mode; it still does **not** re-slice `group` (pre-existing).
+all paired channels through `ParityData.select_paired` in log mode.
 
 **`hover_columns` is the hover box's extra rows — pinned `file:column` refs, and
 tri-state.** `DataConfig.hover_columns` is `tuple[str, ...] | None`: `None` (an
@@ -121,12 +166,10 @@ with `Path.name`). `_hover_lookup` mirrors `_color_lookup` — pinned per file, 
 formatting needs a schema and is deferred (see the spec's Future work).
 
 `customdata` is `(key, diff, verdict, *hover)`, so hover rows start at index 3
-and `key_from_customdata` (index 0) is unaffected. `plot._drop_non_positive`
-re-slices by kept **indices** and covers `hover_values` and `color_values` — but
-still not `group` (pre-existing). `load` also checks the join column is in both
-axis files up front: `_index_by_key` enforced it already, but that runs after the
-per-point lookups are built, so an auto-hover column from the same file would
-otherwise report a missing join key in the hover channel's language.
+and `key_from_customdata` (index 0) is unaffected. `load` checks the join column
+in both axis files up front: `_index_by_key` enforced it already, but that runs
+after the per-point lookups are built, so an auto-hover column from the same file
+would otherwise report a missing join key in the hover channel's language.
 
 **Marker encoding** (`encoding.py`, pure) partitions paired points into traces by
 their `(colour-key, symbol-key)`. Channels split: `COLOR_CHANNELS = single |
@@ -213,11 +256,13 @@ deliberately not an option for the same reason.
 **Polynomial reference lines are presentation-only overlays.**
 `PlotConfig.polynomial_lines` carries repeatable `PolynomialLine` values whose
 coefficients run highest-degree first. `polynomial_lines.py` owns CSV parsing,
-validation, Horner evaluation and equation labels; `plot.py` only samples them
-over the visible x range. They never affect tolerance verdicts or statistics.
+finite-value validation, round-trippable coefficient text, Horner evaluation and
+equation labels; `plot.py` only samples them over the visible x range. Equation
+labels omit zero terms, preserve stored float precision, and use `y = 0` for an
+all-zero polynomial. They never affect tolerance verdicts or statistics.
 
-**Log mode passes `log` explicitly** through `_add_identity`, `_add_rugs`, and
-`_add_tolerance`. It cannot be sniffed from the figure: traces are added
+**Log mode passes `log` explicitly** through `_add_polynomial_lines`, `_add_rugs`,
+and `_add_tolerance`. It cannot be sniffed from the figure: traces are added
 before `_apply_layout` sets the axis type. On a log axis the stored range is in
 *exponents*, so traces need `10**value` to land in data space.
 
@@ -242,7 +287,10 @@ no plain Save button. Persistence is a **top toolbar**: a config dropdown
 (`session.config_choices(dir)` lists parity `.toml`s in the launch dir — touchstone:
 parses + non-empty `data.files`), **Save As**, **New Design**. `<unsaved>` in the
 dropdown means *unbound* — a New Design or data-only launch with no file yet; Save
-As binds it. The settings column is a `@ui.refreshable` rebuilt on a config swap
+As binds it. `session.config_choice_names` also inserts the currently bound config
+when it lives outside the launch directory; omitting it makes NiceGUI reject the
+select's current value and return HTTP 500. The settings column is a
+`@ui.refreshable` rebuilt on a config swap
 (`state.load_session_config`), while the plot/selection on the right persist. The
 only confirm-dialog left guards leaving an *unbound-with-edits* state. The
 **stale-file guard is retired** — the designer owns the open file; concurrent
@@ -305,7 +353,7 @@ good news; the status bar also shows a green `✅ Saved` and reverts to the live
 error/idle state on the next `refresh()`. Do not reintroduce negative toasts.
 
 Plotly click payloads carry `customdata` in **two shapes**: the paired trace carries
-`(key, diff, verdict)` (the verdict text feeds the hover), the rug traces a bare key.
+`(key, diff, verdict, *hover)`, the rug traces a bare key.
 `key_from_customdata` normalises both — never index into it directly.
 
 `build_inspector` takes the tolerance as a **callable**, since the user can change it
@@ -367,6 +415,12 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
   or numpy arrays anyway — they are just iterables of numbers.
 - **A non-numeric, non-null cell is an error**, never a silent null. Coercing it
   would corrupt every statistic downstream. Errors name the file and line.
+- **Numeric plot data must be finite.** CSV parsing and `from_sequences` both
+  reject infinities; only `None` and NaN mean missing.
+- **Integer config fields are actual positive integers.** Reject booleans and
+  floats rather than relying on `int(...)`, which turns `true` into `1` and
+  silently truncates fractions. Direct dataclass construction follows the same
+  rule as TOML coercion.
 - **Unknown TOML keys raise.** A misspelled key that was ignored would render
   the default and look like a plotting bug.
 - **R² is about the identity line**, not a least-squares fit (see README).
@@ -465,13 +519,15 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
 ## Releases
 
 Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
-GitHub Releases. Current line: **0.7.0** (`main`). History: 0.1.0 → multi-file
+GitHub Releases. Current released line: **0.9.0** (`main`). History: 0.1.0 → multi-file
 data model & encoding (0.3.0) → file-independent group + persistent designer
 status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
 value (0.5.0) → composite group, colorscale channel, TOML-only CLI, designer
 auto-save/config picker, hover-text columns (0.6.0) → offline-by-default HTML,
-output-format inference, embeddable fragments (0.7.0). Tags `v0.1.0`–`v0.3.0`
-predate the GitHub Releases; `v0.4.0` onward have them.
+output-format inference, embeddable fragments (0.7.0) → embedding guide and tabbed
+report consumer (0.8.0) → delta histogram (0.9.0). Polynomial reference lines and
+the alignment/validation hardening landed on `main` after the 0.9.0 tag. Tags
+`v0.1.0`–`v0.3.0` predate the GitHub Releases; `v0.4.0` onward have them.
 
 The ship flow (only when the user asks): branch off `main`, commit, bump the
 version on the branch, `git checkout main && git merge --no-ff`, `git tag -a`,

@@ -1,5 +1,7 @@
 # Data Sources Phase 2 (Marker Encoding) Implementation Plan
 
+> **Status:** Implemented. Historical plan; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 **Goal:** Drive marker **colour** and **symbol** independently from the data — each by a
 constant, by the pass/fail verdict, or by the group column.
 

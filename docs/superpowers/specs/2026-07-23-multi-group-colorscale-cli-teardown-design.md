@@ -1,7 +1,8 @@
 # Design: composite group, colorscale colour mode, CLI→TOML teardown, richer example data
 
+> **Status:** Implemented. Historical design; use [README.md](../../../README.md) and [CLAUDE.md](../../../CLAUDE.md) for current behavior and contributor rules.
+
 Date: 2026-07-23
-Status: approved (pending spec review)
 
 ## Summary
 
