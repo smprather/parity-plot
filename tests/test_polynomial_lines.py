@@ -10,7 +10,7 @@ from parity_plot.polynomial_lines import PolynomialLine, PolynomialLineError
 from parity_plot.themes import get as get_theme
 
 
-def test_csv_coefficients_drive_value_and_equation_label():
+def test_csv_coefficients_start_with_the_highest_degree():
     line = PolynomialLine.from_csv("2, -3, 0, 4")
 
     assert line.evaluate(2) == 8.0

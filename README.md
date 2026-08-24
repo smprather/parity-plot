@@ -506,7 +506,8 @@ never a disappearing pop-up.
   header to offer choices and guesses the mapping from names seen in the wild
   (`reference`/`measured`, `expected`/`actual`, `golden`/`dut`).
 - **Reference lines** — add, edit and remove polynomial overlays; enter coefficients
-  as comma-separated text and choose colour and stroke style.
+  as comma-separated text from highest degree to constant, and choose colour and
+  stroke style.
 - **Inspector** — click any point (or a rug tick) to see both values, the signed
   and relative error, and whether it passes the current tolerance.
 - **Table** — every visible record, sortable by any column, so "which parts are

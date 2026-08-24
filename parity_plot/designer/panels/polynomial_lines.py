@@ -9,6 +9,8 @@ from ...themes import COLOR_TOKENS
 from ..state import DesignerState
 from .section import section
 
+COEFFICIENTS_INPUT_LABEL = "Coefficients: Highest Degree First (Comma-Separated)"
+
 
 def build_polynomial_lines_panel(
     state: DesignerState, on_change: Callable[[], None]
@@ -79,12 +81,15 @@ def build_polynomial_lines_panel(
             color_options = list(COLOR_TOKENS)
             if initial.color.startswith("#"):
                 color_options.append(initial.color)
-            with ui.dialog() as dialog, ui.card().classes("w-96 gap-2"):
+            with (
+                ui.dialog() as dialog,
+                ui.card().classes("w-[36rem] max-w-[calc(100vw-2rem)] gap-2"),
+            ):
                 ui.label(
                     "Edit reference line" if polynomial else "Add reference line"
                 ).classes("text-base font-medium")
                 coefficients_in = ui.input(
-                    "Coefficients",
+                    COEFFICIENTS_INPUT_LABEL,
                     value=initial.coefficients_csv,
                 ).classes("w-full")
                 with ui.row().classes("w-full gap-2 no-wrap"):
