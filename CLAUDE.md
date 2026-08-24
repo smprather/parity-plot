@@ -285,6 +285,9 @@ finite-value validation, round-trippable coefficient text, Horner evaluation and
 equation labels; `plot.py` only samples them over the visible x range. Equation
 labels omit zero terms, preserve stored float precision, and use `y = 0` for an
 all-zero polynomial. They never affect tolerance verdicts or statistics.
+On linear axes, `plot._include_polynomial_origin` expands the shared range to
+zero when any configured polynomial passes through `(0, 0)`; sampling also
+inserts an exact zero for mixed-sign ranges. Log axes must never include zero.
 
 **Log mode passes `log` explicitly** through `_add_polynomial_lines`, `_add_rugs`,
 and `_add_tolerance`. It cannot be sniffed from the figure: traces are added

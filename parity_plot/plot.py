@@ -78,6 +78,7 @@ def build_figure(
 
     summary = stats_mod.compute(data, plot.tolerances)
     lo, hi = _axis_range(data, log=plot.log)
+    lo, hi = _include_polynomial_origin(plot.polynomial_lines, lo, hi, log=plot.log)
 
     fig = go.Figure()
     _add_tolerances(fig, plot.tolerances, lo, hi, plot.log, theme)
@@ -154,6 +155,15 @@ def _rug_baseline(lo: float, hi: float, log: bool) -> float:
     return 10**lo if log else lo
 
 
+def _include_polynomial_origin(
+    lines: Sequence[PolynomialLine], lo: float, hi: float, *, log: bool
+) -> tuple[float, float]:
+    """Expose the origin when a configured polynomial passes through it."""
+    if log or not any(line.evaluate(0.0) == 0.0 for line in lines):
+        return lo, hi
+    return min(lo, 0.0), max(hi, 0.0)
+
+
 def _add_tolerances(
     fig: go.Figure,
     tolerances: Sequence[NamedTolerance],
@@ -190,6 +200,9 @@ def _add_polynomial_lines(
             lo + (hi - lo) * i / (_POLYNOMIAL_SAMPLES - 1)
             for i in range(_POLYNOMIAL_SAMPLES)
         ]
+        if lo < 0.0 < hi and 0.0 not in xs:
+            xs.append(0.0)
+            xs.sort()
 
     for polynomial in lines:
         ys: list[float | None] = []

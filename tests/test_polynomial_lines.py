@@ -65,6 +65,40 @@ def test_plot_draws_polynomial_with_equation_legend_color_and_style():
     assert trace.line.dash == "dot"
 
 
+def test_polynomial_through_origin_starts_at_an_exact_origin():
+    line = PolynomialLine((1, 0, 0))
+    data = from_sequences([10, 20, 30], [11, 21, 31])
+
+    figure = build_figure(data, PlotConfig(polynomial_lines=(line,)))
+    trace = next(trace for trace in figure.data if trace.name == "y = x^2")
+
+    assert figure.layout.xaxis.range[0] == 0
+    assert figure.layout.yaxis.range[0] == 0
+    assert trace.x[0] == 0
+    assert trace.y[0] == 0
+
+
+def test_offset_polynomial_does_not_force_the_axes_to_zero():
+    line = PolynomialLine((1, 0, 1))
+    data = from_sequences([10, 20, 30], [11, 21, 31])
+
+    figure = build_figure(data, PlotConfig(polynomial_lines=(line,)))
+
+    assert figure.layout.xaxis.range[0] > 0
+    assert figure.layout.yaxis.range[0] > 0
+
+
+def test_polynomial_sampling_includes_zero_inside_a_mixed_sign_range():
+    line = PolynomialLine((1, 0, 0))
+    data = from_sequences([-9, 10], [-8, 11])
+
+    figure = build_figure(data, PlotConfig(polynomial_lines=(line,)))
+    trace = next(trace for trace in figure.data if trace.name == "y = x^2")
+    origin = list(trace.x).index(0.0)
+
+    assert trace.y[origin] == 0
+
+
 def test_polynomial_lines_round_trip_through_designer_toml(tmp_path):
     config = ParityConfig.from_dict(
         {

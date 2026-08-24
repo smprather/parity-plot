@@ -279,7 +279,9 @@ designer accepts the same coefficients as comma-separated text: `2, -3, 0, 4`.
 Colours use the theme tokens `red`, `yellow`, `orange`, `green`, `blue`, `purple`,
 `magenta`, `grey`, or a hex value in TOML/Python. Coefficients must be finite;
 an all-zero polynomial is shown as `y = 0`. Legend and editor text preserve the
-stored float precision.
+stored float precision. On linear axes, a polynomial that passes through the
+origin expands the shared plot range to include `(0, 0)` and samples that point
+exactly. Log axes cannot include zero and retain their positive data range.
 
 ## Python API
 
