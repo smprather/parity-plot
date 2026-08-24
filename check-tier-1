@@ -28,6 +28,7 @@ uv run pytest -q \
     tests/test_polynomial_lines.py::test_viewport_origins_can_expose_the_polynomial_origin \
     tests/test_cli.py::test_plot_reads_a_toml_and_writes \
     tests/designer/test_state.py::test_figure_comes_from_the_cli_code_path \
+    tests/designer/test_controls.py::test_viewport_method_updates_both_config_fields \
     tests/designer/test_app.py::test_settings_and_results_scroll_independently_inside_the_viewport \
     tests/designer/test_app.py::test_narrow_viewports_keep_plot_and_settings_visible
 

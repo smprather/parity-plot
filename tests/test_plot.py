@@ -44,8 +44,9 @@ def test_axes_are_locked_to_45_degrees(data):
     fig = build_figure(data, PlotConfig())
 
     assert list(fig.layout.xaxis.range) == list(fig.layout.yaxis.range)
-    assert fig.layout.yaxis.scaleanchor == "x"
-    assert fig.layout.yaxis.scaleratio == 1
+    assert fig.layout.xaxis.scaleanchor == "y"
+    assert fig.layout.xaxis.scaleratio == 1
+    assert fig.layout.yaxis.scaleanchor is False
 
 
 def test_axes_keep_their_range_when_the_drawing_area_is_not_square(data):
@@ -60,12 +61,29 @@ def test_axes_keep_their_range_when_the_drawing_area_is_not_square(data):
 
 def test_constrain_is_dropped_with_equal_axes_off(data):
     fig = build_figure(data, PlotConfig(equal_axes=False))
+    assert fig.layout.xaxis.constrain is None
     assert fig.layout.yaxis.constrain is None
 
 
 def test_equal_axes_can_be_switched_off(data):
     fig = build_figure(data, PlotConfig(equal_axes=False))
-    assert fig.layout.yaxis.scaleanchor is None
+    assert fig.layout.xaxis.scaleanchor is None
+
+
+def test_unequal_viewport_origins_keep_exact_ranges_and_pixel_lock():
+    data = from_sequences([10.0, 20.0], [11.0, 21.0])
+
+    fig = build_figure(data, PlotConfig(x_origin=5.0, y_origin=7.0))
+
+    assert fig.layout.xaxis.range[0] == 5.0
+    assert fig.layout.yaxis.range[0] == 7.0
+    assert fig.layout.xaxis.range[1] - fig.layout.xaxis.range[0] == pytest.approx(
+        fig.layout.yaxis.range[1] - fig.layout.yaxis.range[0]
+    )
+    assert fig.layout.xaxis.scaleanchor == "y"
+    assert fig.layout.yaxis.scaleanchor is False
+    assert fig.layout.xaxis.constrain == "domain"
+    assert fig.layout.yaxis.constrain == "domain"
 
 
 def test_log_viewport_origins_are_configured_in_data_units():

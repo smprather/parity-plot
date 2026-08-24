@@ -286,9 +286,10 @@ equation labels; `plot.py` only samples them over the visible x range. Equation
 labels omit zero terms, preserve stored float precision, and use `y = 0` for an
 all-zero polynomial. They never affect tolerance verdicts or statistics.
 Polynomial lines never alter the viewport. Optional `PlotConfig.x_origin` and
-`y_origin` replace the automatic lower bounds; the upper bounds remain
-data-derived. Origins are stored in data units, and `_viewport_range` converts
-them to exponents for log layout. Log origins must be positive.
+`y_origin` replace the automatic lower bounds. Origins are stored in data units,
+and `_viewport_range` converts them to exponents for log layout. Log origins
+must be positive. With equal axes enabled, `_equalize_range_spans` extends upper
+bounds as needed; never move a requested lower bound to satisfy `scaleanchor`.
 
 **Log mode passes `log` explicitly** through `_add_polynomial_lines`, `_add_rugs`,
 and `_add_tolerance`. It cannot be sniffed from the figure: traces are added
@@ -307,6 +308,16 @@ and the designer is what needs fixing.
 document scrollbar: a long settings column must not move the plot out of view.
 `RESPONSIVE_LAYOUT_CSS` stacks results above settings below 768 px; preserve
 that narrow-screen access when changing the workspace layout.
+
+**Viewport-origin UI is one composite control.** `controls.py` maps the
+horizontal Method radio (`Auto`, `0,0`, `Custom`) onto the persisted
+`x_origin`/`y_origin` pair. Custom X/Y inputs start from the figure's actual
+lower bounds; `current_viewport_origins` converts Plotly log exponents back to
+data units. Keep both fields together and after the Method selector. Equal-axis
+layout anchors x to y; reversing that `scaleanchor` direction makes Plotly
+silently move one custom origin when their ranges differ. NiceGUI refreshes
+through `Plotly.react`, which can retain old constrained ranges; `refresh`
+therefore schedules `axis_range_relayout_script` after each figure update.
 
 Logic lives in `state.py`, `session.py`, `serialize.py`, and `validation.py`, all
 browser-free and unit-tested; `app.py` and `panels/` only wire widgets. Anything

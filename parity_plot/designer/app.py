@@ -8,9 +8,12 @@ browser.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+
+from plotly.graph_objects import Figure
 
 from ..config import ConfigError, ParityConfig
 from ..data import DataError, ParityData
@@ -119,6 +122,32 @@ RESPONSIVE_PLOT_SCRIPT = """
   scan();
 })();
 </script>
+"""
+
+
+def axis_range_relayout(figure: Figure) -> dict[str, list[float]]:
+    """Exact requested ranges to reapply after NiceGUI calls Plotly.react."""
+    return {
+        "xaxis.range": list(figure.layout.xaxis.range),
+        "yaxis.range": list(figure.layout.yaxis.range),
+    }
+
+
+def axis_range_relayout_script(plot_id: int, figure: Figure) -> str:
+    """Build a bounded client retry for plots not mounted during early events."""
+    ranges = json.dumps(axis_range_relayout(figure), allow_nan=False)
+    return f"""
+(() => {{
+  const apply = attempt => {{
+    const plot = document.getElementById('c{plot_id}');
+    if (window.Plotly && plot && plot.layout) {{
+      window.Plotly.relayout(plot, {ranges});
+    }} else if (attempt < 40) {{
+      window.setTimeout(() => apply(attempt + 1), 25);
+    }}
+  }};
+  apply(0);
+}})();
 """
 
 
@@ -259,7 +288,12 @@ def build_app(
             status_bar.text = message
 
         def refresh() -> None:
-            plot_view.update_figure(state.figure())
+            figure = state.figure()
+            plot_view.update_figure(figure)
+            # Plotly.react can retain the previous constrained ranges even
+            # though the new figure contains explicit ones. Reapply them after
+            # react so viewport-origin edits take effect immediately.
+            ui.run_javascript(axis_range_relayout_script(plot_view.id, figure))
 
             probs = config_problems(state.config)
             errors = [p for p in probs if p.severity == "error"]

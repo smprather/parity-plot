@@ -13,9 +13,15 @@ from pathlib import Path
 import pytest
 
 from parity_plot.config import ParityConfig
+from parity_plot.data import from_sequences
 from parity_plot.designer import app as designer_app
-from parity_plot.designer.app import build_app
+from parity_plot.designer.app import (
+    axis_range_relayout,
+    axis_range_relayout_script,
+    build_app,
+)
 from parity_plot.designer.session import Session
+from parity_plot.plot import build_figure
 from parity_plot.tolerances import NamedTolerance
 
 
@@ -52,6 +58,22 @@ def test_editing_through_state_changes_the_figure(session_and_data):
     after = state.figure().to_dict()
 
     assert before != after
+
+
+def test_axis_relayout_payload_preserves_requested_origins():
+    figure = build_figure(
+        from_sequences([10.0, 20.0], [11.0, 21.0]),
+        ParityConfig.from_dict({"plot": {"x_origin": 5.0, "y_origin": 7.0}}).plot,
+    )
+
+    ranges = axis_range_relayout(figure)
+
+    assert ranges["xaxis.range"][0] == 5.0
+    assert ranges["yaxis.range"][0] == 7.0
+    script = axis_range_relayout_script(42, figure)
+    assert "getElementById('c42')" in script
+    assert '"xaxis.range": [5.0' in script
+    assert "attempt < 40" in script
 
 
 def test_saving_writes_what_is_on_screen(session_and_data, tmp_path: Path):

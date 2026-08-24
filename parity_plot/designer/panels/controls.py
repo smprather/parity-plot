@@ -45,20 +45,6 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
     ControlSpec("plot", "title", "Title", "text", "Plot title."),
     ControlSpec("plot", "x_label", "X label", "text", "Defaults to the column name."),
     ControlSpec("plot", "y_label", "Y label", "text", "Defaults to the column name."),
-    ControlSpec(
-        "plot",
-        "x_origin",
-        "Viewport origin X",
-        "number",
-        "Left edge in data units; blank uses the data-derived viewport.",
-    ),
-    ControlSpec(
-        "plot",
-        "y_origin",
-        "Viewport origin Y",
-        "number",
-        "Bottom edge in data units; blank uses the data-derived viewport.",
-    ),
     ControlSpec("plot", "theme", "Theme", "choice", "Colour theme.", THEMES),
     ControlSpec(
         "plot", "legend", "Legend", "choice", "Where the legend sits.", LEGEND_POSITIONS
@@ -156,6 +142,9 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
 )
 
 GROUPS = ("Appearance", "Statistics", "Output")
+VIEWPORT_ORIGIN_FIELDS = frozenset({"x_origin", "y_origin"})
+VIEWPORT_ORIGIN_METHODS = ("Auto", "0,0", "Custom")
+VIEWPORT_ORIGIN_FORMAT = "%.12g"
 
 _SECTION_CLASS = {"plot": PlotConfig, "stats": StatsConfig, "output": OutputConfig}
 
@@ -190,6 +179,122 @@ def build_controls(state: DesignerState, on_change: Callable[[], None]) -> None:
         with section(group):
             for spec in specs:
                 _build_one(state, spec, on_change)
+                if group == "Appearance" and spec.key == "y_label":
+                    _build_viewport_origin(state, on_change)
+
+
+def viewport_origin_method(plot: PlotConfig) -> str:
+    """Return the designer method represented by a stored plot config."""
+    if plot.x_origin is None and plot.y_origin is None:
+        return "Auto"
+    if plot.x_origin == 0.0 and plot.y_origin == 0.0:
+        return "0,0"
+    return "Custom"
+
+
+def current_viewport_origins(state: DesignerState) -> tuple[float, float]:
+    """Return the lower axis bounds currently used by the rendered plot.
+
+    Plotly stores logarithmic axis ranges as base-10 exponents. Designer inputs
+    always use data units, matching the TOML config.
+    """
+    figure = state.figure()
+    x = float(figure.layout.xaxis.range[0])
+    y = float(figure.layout.yaxis.range[0])
+    if state.config.plot.log:
+        return 10**x, 10**y
+    return x, y
+
+
+def apply_viewport_origin_method(
+    state: DesignerState,
+    method: str,
+    custom_x: float | None = None,
+    custom_y: float | None = None,
+) -> bool:
+    """Apply one viewport-origin method to the persisted config fields."""
+    if method == "Auto":
+        state.reset_fields("plot", *VIEWPORT_ORIGIN_FIELDS)
+        return True
+    if method == "0,0":
+        return state.update("plot", x_origin=0.0, y_origin=0.0)
+    if method == "Custom":
+        if custom_x is None or custom_y is None:
+            state.last_error = "Custom viewport origin requires both X and Y values."
+            return False
+        return state.update("plot", x_origin=custom_x, y_origin=custom_y)
+    raise ValueError(f"unknown viewport origin method {method!r}")
+
+
+def _build_viewport_origin(state: DesignerState, on_change: Callable[[], None]) -> None:
+    """Render method first, then one horizontal row of custom X/Y values."""
+    from nicegui import ui
+
+    initial_method = viewport_origin_method(state.config.plot)
+    initial_x, initial_y = current_viewport_origins(state)
+
+    ui.label("Viewport Origin").classes("text-base font-medium mt-2")
+    ui.label("Method").classes("text-sm opacity-70")
+
+    def sync_custom_fields() -> None:
+        custom = method_control.value == "Custom"
+        x_input.set_enabled(custom)
+        y_input.set_enabled(custom)
+
+    def choose_method(method: str) -> None:
+        succeeded = apply_viewport_origin_method(
+            state, method, x_input.value, y_input.value
+        )
+        if succeeded:
+            if method == "Auto":
+                x_input.value, y_input.value = current_viewport_origins(state)
+            elif method == "0,0":
+                x_input.value = y_input.value = 0.0
+            x_input.update()
+            y_input.update()
+        else:
+            method_control.value = viewport_origin_method(state.config.plot)
+            method_control.update()
+        sync_custom_fields()
+        on_change()
+
+    def apply_custom(axis: str, value: float | None) -> None:
+        custom_x = value if axis == "x" else x_input.value
+        custom_y = value if axis == "y" else y_input.value
+        apply_viewport_origin_method(state, "Custom", custom_x, custom_y)
+        on_change()
+
+    method_control = (
+        ui.radio(
+            list(VIEWPORT_ORIGIN_METHODS),
+            value=initial_method,
+            on_change=lambda e: choose_method(e.value),
+        )
+        .props('inline aria-label="Method"')
+        .classes("w-full viewport-origin-method")
+    )
+    with ui.row().classes("w-full no-wrap gap-2 items-start viewport-origin-custom"):
+        x_input = (
+            ui.number(
+                "Custom X",
+                value=initial_x,
+                format=VIEWPORT_ORIGIN_FORMAT,
+                on_change=lambda e: apply_custom("x", e.value),
+            )
+            .classes("grow basis-0 min-w-0")
+            .tooltip("Left edge in data units.")
+        )
+        y_input = (
+            ui.number(
+                "Custom Y",
+                value=initial_y,
+                format=VIEWPORT_ORIGIN_FORMAT,
+                on_change=lambda e: apply_custom("y", e.value),
+            )
+            .classes("grow basis-0 min-w-0")
+            .tooltip("Bottom edge in data units.")
+        )
+    sync_custom_fields()
 
 
 def _build_one(

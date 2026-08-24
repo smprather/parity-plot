@@ -1,9 +1,9 @@
 """Figure construction.
 
 The defining property of a parity plot is that ``y = x`` runs at a true 45
-degrees. ``scaleanchor`` locks the axes to the same pixel scale. Automatic
-viewports also share one range; explicit x/y origins may give them different
-bounds without changing that 1:1 scale.
+degrees. Anchoring x to y with ``scaleanchor`` locks the axes to the same pixel
+scale while preserving explicit ranges on both tall and wide canvases.
+Automatic viewports share one range; explicit x/y origins may differ.
 
 The identity line is the built-in ``parity`` tolerance -- a zero-width entry
 whose envelope collapses onto ``y = x`` -- so it renders through the same path
@@ -80,6 +80,8 @@ def build_figure(
     auto_range = _axis_range(data, log=plot.log)
     x_range = _viewport_range(auto_range, plot.x_origin, log=plot.log)
     y_range = _viewport_range(auto_range, plot.y_origin, log=plot.log)
+    if plot.equal_axes:
+        x_range, y_range = _equalize_range_spans(x_range, y_range)
 
     fig = go.Figure()
     _add_tolerances(fig, plot.tolerances, *x_range, plot.log, theme)
@@ -176,6 +178,16 @@ def _viewport_range(
     if lower < hi:
         return lower, hi
     return lower, lower + (hi - lo)
+
+
+def _equalize_range_spans(
+    x_range: tuple[float, float], y_range: tuple[float, float]
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Keep both lower bounds exact while giving locked axes equal spans."""
+    x_lo, x_hi = x_range
+    y_lo, y_hi = y_range
+    span = max(x_hi - x_lo, y_hi - y_lo)
+    return (x_lo, x_lo + span), (y_lo, y_lo + span)
 
 
 def _add_tolerances(
@@ -649,11 +661,14 @@ def _apply_layout(
         title=plot.y_label or data.y_label, range=list(y_range), type=axis_type
     )
     if plot.equal_axes:
-        # Under the default constraint ("range"), Plotly satisfies the 1:1
-        # pixel ratio by widening a requested axis range. Shrinking the domain
-        # instead preserves both automatic and explicitly configured bounds.
-        y_axis |= dict(scaleanchor="x", scaleratio=1, constrain="domain")
-        x_axis |= dict(constrain="domain")
+        # Anchor x to y, not y to x. With both axes constrained to their
+        # domains, this direction preserves unequal explicit ranges on tall
+        # and wide canvases; the reverse direction makes Plotly expand one
+        # requested range when x/y origins differ.
+        x_axis |= dict(scaleanchor="y", scaleratio=1, constrain="domain")
+        # Explicit False matters during Plotly.react: omitting this key can
+        # retain a prior reverse anchor and create a constraint cycle.
+        y_axis |= dict(scaleanchor=False, constrain="domain")
 
     hist_x_axis: dict[str, Any] | None = None
     hist_y_axis: dict[str, Any] | None = None

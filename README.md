@@ -288,8 +288,10 @@ x_origin = 0
 y_origin = 0
 ```
 
-The upper edges remain data-derived. Origins are expressed in data units; log
-axes require positive values. Omit either key to keep that axis automatic.
+Origins are expressed in data units; log axes require positive values. Omit
+either key to keep that axis automatic. With **Lock 45°** enabled and unequal
+origins, parity-plot extends the shorter range's upper edge so both axes keep
+the same span without moving either requested origin.
 
 ## Python API
 
@@ -518,6 +520,11 @@ The settings sidebar and results column scroll independently. Long configuration
 panels can therefore be edited without moving the plot out of view. On narrow
 screens, the plot stays above the scrolling settings instead of being squeezed
 off-screen.
+
+Under **Appearance → Viewport Origin**, choose **Auto** for data-derived bounds,
+**0,0** to pin both lower bounds to zero, or **Custom** to use the adjacent X/Y
+values. The custom fields are pre-filled with the bounds currently used by the
+plot and remain in data units, including on logarithmic axes.
 
 - **Data panel** — open any CSV and map its columns; the designer reads just the
   header to offer choices and guesses the mapping from names seen in the wild
