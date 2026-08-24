@@ -19,6 +19,15 @@ uv run parity-plot design --config parity.toml --no-open-browser
 ./run-check                      # designer against data/parts.csv
 ```
 
+### Shared demo server
+
+Port **8085** is reserved exclusively for the parity-plot demo. Always serve the
+working demo at `http://localhost:8085` so the user can reload one stable URL.
+Before starting or restarting it, stop the existing 8085 listener; the user has
+explicitly authorized killing any unrelated process holding that port, using
+`sudo` when required. Do not accept the launcher's fallback to a random port for
+demo runs.
+
 ### Running uv in a filesystem sandbox
 
 Managed agent sandboxes often expose the home directory as read-only while the

@@ -49,6 +49,11 @@ RESULTS_COLUMN_CLASSES = (
 )
 PLOT_CLASSES = "designer-plot aspect-square h-[70vh] mx-auto"
 RESPONSIVE_LAYOUT_CSS = """
+.designer-plot {
+  width: min(70vh, 100%) !important;
+  height: min(70vh, 100%) !important;
+  flex: none;
+}
 @media (max-width: 767px) {
   .designer-workspace {
     flex-direction: column;
@@ -79,9 +84,17 @@ RESPONSIVE_LAYOUT_CSS = """
 RESPONSIVE_PLOT_SCRIPT = """
 <script>
 (() => {
-  const compactMargin = {l: 55, r: 20, t: 75, b: 115};
+  const baseCompactMargin = {l: 55, r: 20, t: 75, b: 115};
   const clone = value => JSON.parse(JSON.stringify(value || {}));
-  const isCompact = plot => {
+  const statsIndex = plot =>
+    (plot.layout.annotations || []).findIndex(annotation =>
+      annotation.font && annotation.font.family === 'monospace'
+    );
+  const compactMarginFor = plot => ({
+    ...baseCompactMargin,
+    t: statsIndex(plot) >= 0 ? plot.layout.margin.t : baseCompactMargin.t,
+  });
+  const isCompact = (plot, compactMargin) => {
     const margin = plot.layout && plot.layout.margin;
     return margin && Object.entries(compactMargin)
       .every(([key, value]) => margin[key] === value);
@@ -89,25 +102,48 @@ RESPONSIVE_PLOT_SCRIPT = """
   const sync = plot => {
     if (!window.Plotly || !plot.layout) return;
     const narrow = window.matchMedia('(max-width: 767px)').matches;
-    if (narrow && !isCompact(plot)) {
+    const annotationIndex = statsIndex(plot);
+    const compactMargin = compactMarginFor(plot);
+    if (narrow && !isCompact(plot, compactMargin)) {
       plot.__designerDesktopLayout = {
         margin: clone(plot.layout.margin),
         legend: clone(plot.layout.legend),
+        titleX: plot.layout.title && plot.layout.title.x,
+        statsXshift: annotationIndex >= 0
+          ? plot.layout.annotations[annotationIndex].xshift
+          : undefined,
+        modebarOrientation:
+          plot.layout.modebar && plot.layout.modebar.orientation,
       };
       const legend = {
         ...clone(plot.layout.legend),
         orientation: 'h',
         x: 0.5,
         xanchor: 'center',
-        y: -0.28,
+        y: annotationIndex >= 0 ? -0.55 : -0.28,
         yanchor: 'top',
         font: {...clone(plot.layout.legend && plot.layout.legend.font), size: 10},
       };
-      window.Plotly.relayout(plot, {margin: compactMargin, legend});
-    } else if (!narrow && isCompact(plot) && plot.__designerDesktopLayout) {
+      const update = {
+        margin: compactMargin,
+        legend,
+        'modebar.orientation': 'v',
+      };
+      if (annotationIndex >= 0) update['title.x'] = 0.75;
+      if (annotationIndex >= 0) {
+        update[`annotations[${annotationIndex}].xshift`] = -55;
+      }
+      window.Plotly.relayout(plot, update);
+    } else if (!narrow && isCompact(plot, compactMargin) && plot.__designerDesktopLayout) {
       const desktop = plot.__designerDesktopLayout;
       delete plot.__designerDesktopLayout;
-      window.Plotly.relayout(plot, desktop);
+      const update = {margin: desktop.margin, legend: desktop.legend};
+      if (desktop.titleX !== undefined) update['title.x'] = desktop.titleX;
+      if (desktop.statsXshift !== undefined && annotationIndex >= 0) {
+        update[`annotations[${annotationIndex}].xshift`] = desktop.statsXshift;
+      }
+      update['modebar.orientation'] = desktop.modebarOrientation || 'h';
+      window.Plotly.relayout(plot, update);
     }
   };
   const scan = () => document.querySelectorAll('.designer-plot').forEach(plot => {

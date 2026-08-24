@@ -129,10 +129,20 @@ def test_narrow_viewports_keep_plot_and_settings_visible():
     assert "designer-settings" in settings
     assert "designer-results" in results
     assert "designer-plot" in plot
+    assert "width: min(70vh, 100%)" in designer_app.RESPONSIVE_LAYOUT_CSS
+    assert "height: min(70vh, 100%)" in designer_app.RESPONSIVE_LAYOUT_CSS
     assert "@media (max-width: 767px)" in designer_app.RESPONSIVE_LAYOUT_CSS
     assert "flex-direction: column" in designer_app.RESPONSIVE_LAYOUT_CSS
     assert "plotly_afterplot" in designer_app.RESPONSIVE_PLOT_SCRIPT
     assert "window.Plotly.relayout" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    assert "statsIndex(plot)" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    assert "plot.layout.margin.t" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    assert "update['title.x']" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    assert "annotationIndex >= 0 ? -0.55 : -0.28" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    assert "'modebar.orientation': 'v'" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    assert (
+        "annotations[${annotationIndex}].xshift" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    )
 
 
 @pytest.mark.parametrize("launch_mode", ["data", "external-config"])

@@ -450,6 +450,26 @@ def test_stats_box_is_optional(data):
     )
 
 
+def test_stats_box_sits_outside_plot_beside_title(data):
+    fig = build_figure(data, PlotConfig(), StatsConfig(show=True))
+    annotation = fig.layout.annotations[0]
+
+    assert annotation.xref == "paper"
+    assert annotation.x == 0
+    assert annotation.xanchor == "left"
+    assert annotation.xshift == -120
+    assert annotation.yref == "paper"
+    assert annotation.y == 1
+    assert annotation.yanchor == "top"
+    assert annotation.yshift > 0
+    assert fig.layout.margin.l >= 120
+    assert fig.layout.margin.l + annotation.xshift >= 0
+    assert fig.layout.margin.t >= 150
+    assert fig.layout.title.y == 1
+    assert fig.layout.title.yref == "container"
+    assert fig.layout.title.yanchor == "top"
+
+
 def test_subtitle_reports_every_null_category():
     data = ParityData(
         keys=["a"],
