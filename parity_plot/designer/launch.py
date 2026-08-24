@@ -28,6 +28,7 @@ def free_port(preferred: int) -> int:
     experience than moving to another one and saying so.
     """
     with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             probe.bind(("127.0.0.1", preferred))
             return preferred

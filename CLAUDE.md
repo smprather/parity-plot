@@ -19,6 +19,15 @@ uv run parity-plot design --config parity.toml --no-open-browser
 ./run-check                      # designer against data/parts.csv
 ```
 
+### Shared demo server
+
+Port **8085** is reserved exclusively for the parity-plot demo. Always serve the
+working demo at `http://localhost:8085` so the user can reload one stable URL.
+Before starting or restarting it, stop the existing 8085 listener; the user has
+explicitly authorized killing any unrelated process holding that port, using
+`sudo` when required. Do not accept the launcher's fallback to a random port for
+demo runs.
+
 ### Running uv in a filesystem sandbox
 
 Managed agent sandboxes often expose the home directory as read-only while the
@@ -566,14 +575,14 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
 ## Releases
 
 Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
-GitHub Releases. Current released line: **0.9.0** (`main`). History: 0.1.0 → multi-file
+GitHub Releases. Current released line: **0.10.0** (`main`). History: 0.1.0 → multi-file
 data model & encoding (0.3.0) → file-independent group + persistent designer
 status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
 value (0.5.0) → composite group, colorscale channel, TOML-only CLI, designer
 auto-save/config picker, hover-text columns (0.6.0) → offline-by-default HTML,
 output-format inference, embeddable fragments (0.7.0) → embedding guide and tabbed
-report consumer (0.8.0) → delta histogram (0.9.0). Polynomial reference lines and
-the alignment/validation hardening landed on `main` after the 0.9.0 tag. Tags
+report consumer (0.8.0) → delta histogram (0.9.0) → polynomial reference lines,
+viewport-origin controls, and alignment/validation hardening (0.10.0). Tags
 `v0.1.0`–`v0.3.0` predate the GitHub Releases; `v0.4.0` onward have them.
 
 The ship flow (only when the user asks): run `./check-tier-2`, branch off `main`, commit, bump the

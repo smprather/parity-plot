@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 import builtins
+import socket
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from parity_plot.cli import cli
-from parity_plot.designer.launch import MissingDependencyError, require_nicegui
+from parity_plot.designer.launch import (
+    MissingDependencyError,
+    free_port,
+    require_nicegui,
+)
 
 WIDE = "id,reference,test\nA1,10.0,11.0\nA2,20.0,21.0\n"
 
@@ -39,6 +44,31 @@ def test_require_nicegui_names_the_command_to_run(monkeypatch):
         require_nicegui()
 
     assert "--extra designer" in str(exc.value)
+
+
+def test_free_port_allows_immediate_reuse_of_preferred_port(monkeypatch):
+    calls = []
+
+    class Probe:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def setsockopt(self, *args):
+            calls.append(("setsockopt", args))
+
+        def bind(self, address):
+            calls.append(("bind", address))
+
+    monkeypatch.setattr(socket, "socket", Probe)
+
+    assert free_port(8083) == 8083
+    assert calls == [
+        ("setsockopt", (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)),
+        ("bind", ("127.0.0.1", 8083)),
+    ]
 
 
 def test_design_command_is_registered():

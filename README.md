@@ -543,6 +543,9 @@ plot and remain in data units, including on logarithmic axes.
 
 ## Statistics
 
+The statistics box sits outside the data rectangle, beside the plot title, so
+it never covers points or reference lines.
+
 `R²` is measured **about the identity line**, not about a least-squares fit:
 
 ```

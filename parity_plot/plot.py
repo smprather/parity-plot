@@ -57,6 +57,14 @@ _LEGEND_LAYOUTS = {
 _PARITY_DOMAIN_WITH_DELTA_HISTOGRAM = [0.34, 1.0]
 _DELTA_HISTOGRAM_DOMAIN = [0.0, 0.20]
 
+_STATS_TOP_INSET = 20
+_STATS_LEFT_MARGIN = 120
+_STATS_X_SHIFT = -120
+_STATS_LINE_HEIGHT = 16
+_STATS_BORDER_PAD = 8
+_STATS_BORDER_WIDTH = 1
+_STATS_BOTTOM_GAP = 16
+
 
 def build_figure(
     data: ParityData,
@@ -103,7 +111,7 @@ def build_figure(
         has_colorbar=is_scale,
     )
     if stats_cfg.show:
-        _add_stats_box(fig, summary, stats_cfg.metrics, theme, x_range, y_range)
+        _add_stats_box(fig, summary, stats_cfg.metrics, theme)
     return fig
 
 
@@ -757,28 +765,35 @@ def _add_stats_box(
     summary: stats_mod.Stats,
     metrics: tuple[str, ...],
     theme: themes.Theme,
-    x_range: tuple[float, float],
-    y_range: tuple[float, float],
 ) -> None:
-    """Place the metrics inside the top-left of the plotting area.
-
-    Positioned in data coordinates rather than paper coordinates: with
-    `constrain="domain"`, Plotly shrinks the drawn axes inside the specified
-    domain, and paper-anchored items keep referencing the *original* domain --
-    which floats the box above the visible frame. Data coordinates track the
-    frame wherever it ends up. On a log axis Plotly reads these coordinates as
-    exponents, which is exactly what the stored axis ranges contain.
-    """
+    """Place metrics above the plot, left-aligned near the y-axis title."""
     lines = stats_mod.format_lines(summary, metrics)
     if not lines:
         return
-    x_lo, x_hi = x_range
-    y_lo, y_hi = y_range
+
+    top_margin = max(
+        int(fig.layout.margin.t or 0),
+        _STATS_TOP_INSET
+        + len(lines) * _STATS_LINE_HEIGHT
+        + 2 * (_STATS_BORDER_PAD + _STATS_BORDER_WIDTH)
+        + _STATS_BOTTOM_GAP,
+    )
+    left_margin = max(int(fig.layout.margin.l or 0), _STATS_LEFT_MARGIN)
+    fig.update_layout(
+        margin_l=left_margin,
+        margin_t=top_margin,
+        title_y=1,
+        title_yref="container",
+        title_yanchor="top",
+        title_pad_t=_STATS_TOP_INSET,
+    )
     fig.add_annotation(
-        xref="x",
-        yref="y",
-        x=x_lo + (x_hi - x_lo) * 0.04,
-        y=y_hi - (y_hi - y_lo) * 0.04,
+        xref="paper",
+        yref="paper",
+        x=0,
+        y=1,
+        xshift=_STATS_X_SHIFT,
+        yshift=top_margin - _STATS_TOP_INSET,
         xanchor="left",
         yanchor="top",
         align="left",
@@ -787,8 +802,8 @@ def _add_stats_box(
         font=dict(color=theme.font, size=12, family="monospace"),
         bgcolor=theme.box_bg,
         bordercolor=theme.box_border,
-        borderwidth=1,
-        borderpad=8,
+        borderwidth=_STATS_BORDER_WIDTH,
+        borderpad=_STATS_BORDER_PAD,
     )
 
 
