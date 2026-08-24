@@ -32,6 +32,95 @@ from .validation import problems as config_problems
 # (a New Design, or a data-only launch). Save As binds it to a name.
 UNSAVED = "‹unsaved›"
 
+PAGE_CONTENT_CLASSES = "absolute inset-0 overflow-hidden"
+WORKSPACE_CLASSES = (
+    "designer-workspace w-full h-full min-h-0 no-wrap gap-4 "
+    "items-stretch overflow-hidden"
+)
+SETTINGS_COLUMN_CLASSES = (
+    "designer-settings w-80 shrink-0 h-full min-h-0 overflow-y-auto "
+    "overscroll-contain pr-2 pb-6"
+)
+RESULTS_COLUMN_CLASSES = (
+    "designer-results grow h-full min-h-0 overflow-y-auto overscroll-contain pb-6"
+)
+PLOT_CLASSES = "designer-plot aspect-square h-[70vh] mx-auto"
+RESPONSIVE_LAYOUT_CSS = """
+@media (max-width: 767px) {
+  .designer-workspace {
+    flex-direction: column;
+  }
+  .designer-settings,
+  .designer-results {
+    width: 100%;
+    min-width: 0;
+  }
+  .designer-settings {
+    order: 2;
+    height: calc(33.3333% - 0.5rem);
+    flex: 0 0 calc(33.3333% - 0.5rem);
+  }
+  .designer-results {
+    order: 1;
+    height: calc(66.6667% - 0.5rem);
+    flex: 0 0 calc(66.6667% - 0.5rem);
+  }
+  .designer-plot {
+    width: auto !important;
+    max-width: 100%;
+    height: 100% !important;
+    flex: none;
+  }
+}
+"""
+RESPONSIVE_PLOT_SCRIPT = """
+<script>
+(() => {
+  const compactMargin = {l: 55, r: 20, t: 75, b: 115};
+  const clone = value => JSON.parse(JSON.stringify(value || {}));
+  const isCompact = plot => {
+    const margin = plot.layout && plot.layout.margin;
+    return margin && Object.entries(compactMargin)
+      .every(([key, value]) => margin[key] === value);
+  };
+  const sync = plot => {
+    if (!window.Plotly || !plot.layout) return;
+    const narrow = window.matchMedia('(max-width: 767px)').matches;
+    if (narrow && !isCompact(plot)) {
+      plot.__designerDesktopLayout = {
+        margin: clone(plot.layout.margin),
+        legend: clone(plot.layout.legend),
+      };
+      const legend = {
+        ...clone(plot.layout.legend),
+        orientation: 'h',
+        x: 0.5,
+        xanchor: 'center',
+        y: -0.28,
+        yanchor: 'top',
+        font: {...clone(plot.layout.legend && plot.layout.legend.font), size: 10},
+      };
+      window.Plotly.relayout(plot, {margin: compactMargin, legend});
+    } else if (!narrow && isCompact(plot) && plot.__designerDesktopLayout) {
+      const desktop = plot.__designerDesktopLayout;
+      delete plot.__designerDesktopLayout;
+      window.Plotly.relayout(plot, desktop);
+    }
+  };
+  const scan = () => document.querySelectorAll('.designer-plot').forEach(plot => {
+    if (!plot.__designerResponsiveBound && typeof plot.on === 'function') {
+      plot.__designerResponsiveBound = true;
+      plot.on('plotly_afterplot', () => requestAnimationFrame(() => sync(plot)));
+    }
+    sync(plot);
+  });
+  new MutationObserver(scan).observe(document.body, {childList: true, subtree: true});
+  window.addEventListener('resize', scan);
+  scan();
+})();
+</script>
+"""
+
 
 def select_record(state: DesignerState, key: str | None, *refreshers) -> None:
     """Pin a record and tell every panel to catch up.
@@ -74,6 +163,9 @@ def build_app(
     @ui.page("/")
     def page() -> None:
         ui.dark_mode(True)
+        ui.add_css(RESPONSIVE_LAYOUT_CSS)
+        ui.add_body_html(RESPONSIVE_PLOT_SCRIPT)
+        ui.query(".nicegui-content").classes(PAGE_CONTENT_CLASSES)
 
         def current_choice() -> str:
             s = sess["session"]
@@ -115,17 +207,15 @@ def build_app(
                 )
                 ui.button("New Design", on_click=lambda: new_design())
 
-        with ui.row().classes("w-full no-wrap gap-4"):
-            with ui.column().classes("w-80 shrink-0"):
+        with ui.row().classes(WORKSPACE_CLASSES):
+            with ui.column().classes(SETTINGS_COLUMN_CLASSES):
                 settings_column()
 
-            with ui.column().classes("grow"):
+            with ui.column().classes(RESULTS_COLUMN_CLASSES):
                 # A parity plot is square; render the preview square and centred
                 # rather than stretched across a wide column, so the legend hugs
                 # the plot and the (paper-centred) title lines up with it.
-                plot_view = ui.plotly(state.figure()).classes(
-                    "aspect-square h-[70vh] mx-auto"
-                )
+                plot_view = ui.plotly(state.figure()).classes(PLOT_CLASSES)
                 # A persistent, colour-coded status bar -- no toasts. Errors (a
                 # validation problem, a bad column) stay here until the next
                 # action clears them, rather than popping and vanishing.

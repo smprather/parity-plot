@@ -71,6 +71,28 @@ def test_delta_histogram_can_be_enabled_from_toml():
     assert cfg.plot.delta_histogram_log_y is True
 
 
+def test_viewport_origins_load_as_optional_finite_numbers():
+    cfg = ParityConfig.from_dict({"plot": {"x_origin": "0", "y_origin": -2.5}})
+
+    assert cfg.plot.x_origin == 0.0
+    assert cfg.plot.y_origin == -2.5
+
+
+@pytest.mark.parametrize("key", ["x_origin", "y_origin"])
+@pytest.mark.parametrize(
+    "value", [float("nan"), float("inf"), float("-inf"), "not-a-number", True]
+)
+def test_viewport_origins_must_be_finite(key, value):
+    with pytest.raises(ConfigError, match="finite number"):
+        ParityConfig.from_dict({"plot": {key: value}})
+
+
+@pytest.mark.parametrize("key", ["x_origin", "y_origin"])
+def test_log_viewport_origins_must_be_positive(key):
+    with pytest.raises(ConfigError, match="positive on log axes"):
+        ParityConfig.from_dict({"plot": {"log": True, key: 0}})
+
+
 def test_unknown_key_is_rejected_with_the_valid_names():
     """A silently ignored typo would render the default and look like a bug."""
     with pytest.raises(ConfigError) as exc:

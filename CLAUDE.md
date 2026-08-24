@@ -285,9 +285,10 @@ finite-value validation, round-trippable coefficient text, Horner evaluation and
 equation labels; `plot.py` only samples them over the visible x range. Equation
 labels omit zero terms, preserve stored float precision, and use `y = 0` for an
 all-zero polynomial. They never affect tolerance verdicts or statistics.
-On linear axes, `plot._include_polynomial_origin` expands the shared range to
-zero when any configured polynomial passes through `(0, 0)`; sampling also
-inserts an exact zero for mixed-sign ranges. Log axes must never include zero.
+Polynomial lines never alter the viewport. Optional `PlotConfig.x_origin` and
+`y_origin` replace the automatic lower bounds; the upper bounds remain
+data-derived. Origins are stored in data units, and `_viewport_range` converts
+them to exponents for log layout. Log origins must be positive.
 
 **Log mode passes `log` explicitly** through `_add_polynomial_lines`, `_add_rugs`,
 and `_add_tolerance`. It cannot be sniffed from the figure: traces are added
@@ -299,6 +300,13 @@ before `_apply_layout` sets the axis type. On a log axis the stored range is in
 that a config saved from the designer renders an identical figure through the
 CLI path — if that test fails, the designer is lying about what the CLI will do,
 and the designer is what needs fixing.
+
+**The designer page has two independent scroll regions.** `app.py` anchors
+`.nicegui-content` inside Quasar's dynamically sized page, then applies
+`SETTINGS_COLUMN_CLASSES` and `RESULTS_COLUMN_CLASSES`. Do not return to one
+document scrollbar: a long settings column must not move the plot out of view.
+`RESPONSIVE_LAYOUT_CSS` stacks results above settings below 768 px; preserve
+that narrow-screen access when changing the workspace layout.
 
 Logic lives in `state.py`, `session.py`, `serialize.py`, and `validation.py`, all
 browser-free and unit-tested; `app.py` and `panels/` only wire widgets. Anything

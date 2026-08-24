@@ -7,6 +7,7 @@ the default and look like a bug in the plot.
 
 from __future__ import annotations
 
+import math
 import tomllib
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
@@ -106,6 +107,10 @@ class PlotConfig:
     theme: str = "dark"
     log: bool = False
     equal_axes: bool = True
+    # Optional lower bounds for the visible axes. None keeps the data-derived
+    # viewport. Values stay in data units even when the axes are logarithmic.
+    x_origin: float | None = None
+    y_origin: float | None = None
     # A plot may carry several specifications at once. Order is meaningful: it
     # drives legend order and the order names appear in a failure list. Parity
     # (the y = x line) is guaranteed first; disabling it replaces the old
@@ -125,11 +130,30 @@ class PlotConfig:
     encoding: Encoding = field(default_factory=Encoding)
 
     def __post_init__(self) -> None:
-        if self.delta_histogram_bins is None:
-            return
-        _positive_integer(
-            self.delta_histogram_bins, "delta_histogram_bins", must_be_odd=True
-        )
+        for key in ("x_origin", "y_origin"):
+            raw = getattr(self, key)
+            if raw is None:
+                continue
+            if isinstance(raw, bool):
+                raise ConfigError(f"plot.{key}: expected a finite number, got {raw!r}")
+            try:
+                value = float(raw)
+            except TypeError, ValueError:
+                raise ConfigError(
+                    f"plot.{key}: expected a finite number, got {raw!r}"
+                ) from None
+            if not math.isfinite(value):
+                raise ConfigError(f"plot.{key}: expected a finite number, got {raw!r}")
+            if self.log and value <= 0:
+                raise ConfigError(
+                    f"plot.{key}: must be positive on log axes, got {value}"
+                )
+            object.__setattr__(self, key, value)
+
+        if self.delta_histogram_bins is not None:
+            _positive_integer(
+                self.delta_histogram_bins, "delta_histogram_bins", must_be_odd=True
+            )
 
 
 @dataclass(frozen=True)
@@ -558,6 +582,8 @@ title = "Parity Plot"
 theme = "dark"          # dark | light
 log = false
 equal_axes = true
+# x_origin = 0.0      # optional left viewport edge; blank/absent = automatic
+# y_origin = 0.0      # optional bottom viewport edge; log axes require > 0
 nulls = "rug"           # rug | drop
 legend = "right"        # right | bottom | none
 delta_histogram = false # true adds a histogram of paired deltas (test - ref)

@@ -68,6 +68,18 @@ def test_equal_axes_can_be_switched_off(data):
     assert fig.layout.yaxis.scaleanchor is None
 
 
+def test_log_viewport_origins_are_configured_in_data_units():
+    data = from_sequences([10.0, 100.0], [20.0, 200.0])
+
+    fig = build_figure(
+        data,
+        PlotConfig(log=True, x_origin=1.0, y_origin=10.0),
+    )
+
+    assert fig.layout.xaxis.range[0] == pytest.approx(0.0)
+    assert fig.layout.yaxis.range[0] == pytest.approx(1.0)
+
+
 def test_axis_range_covers_unpaired_values():
     """A rug mark outside the range would silently vanish."""
     data = from_sequences(x=[1.0, 2.0, 500.0], y=[1.0, 2.0, None])

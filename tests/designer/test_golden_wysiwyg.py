@@ -74,6 +74,7 @@ def _state_with(csv: Path, plot: dict) -> DesignerState:
         },
         {"title": "Lab run 7", "x_label": "golden", "y_label": "DUT"},
         {"equal_axes": False},
+        {"x_origin": 0, "y_origin": -5.5},
         {
             "tolerances": [
                 {"name": "loose", "reltol": 0.25, "style": "lines"},

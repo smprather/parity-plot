@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from parity_plot.config import ParityConfig
+from parity_plot.designer import app as designer_app
 from parity_plot.designer.app import build_app
 from parity_plot.designer.session import Session
 from parity_plot.tolerances import NamedTolerance
@@ -82,6 +83,34 @@ def test_build_app_registers_a_page_without_serving(session_and_data):
     after = {r.path for r in ng_app.routes if hasattr(r, "path")}
 
     assert "/" in after or "/" in before  # the page route exists
+
+
+def test_settings_and_results_scroll_independently_inside_the_viewport():
+    page = set(designer_app.PAGE_CONTENT_CLASSES.split())
+    workspace = set(designer_app.WORKSPACE_CLASSES.split())
+    settings = set(designer_app.SETTINGS_COLUMN_CLASSES.split())
+    results = set(designer_app.RESULTS_COLUMN_CLASSES.split())
+
+    assert {"absolute", "inset-0", "overflow-hidden"} <= page
+    assert {"h-full", "min-h-0", "overflow-hidden"} <= workspace
+    assert {"h-full", "overflow-y-auto", "overscroll-contain"} <= settings
+    assert {"h-full", "overflow-y-auto", "overscroll-contain"} <= results
+
+
+def test_narrow_viewports_keep_plot_and_settings_visible():
+    workspace = set(designer_app.WORKSPACE_CLASSES.split())
+    settings = set(designer_app.SETTINGS_COLUMN_CLASSES.split())
+    results = set(designer_app.RESULTS_COLUMN_CLASSES.split())
+    plot = set(designer_app.PLOT_CLASSES.split())
+
+    assert "designer-workspace" in workspace
+    assert "designer-settings" in settings
+    assert "designer-results" in results
+    assert "designer-plot" in plot
+    assert "@media (max-width: 767px)" in designer_app.RESPONSIVE_LAYOUT_CSS
+    assert "flex-direction: column" in designer_app.RESPONSIVE_LAYOUT_CSS
+    assert "plotly_afterplot" in designer_app.RESPONSIVE_PLOT_SCRIPT
+    assert "window.Plotly.relayout" in designer_app.RESPONSIVE_PLOT_SCRIPT
 
 
 @pytest.mark.parametrize("launch_mode", ["data", "external-config"])

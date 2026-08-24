@@ -97,6 +97,19 @@ def test_reset_fields_reverts_x_label_to_none():
     assert st.config.plot.title == "Keep me"  # siblings untouched
 
 
+def test_reset_fields_reverts_viewport_origin_to_automatic():
+    config = ParityConfig.from_dict(
+        {"plot": {"x_origin": 0, "y_origin": -5, "title": "Keep me"}}
+    )
+    st = DesignerState(config=config)
+
+    st.reset_fields("plot", "x_origin", "y_origin")
+
+    assert st.config.plot.x_origin is None
+    assert st.config.plot.y_origin is None
+    assert st.config.plot.title == "Keep me"
+
+
 def test_reset_fields_reverts_join_to_none():
     from parity_plot.config import ParityConfig
     from parity_plot.designer.state import DesignerState

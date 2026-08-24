@@ -279,9 +279,17 @@ designer accepts the same coefficients as comma-separated text: `2, -3, 0, 4`.
 Colours use the theme tokens `red`, `yellow`, `orange`, `green`, `blue`, `purple`,
 `magenta`, `grey`, or a hex value in TOML/Python. Coefficients must be finite;
 an all-zero polynomial is shown as `y = 0`. Legend and editor text preserve the
-stored float precision. On linear axes, a polynomial that passes through the
-origin expands the shared plot range to include `(0, 0)` and samples that point
-exactly. Log axes cannot include zero and retain their positive data range.
+stored float precision. Reference lines never change the default, data-derived
+viewport. To choose its lower-left corner explicitly, set either origin:
+
+```toml
+[plot]
+x_origin = 0
+y_origin = 0
+```
+
+The upper edges remain data-derived. Origins are expressed in data units; log
+axes require positive values. Omit either key to keep that axis automatic.
 
 ## Python API
 
@@ -426,6 +434,8 @@ delta_histogram_bins_auto = true
 delta_histogram_bucket_labels = false
 delta_histogram_sigma_lines = false
 delta_histogram_log_y = false
+# x_origin = 0                 # optional left edge; omit for automatic
+# y_origin = 0                 # optional bottom edge; log axes require > 0
 
 [plot.encoding]
 color_by  = "single"           # single | pass-fail | group | colorscale
@@ -503,6 +513,11 @@ advisory — e.g. a join column while `ref` and `test` come from one file, which
 merely *redundant* (they already pair by row) — shows an amber note without
 stopping anything. **Both surface in a persistent status bar under the plot**,
 never a disappearing pop-up.
+
+The settings sidebar and results column scroll independently. Long configuration
+panels can therefore be edited without moving the plot out of view. On narrow
+screens, the plot stays above the scrolling settings instead of being squeezed
+off-screen.
 
 - **Data panel** — open any CSV and map its columns; the designer reads just the
   header to offer choices and guesses the mapping from names seen in the wild

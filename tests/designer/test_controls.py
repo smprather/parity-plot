@@ -68,6 +68,15 @@ def test_booleans_are_switches():
     assert specs_for("stats")["show"].kind == "switch"
 
 
+def test_viewport_origins_are_optional_number_controls():
+    specs = specs_for("plot")
+
+    assert specs["x_origin"].kind == "number"
+    assert specs["x_origin"].label == "Viewport origin X"
+    assert specs["y_origin"].kind == "number"
+    assert specs["y_origin"].label == "Viewport origin Y"
+
+
 def test_every_spec_has_a_human_label():
     for spec in CONTROL_SPECS:
         assert spec.label and not spec.label.endswith("_")

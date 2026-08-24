@@ -1,9 +1,9 @@
 """Figure construction.
 
 The defining property of a parity plot is that ``y = x`` runs at a true 45
-degrees. That requires two things together: a single range shared by both axes,
-and ``scaleanchor`` locking their pixel scales. Either one alone lets the
-identity line drift off the diagonal, so both are asserted in the tests.
+degrees. ``scaleanchor`` locks the axes to the same pixel scale. Automatic
+viewports also share one range; explicit x/y origins may give them different
+bounds without changing that 1:1 scale.
 
 The identity line is the built-in ``parity`` tolerance -- a zero-width entry
 whose envelope collapses onto ``y = x`` -- so it renders through the same path
@@ -77,21 +77,31 @@ def build_figure(
         data = _drop_non_positive(data)
 
     summary = stats_mod.compute(data, plot.tolerances)
-    lo, hi = _axis_range(data, log=plot.log)
-    lo, hi = _include_polynomial_origin(plot.polynomial_lines, lo, hi, log=plot.log)
+    auto_range = _axis_range(data, log=plot.log)
+    x_range = _viewport_range(auto_range, plot.x_origin, log=plot.log)
+    y_range = _viewport_range(auto_range, plot.y_origin, log=plot.log)
 
     fig = go.Figure()
-    _add_tolerances(fig, plot.tolerances, lo, hi, plot.log, theme)
-    _add_polynomial_lines(fig, plot.polynomial_lines, lo, hi, plot.log, theme)
+    _add_tolerances(fig, plot.tolerances, *x_range, plot.log, theme)
+    _add_polynomial_lines(fig, plot.polynomial_lines, *x_range, plot.log, theme)
     _add_paired(fig, data, plot.tolerances, plot.encoding, theme)
     if plot.nulls == "rug":
-        _add_rugs(fig, data, lo, hi, plot.log, theme)
+        _add_rugs(fig, data, x_range, y_range, plot.log, theme)
     if plot.delta_histogram:
         _add_delta_histogram(fig, data, plot, theme)
 
-    _apply_layout(fig, data, plot, theme, summary, lo, hi, has_colorbar=is_scale)
+    _apply_layout(
+        fig,
+        data,
+        plot,
+        theme,
+        summary,
+        x_range,
+        y_range,
+        has_colorbar=is_scale,
+    )
     if stats_cfg.show:
-        _add_stats_box(fig, summary, stats_cfg.metrics, theme, lo, hi)
+        _add_stats_box(fig, summary, stats_cfg.metrics, theme, x_range, y_range)
     return fig
 
 
@@ -155,13 +165,17 @@ def _rug_baseline(lo: float, hi: float, log: bool) -> float:
     return 10**lo if log else lo
 
 
-def _include_polynomial_origin(
-    lines: Sequence[PolynomialLine], lo: float, hi: float, *, log: bool
+def _viewport_range(
+    auto_range: tuple[float, float], origin: float | None, *, log: bool
 ) -> tuple[float, float]:
-    """Expose the origin when a configured polynomial passes through it."""
-    if log or not any(line.evaluate(0.0) == 0.0 for line in lines):
-        return lo, hi
-    return min(lo, 0.0), max(hi, 0.0)
+    """Replace an automatic lower bound while retaining its useful upper bound."""
+    if origin is None:
+        return auto_range
+    lo, hi = auto_range
+    lower = math.log10(origin) if log else origin
+    if lower < hi:
+        return lower, hi
+    return lower, lower + (hi - lo)
 
 
 def _add_tolerances(
@@ -200,10 +214,6 @@ def _add_polynomial_lines(
             lo + (hi - lo) * i / (_POLYNOMIAL_SAMPLES - 1)
             for i in range(_POLYNOMIAL_SAMPLES)
         ]
-        if lo < 0.0 < hi and 0.0 not in xs:
-            xs.append(0.0)
-            xs.sort()
-
     for polynomial in lines:
         ys: list[float | None] = []
         for x in xs:
@@ -459,8 +469,8 @@ def _resolve_symbols(specs: Sequence, encoding: Encoding) -> dict[str, str]:
 def _add_rugs(
     fig: go.Figure,
     data: ParityData,
-    lo: float,
-    hi: float,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
     log: bool,
     theme: themes.Theme,
 ) -> None:
@@ -470,13 +480,14 @@ def _add_rugs(
     rather than as data at some particular height. They are not given a
     fabricated second coordinate -- the missing value is unknown, not zero.
     """
-    baseline = _rug_baseline(lo, hi, log)
+    x_baseline = _rug_baseline(*x_range, log)
+    y_baseline = _rug_baseline(*y_range, log)
 
     if len(data.missing_y):
         fig.add_trace(
             go.Scatter(
                 x=data.missing_y.values,
-                y=[baseline] * len(data.missing_y),
+                y=[y_baseline] * len(data.missing_y),
                 mode="markers",
                 name=f"missing {data.y_label} (n={len(data.missing_y):,})",
                 customdata=data.missing_y.keys,
@@ -495,7 +506,7 @@ def _add_rugs(
     if len(data.missing_x):
         fig.add_trace(
             go.Scatter(
-                x=[baseline] * len(data.missing_x),
+                x=[x_baseline] * len(data.missing_x),
                 y=data.missing_x.values,
                 mode="markers",
                 name=f"missing {data.x_label} (n={len(data.missing_x):,})",
@@ -626,23 +637,21 @@ def _apply_layout(
     plot: PlotConfig,
     theme: themes.Theme,
     summary: stats_mod.Stats,
-    lo: float,
-    hi: float,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
     has_colorbar: bool = False,
 ) -> None:
     axis_type = "log" if plot.log else "linear"
     x_axis: dict[str, Any] = dict(
-        title=plot.x_label or data.x_label, range=[lo, hi], type=axis_type
+        title=plot.x_label or data.x_label, range=list(x_range), type=axis_type
     )
     y_axis: dict[str, Any] = dict(
-        title=plot.y_label or data.y_label, range=[lo, hi], type=axis_type
+        title=plot.y_label or data.y_label, range=list(y_range), type=axis_type
     )
     if plot.equal_axes:
-        # `constrain="domain"` is what makes both axes actually *start and end*
-        # at the same value. Under the default ("range"), Plotly satisfies the
-        # 1:1 pixel ratio by widening whichever axis has more room, so a
-        # non-square drawing area silently pulls the ranges apart no matter
-        # what we set here. Shrinking the domain instead keeps them honest.
+        # Under the default constraint ("range"), Plotly satisfies the 1:1
+        # pixel ratio by widening a requested axis range. Shrinking the domain
+        # instead preserves both automatic and explicitly configured bounds.
         y_axis |= dict(scaleanchor="x", scaleratio=1, constrain="domain")
         x_axis |= dict(constrain="domain")
 
@@ -733,8 +742,8 @@ def _add_stats_box(
     summary: stats_mod.Stats,
     metrics: tuple[str, ...],
     theme: themes.Theme,
-    lo: float,
-    hi: float,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
 ) -> None:
     """Place the metrics inside the top-left of the plotting area.
 
@@ -742,18 +751,19 @@ def _add_stats_box(
     `constrain="domain"`, Plotly shrinks the drawn axes inside the specified
     domain, and paper-anchored items keep referencing the *original* domain --
     which floats the box above the visible frame. Data coordinates track the
-    frame wherever it ends up. (On a log axis Plotly reads these as exponents,
-    which is exactly what `lo`/`hi` already are.)
+    frame wherever it ends up. On a log axis Plotly reads these coordinates as
+    exponents, which is exactly what the stored axis ranges contain.
     """
     lines = stats_mod.format_lines(summary, metrics)
     if not lines:
         return
-    inset = (hi - lo) * 0.04
+    x_lo, x_hi = x_range
+    y_lo, y_hi = y_range
     fig.add_annotation(
         xref="x",
         yref="y",
-        x=lo + inset,
-        y=hi - inset,
+        x=x_lo + (x_hi - x_lo) * 0.04,
+        y=y_hi - (y_hi - y_lo) * 0.04,
         xanchor="left",
         yanchor="top",
         align="left",

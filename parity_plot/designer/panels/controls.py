@@ -45,6 +45,20 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
     ControlSpec("plot", "title", "Title", "text", "Plot title."),
     ControlSpec("plot", "x_label", "X label", "text", "Defaults to the column name."),
     ControlSpec("plot", "y_label", "Y label", "text", "Defaults to the column name."),
+    ControlSpec(
+        "plot",
+        "x_origin",
+        "Viewport origin X",
+        "number",
+        "Left edge in data units; blank uses the data-derived viewport.",
+    ),
+    ControlSpec(
+        "plot",
+        "y_origin",
+        "Viewport origin Y",
+        "number",
+        "Bottom edge in data units; blank uses the data-derived viewport.",
+    ),
     ControlSpec("plot", "theme", "Theme", "choice", "Colour theme.", THEMES),
     ControlSpec(
         "plot", "legend", "Legend", "choice", "Where the legend sits.", LEGEND_POSITIONS
@@ -63,7 +77,7 @@ CONTROL_SPECS: tuple[ControlSpec, ...] = (
         "equal_axes",
         "Lock 45°",
         "switch",
-        "Share one range and a 1:1 pixel scale.",
+        "Keep y = x at 45° with a 1:1 pixel scale.",
     ),
     # --- Statistics -------------------------------------------------------
     ControlSpec(

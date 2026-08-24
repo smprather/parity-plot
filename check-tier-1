@@ -24,7 +24,11 @@ uv run pytest -q \
     tests/test_plot.py::test_public_api_runs_from_a_toml_config_alone \
     tests/test_plot.py::test_fragment_has_no_document_wrapper_and_no_library \
     tests/test_polynomial_lines.py::test_plot_draws_polynomial_with_equation_legend_color_and_style \
+    tests/test_polynomial_lines.py::test_polynomial_does_not_change_the_default_viewport \
+    tests/test_polynomial_lines.py::test_viewport_origins_can_expose_the_polynomial_origin \
     tests/test_cli.py::test_plot_reads_a_toml_and_writes \
-    tests/designer/test_state.py::test_figure_comes_from_the_cli_code_path
+    tests/designer/test_state.py::test_figure_comes_from_the_cli_code_path \
+    tests/designer/test_app.py::test_settings_and_results_scroll_independently_inside_the_viewport \
+    tests/designer/test_app.py::test_narrow_viewports_keep_plot_and_settings_visible
 
 echo "Tier 1 passed."

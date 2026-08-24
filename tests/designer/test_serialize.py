@@ -110,6 +110,18 @@ def test_files_and_tuples_become_toml_types(tmp_path: Path):
     assert loaded.stats.metrics == ("n", "rmse")
 
 
+def test_viewport_origins_round_trip(tmp_path: Path):
+    config = ParityConfig.from_dict({"plot": {"x_origin": 0, "y_origin": -5.5}})
+
+    text = config_to_toml(config)
+    path = tmp_path / "out.toml"
+    path.write_text(text, encoding="utf-8")
+
+    assert "x_origin = 0.0" in text
+    assert "y_origin = -5.5" in text
+    assert ParityConfig.from_toml(path) == config
+
+
 def test_a_fresh_document_carries_the_example_comments():
     text = config_to_toml(ParityConfig())
     assert "#" in text  # generated from EXAMPLE_TOML, comments included
