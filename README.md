@@ -565,9 +565,13 @@ still works; pass explicit counts to override.
 
 ```bash
 uv sync
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run ty check parity_plot
+./check-tier-1                    # fast: lint, types, eight smoke tests
+./check-tier-2                    # release/request: full suite, wheel, example
 ./run-check                       # open the designer against data/parts.csv
 ```
+
+GitHub Actions runs Tier 1 for pull requests and updates to `main`. Tier 2 runs
+only for `v*` release tags or when selected through **Run workflow**. Tier 2 is a
+superset: it reruns Tier 1, executes the complete test suite, builds the package,
+smokes the wheel in an isolated environment, and builds the documented tabbed
+report.

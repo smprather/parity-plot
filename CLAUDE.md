@@ -8,7 +8,9 @@ Managed by [uv](https://docs.astral.sh/uv/) — no `pip`, no `requirements.txt`.
 
 ```bash
 uv sync                          # runtime + dev deps (designer included)
-uv run pytest                    # full suite
+./check-tier-1                   # normal change: fast lint/types/smoke gate
+./check-tier-2                   # release or explicit request only
+uv run pytest                    # raw full suite, when diagnosing
 uv run pytest tests/test_data.py::test_wide_sorts_records_into_paired_and_unpaired
 uv run parity-plot example       # regenerate data/ sample CSVs, plot, open browser
 uv run parity-plot init          # write a documented parity.toml
@@ -54,6 +56,12 @@ sandbox blocks DNS/network, rerun that specific uv command with the environment'
 network/escalation mechanism. Never work around either failure with `pip` or by
 creating a second environment.
 
+`./check-tier-1` performs the same writable-cache fallback automatically and can
+run inside the filesystem sandbox. Tier 2 contains a real-server integration
+test which binds a temporary localhost port. Sandboxes that deny socket creation
+must run `./check-tier-2` through their escalation/localhost-permission mechanism;
+changing `UV_CACHE_DIR` cannot grant socket access.
+
 Executable names are kebab-case (`parity-plot`, `build-report`, `run-check`).
 Python modules and import paths stay snake_case.
 
@@ -70,14 +78,31 @@ other, which would send people to reinstall what they already have.
 `plot.py::_export_hint` untangles that; keep it accurate if the export path
 changes.
 
-## Code quality — ruff and ty must be clean before every commit
+## Two-tier checks
 
-**A commit lands only when both are green.** Run before committing:
+**Tier 1 is the normal change gate.** Run `./check-tier-1` before every commit.
+It runs Ruff lint, Ruff format-check, ty, and eight stable smoke tests spanning
+config, data loading, plot geometry, public API, fragments, polynomial overlays,
+CLI rendering, and designer state. Keep it quick; do not grow it into the full
+suite.
+
+**Tier 2 is the release gate.** Run `./check-tier-2` only for a release or when
+the user explicitly requests it. It includes Tier 1, then runs the full test
+suite, builds sdist/wheel artifacts, installs and smokes the wheel in an isolated
+uv environment, and builds the documented tabbed-report consumer.
+
+GitHub Actions mirrors this policy in `.github/workflows/checks.yml`: Tier 1 on
+pull requests and `main`; Tier 2 only on `v*` tag pushes or a manual workflow run
+whose `tier` input is `tier-2`. `tests/test_check_tiers.py` pins the executable
+scripts and routing conditions.
+
+Raw commands remain useful when diagnosing one layer:
 
 ```bash
 uv run ruff check .          # lint (E/F/I); must print "All checks passed!"
 uv run ruff format .         # formatter; keeps the tree formatted
 uv run ty check parity_plot  # type-check the shipped library; must be 0 diagnostics
+uv run pytest                # full suite
 ```
 
 Config is in `pyproject.toml`:
@@ -529,7 +554,7 @@ report consumer (0.8.0) → delta histogram (0.9.0). Polynomial reference lines 
 the alignment/validation hardening landed on `main` after the 0.9.0 tag. Tags
 `v0.1.0`–`v0.3.0` predate the GitHub Releases; `v0.4.0` onward have them.
 
-The ship flow (only when the user asks): branch off `main`, commit, bump the
+The ship flow (only when the user asks): run `./check-tier-2`, branch off `main`, commit, bump the
 version on the branch, `git checkout main && git merge --no-ff`, `git tag -a`,
 `git push origin main && git push origin <tag>`, then `gh release create <tag>
 --verify-tag --title … --notes …`. Bump policy in use: an additive feature is a

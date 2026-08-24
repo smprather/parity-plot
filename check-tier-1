@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+# Managed sandboxes often make ~/.cache read-only. Keep normal developer caches
+# when writable, but fall back automatically instead of failing before checks run.
+cache_parent="${XDG_CACHE_HOME:-${HOME}/.cache}"
+if [[ -z "${UV_CACHE_DIR:-}" && ! -w "$cache_parent" ]]; then
+    export UV_CACHE_DIR="${TMPDIR:-/tmp}/parity-plot-uv-cache"
+fi
+
+echo "==> Tier 1: lint and types"
+uv run ruff check .
+uv run ruff format --check .
+uv run ty check parity_plot
+
+echo "==> Tier 1: smoke tests"
+uv run pytest -q \
+    tests/test_config.py::test_round_trip_of_the_shipped_example \
+    tests/test_data.py::test_wide_sorts_records_into_paired_and_unpaired \
+    tests/test_plot.py::test_axes_are_locked_to_45_degrees \
+    tests/test_plot.py::test_public_api_runs_from_a_toml_config_alone \
+    tests/test_plot.py::test_fragment_has_no_document_wrapper_and_no_library \
+    tests/test_polynomial_lines.py::test_plot_draws_polynomial_with_equation_legend_color_and_style \
+    tests/test_cli.py::test_plot_reads_a_toml_and_writes \
+    tests/designer/test_state.py::test_figure_comes_from_the_cli_code_path
+
+echo "Tier 1 passed."

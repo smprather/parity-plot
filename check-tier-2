@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+cache_parent="${XDG_CACHE_HOME:-${HOME}/.cache}"
+if [[ -z "${UV_CACHE_DIR:-}" && ! -w "$cache_parent" ]]; then
+    export UV_CACHE_DIR="${TMPDIR:-/tmp}/parity-plot-uv-cache"
+fi
+
+"$ROOT/check-tier-1"
+
+echo "==> Tier 2: full test suite"
+uv run pytest -q
+
+echo "==> Tier 2: build and isolated wheel smoke"
+artifact_dir="$(mktemp -d "${TMPDIR:-/tmp}/parity-plot-release-check.XXXXXX")"
+trap 'rm -rf "$artifact_dir"' EXIT
+uv build --out-dir "$artifact_dir"
+wheels=("$artifact_dir"/*.whl)
+if [[ ! -f "${wheels[0]}" ]]; then
+    echo "release check produced no wheel" >&2
+    exit 1
+fi
+uv run --isolated --no-project --with "${wheels[0]}" parity-plot --version
+
+echo "==> Tier 2: documented embedding example"
+uv run examples/tabbed-report/build-report
+
+echo "Tier 2 passed."

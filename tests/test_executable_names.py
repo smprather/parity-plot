@@ -20,15 +20,12 @@ def test_console_scripts_are_kebab_case():
 
 def test_repo_executables_are_kebab_case():
     bad: list[str] = []
-    for path in ROOT.rglob("*"):
-        if any(part in SKIP_DIRS for part in path.relative_to(ROOT).parts):
-            continue
-        if not path.is_file():
-            continue
-        if not _is_executable_script(path):
-            continue
-        if not KEBAB.fullmatch(path.name):
-            bad.append(path.relative_to(ROOT).as_posix())
+    for directory, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [name for name in dirnames if name not in SKIP_DIRS]
+        for filename in filenames:
+            path = Path(directory, filename)
+            if _is_executable_script(path) and not KEBAB.fullmatch(path.name):
+                bad.append(path.relative_to(ROOT).as_posix())
 
     assert bad == []
 
