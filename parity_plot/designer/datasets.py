@@ -13,7 +13,7 @@ import itertools
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..data import DataError
+from ..data import DataError, csv_read_error
 
 # Names seen in the wild for each role, best guess first. Matched
 # case-insensitively against the whole column name.
@@ -45,6 +45,10 @@ def peek(path: str | Path) -> Peek:
         raise DataError(f"input file not found: {path}") from None
     except OSError as exc:
         raise DataError(f"could not read {path}: {exc}") from None
+    except (UnicodeDecodeError, csv.Error) as exc:
+        # A decode failure is a ValueError and a csv.Error is neither, so
+        # neither is caught above -- see csv_read_error.
+        raise csv_read_error(path, exc) from None
 
     if not columns:
         raise DataError(f"{path}: file is empty")
@@ -103,6 +107,8 @@ def preview(path: str | Path, limit: int = 100) -> Preview:
         raise DataError(f"input file not found: {path}") from None
     except OSError as exc:
         raise DataError(f"could not read {path}: {exc}") from None
+    except (UnicodeDecodeError, csv.Error) as exc:
+        raise csv_read_error(path, exc) from None
 
     if not columns:
         raise DataError(f"{path}: file is empty")

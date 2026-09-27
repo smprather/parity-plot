@@ -8,7 +8,7 @@ from typing import Any, Sequence
 
 import plotly.graph_objects as go
 
-from ..config import ConfigError, ParityConfig
+from ..config import ConfigError, DataConfig, ParityConfig
 from ..data import DataError, ParityData, load
 from ..plot import build_figure
 from ..tolerances import NamedTolerance
@@ -34,6 +34,56 @@ def _with_defaults(section: Any, keys: Sequence[str]) -> Any:
     return dataclasses.replace(section, **defaults)
 
 
+class Generation:
+    """A monotonic counter for work that can be superseded while in flight.
+
+    Claim a number before starting slow work, then check it has not moved
+    before acting on the result. Used twice in the designer, for the same
+    reason both times: an NFS read takes seconds, the user does not wait, and
+    "whoever finished last" is not "what the user last asked for".
+    """
+
+    def __init__(self) -> None:
+        self._value = 0
+
+    @property
+    def value(self) -> int:
+        return self._value
+
+    def bump(self) -> int:
+        """Claim the next generation, invalidating everything in flight."""
+        self._value += 1
+        return self._value
+
+    def current(self, claim: int) -> bool:
+        """Whether ``claim`` is still the newest one handed out."""
+        return claim == self._value
+
+
+@dataclass(frozen=True)
+class PreparedData:
+    """The outcome of preparing a data-source change, before it is applied.
+
+    Produced by :meth:`DesignerState.prepare_data_source` (which runs in a
+    worker thread, off the event loop) and consumed by
+    :meth:`DesignerState.commit_data_source` (which runs on the loop). It
+    carries a *description* of the outcome rather than the effect, so a result
+    that finishes after the user has moved on can simply be dropped.
+    """
+
+    # The validated [data] section to merge in. Merged on commit, not on
+    # prepare, so a plot edit made while the load ran is not reverted.
+    section: DataConfig
+    # The loaded dataset, or None for an incomplete (blanked) source.
+    data: ParityData | None
+    # A complete source that failed to load: keep the previous dataset.
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.error is None
+
+
 @dataclass
 class DesignerState:
     """Everything the UI reads from and writes to.
@@ -51,6 +101,12 @@ class DesignerState:
     filters: FilterSet = field(default_factory=FilterSet)
     last_error: str | None = None
     _last_figure: go.Figure | None = field(default=None, repr=False)
+    # Monotonic counter for in-flight data-source changes. Bumped when one
+    # begins and when a config is swapped in; a commit whose generation is no
+    # longer current is stale and is dropped. This is what stops an older slow
+    # load from overwriting a newer choice, and a pre-swap load from
+    # overwriting the config that replaced it.
+    _generation: Generation = field(default_factory=Generation, repr=False)
 
     @property
     def has_data(self) -> bool:
@@ -70,12 +126,29 @@ class DesignerState:
         self.last_error = None
         return True
 
-    def set_data_source(self, *, clear: Sequence[str] = (), **values: Any) -> bool:
-        """Point at a different file or column mapping. Returns whether it worked.
+    def begin_data_source(self) -> int:
+        """Claim a generation for a data-source change about to be prepared.
 
-        On failure the previously loaded dataset and the config are both left
-        untouched: losing a working dataset because of a typo in a column name
-        would be far worse than the error message.
+        Call this *before* the (slow) prepare, on the loop, and pass the result
+        to both :meth:`prepare_data_source` and :meth:`commit_data_source`. A
+        later change, or a config swap, bumps the counter and invalidates
+        everything in flight.
+        """
+        return self._generation.bump()
+
+    def prepare_data_source(
+        self, *, clear: Sequence[str] = (), **values: Any
+    ) -> PreparedData:
+        """Validate and load a new new data source. Pure: touches no state.
+
+        Safe to run in a worker thread off the event loop -- it only *reads*
+        ``self.config`` (to validate the override and to build the ``[data]``
+        section) and returns a description of what the result would be. The
+        companion :meth:`commit_data_source` applies it, merging into whatever
+        the config has become by then.
+
+        It takes no generation: a stale result is caught at commit time, where
+        the loop can act on it, and a thread cannot usefully cancel itself.
 
         ``clear`` names ``data`` fields to reset to their dataclass default on
         the candidate *before* loading. This exists because ``merge`` drops
@@ -90,45 +163,69 @@ class DesignerState:
         try:
             candidate = self.config.merge(data=values)
         except (ConfigError, ValueError) as exc:
-            self.last_error = str(exc)
-            return False
+            return PreparedData(section=self.config.data, data=None, error=str(exc))
 
         if clear:
             new_data = _with_defaults(candidate.data, clear)
             candidate = dataclasses.replace(candidate, data=new_data)
+        section = candidate.data
 
         # An incomplete source -- no files, or no ref/test yet -- is the empty
         # state, not an error: the user removed the last file or has not finished
         # picking columns. Go blank cleanly rather than keeping stale data.
-        if (
-            not candidate.data.files
-            or not candidate.data.ref
-            or not candidate.data.test
-        ):
-            self.config = candidate
-            self.data = None
-            self.selection = None
-            self.last_error = None
-            return True
+        if not section.files or not section.ref or not section.test:
+            return PreparedData(section=section, data=None)
 
         try:
-            data = load(candidate.data)
+            return PreparedData(section=section, data=load(section))
         except (ConfigError, DataError, ValueError) as exc:
-            # A complete-but-broken source (bad column, unreadable file) keeps the
-            # working dataset -- losing it to a typo is worse than the message.
-            self.last_error = str(exc)
+            return PreparedData(section=section, data=None, error=str(exc))
+
+    def commit_data_source(self, prepared: PreparedData, generation: int) -> bool:
+        """Apply a prepared data source. Runs on the event loop.
+
+        Returns whether it was applied. A stale ``generation`` -- one that a
+        later change or a config swap has superseded -- is dropped, so an older
+        slow load cannot overwrite a newer choice.
+
+        Only the ``[data]`` section is merged, and it is merged into the config
+        as it stands *now*: an edit the user made while the load was in flight
+        is a different section, and reverting it would lose their work.
+        """
+        if not self._generation.current(generation):
             return False
 
-        self.config = candidate
-        self.data = data
+        if prepared.error is not None:
+            # A complete-but-broken source (bad column, unreadable file) keeps
+            # the working dataset -- losing it to a typo is worse than the
+            # message.
+            self.last_error = prepared.error
+            return False
+
+        self.config = dataclasses.replace(self.config, data=prepared.section)
+        self.data = prepared.data
         self.last_error = None
-        if (
+        if prepared.data is None:
+            self.selection = None
+        elif (
             self.selection is not None
-            and find_record(record_views(data), self.selection) is None
+            and find_record(record_views(prepared.data), self.selection) is None
         ):
             # The pinned record does not exist in the new dataset.
             self.selection = None
         return True
+
+    def set_data_source(self, *, clear: Sequence[str] = (), **values: Any) -> bool:
+        """Point at a different file or column mapping. Returns whether it worked.
+
+        The synchronous one-call form: begin, prepare and commit without an await
+        in between. The designer splits the same three steps around its
+        off-the-loop load, which is what this method could not do safely -- see
+        :class:`PreparedData`.
+        """
+        generation = self.begin_data_source()
+        prepared = self.prepare_data_source(clear=clear, **values)
+        return self.commit_data_source(prepared, generation)
 
     def reset_fields(self, section: str, *keys: str) -> None:
         """Reset the named fields of one section to their dataclass defaults.
@@ -158,6 +255,10 @@ class DesignerState:
         self.selection = None
         self.filters = FilterSet()
         self.last_error = None
+        # Invalidate any data-source change still in flight: it was prepared
+        # against the config being replaced, and committing it would put the old
+        # design back -- and then auto-save it over the newly opened file.
+        self._generation.bump()
 
     def selected_record(
         self, tolerances: Sequence[NamedTolerance] = ()

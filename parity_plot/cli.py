@@ -49,7 +49,7 @@ HELP_CONFIG = click.RichHelpConfiguration(
         ],
         "parity-plot design": [
             {"name": "Input", "options": ["PATHS", "--config"]},
-            {"name": "Server", "options": ["--port", "--open-browser"]},
+            {"name": "Server", "options": ["--port", "--open-browser", "--debug"]},
             {"name": "Help", "options": ["--help"]},
         ],
     },
@@ -374,11 +374,21 @@ def init_config(output: Path, force: bool) -> None:
     default=True,
     help="Open the designer in the default browser.  [default: open]",
 )
+@click.option(
+    "--debug",
+    is_flag=True,
+    help=(
+        "Log a timestamped transcript to stderr: every data read, directory "
+        "scan and save with its duration, plus connect/disconnect events. "
+        "Reproduce a problem with `--debug`, keep the terminal output."
+    ),
+)
 def design(
     paths: tuple[Path, ...],
     config: Path | None,
     port: int,
     open_browser: bool,
+    debug: bool,
 ) -> None:
     """Open the interactive designer.
 
@@ -393,6 +403,7 @@ def design(
             config_path=config,
             port=port,
             open_browser=open_browser,
+            debug=debug,
         )
     except (ConfigError, DataError, launch.MissingDependencyError, ValueError) as exc:
         raise click.ClickException(str(exc)) from None

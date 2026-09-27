@@ -3,12 +3,24 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+import os
+import threading
+from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from ..config import ConfigError, ParityConfig
 from ..data import ParityData, load
 from .serialize import config_to_toml
+
+# Serialises every config write in this process. Two saves racing (Save As vs
+# auto-save, or two browser tabs) would otherwise each write a temp file and
+# rename it over the target, and the loser would silently overwrite the winner.
+_SAVE_LOCK = threading.Lock()
 
 
 def config_choices(directory: Path) -> list[Path]:
@@ -70,9 +82,7 @@ class Session:
             if len(data_paths) == 1:
                 from ..sources import open_sources
 
-                cols = open_sources(data_paths, config.data.na_values).numeric_columns(
-                    config.data.na_values
-                )
+                cols = open_sources(data_paths).numeric_columns(config.data.na_values)
                 if len(cols) < 2:
                     from ..data import DataError
 
@@ -99,27 +109,129 @@ class Session:
         return config != self.saved_config
 
     def save(self, config: ParityConfig, path: Path | None = None) -> Path:
+        """Write ``config`` to ``path`` atomically. Returns the path written.
+
+        Atomic because the file is hand-edited, committed, and read by the CLI
+        and by other designer tabs: ``Path.write_text`` truncates first, so an
+        NFS timeout, a crash, or a concurrent reader can catch an empty or
+        half-written TOML. Writing a sibling temp file and renaming over the
+        target makes the swap a single filesystem operation, and the old
+        content stays whole until the instant it is replaced.
+        """
         target = Path(path) if path is not None else self.config_path
         if target is None:
             raise ValueError("no config path to save to; choose one with Save As")
 
-        existing = target.read_text(encoding="utf-8") if target.exists() else None
-        text = config_to_toml(config, existing=existing)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(text, encoding="utf-8")
+        # One process-wide lock: two saves (Save As vs auto-save, or two tabs)
+        # would otherwise interleave their temp-file renames and the loser would
+        # write a stale config over the winner's.
+        with _SAVE_LOCK:
+            existing = target.read_text(encoding="utf-8") if target.exists() else None
+            text = config_to_toml(config, existing=existing)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _write_atomic(target, text)
 
-        self.config_path = target
-        self.disk_text = text
-        self.saved_config = config
+            self.config_path = target
+            self.disk_text = text
+            # Marked clean only after the swap succeeded: a failed save must
+            # stay dirty or it is never retried.
+            self.saved_config = config
         return target
 
-    def autosave(self, config: ParityConfig) -> Path | None:
-        """Write ``config`` to the bound file, or nothing when unbound.
+    def autosave(self, config: ParityConfig) -> str | None:
+        """Write ``config`` to the bound file. Returns an error message, or None.
 
-        The auto-save path: `app.refresh()` calls this after every change that
-        leaves the config valid. Unbound (no file yet) is a no-op — a New Design
+        The auto-save path: ``app.refresh()`` calls this after every change that
+        leaves the config valid. Unbound (no file yet) is a no-op -- a New Design
         or data-only launch has nowhere to write until Save As binds a name.
+
+        An unchanged config is skipped. Most refreshes change nothing (a brush
+        that lands where it started, a filter re-applied), and each one used to
+        cost several NFS round trips while the refresh lock was held.
+
+        An ``OSError`` is *returned*, not raised. This runs inside the refresh,
+        after the status bar has already been painted; letting it escape aborted
+        the rest of the refresh and left the failure visible only in the server
+        log. The caller puts the message in the status bar.
         """
         if self.config_path is None:
             return None
-        return self.save(config, self.config_path)
+        if not self.is_dirty(config):
+            return None
+        try:
+            self.save(config, self.config_path)
+        except OSError as exc:
+            return f"Auto-save failed: {exc}"
+        return None
+
+
+def _write_atomic(target: Path, text: str) -> None:
+    """Replace ``target`` with ``text`` in one step, via a sibling temp file.
+
+    The temp file is in the same directory so the rename stays within one
+    filesystem and is therefore atomic. A named temp rather than
+    ``tempfile.mkstemp`` because the point is that the name is ours and the
+    cleanup is ours; it is removed on every failure path, so a failed save
+    leaves nothing behind but the old file.
+    """
+    temp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
+    try:
+        temp.write_text(text, encoding="utf-8")
+        os.replace(temp, target)
+    except BaseException:
+        # OSError and KeyboardInterrupt/SystemExit alike: a half-written temp
+        # file would otherwise be left in the user's config directory.
+        with suppress(OSError):
+            temp.unlink()
+        raise
+
+
+class Debouncer:
+    """Collapse a burst of requests into one call, carrying the latest value.
+
+    Auto-save fires from ``app.refresh``, which a text control triggers on every
+    keystroke. On a network filesystem that is one write per character. The
+    work runs *after* ``delay``, so a burst of edits costs one write, and the
+    argument is read at fire time rather than captured -- so the value written
+    is the newest one, not the first.
+
+    ``on_error`` receives whatever the work returned when it was a message, so
+    a failed save can be reported instead of disappearing.
+    """
+
+    def __init__(self, work: Callable[..., Any], delay: float = 0.4) -> None:
+        self._work = work
+        self._delay = delay
+        self._task: asyncio.Task | None = None
+        self._pending: tuple[tuple, dict] | None = None
+        #: Called with the work's return value, if it returned one. Set by the
+        #: app to push a failure into the status bar.
+        self.on_error: Callable[[Any], None] | None = None
+
+    def schedule(self, *args: Any, **kwargs: Any) -> None:
+        """Request a call after the delay, replacing any pending request."""
+        self._pending = (args, kwargs)
+        if self._task is not None and not self._task.done():
+            return
+        self._task = asyncio.ensure_future(self._fire())
+
+    def cancel(self) -> None:
+        """Drop any pending request. Used when the config is swapped."""
+        self._pending = None
+        if self._task is not None:
+            self._task.cancel()
+            self._task = None
+
+    async def _fire(self) -> None:
+        await asyncio.sleep(self._delay)
+        pending, self._pending = self._pending, None
+        if pending is None:
+            return
+        args, kwargs = pending
+        result = self._work(*args, **kwargs)
+        # The work may be async -- auto-save is a file write and has to run off
+        # the event loop, so the debounced call is offloaded too.
+        if inspect.isawaitable(result):
+            result = await result
+        if result is not None and self.on_error is not None:
+            self.on_error(result)

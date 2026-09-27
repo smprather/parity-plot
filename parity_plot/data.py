@@ -117,7 +117,7 @@ def load(cfg: DataConfig) -> ParityData:
     if not cfg.ref or not cfg.test:
         raise DataError("both a ref and a test column are required (file:column)")
 
-    src = open_sources(cfg.files, cfg.na_values)
+    src = open_sources(cfg.files)
     na = _na_set(cfg.na_values)
 
     ref_col = src.resolve(cfg.ref)
@@ -228,30 +228,54 @@ def _color_lookup(src, color_col, join: str | None, na: frozenset[str]):
         mapping = {key: value for key, (_, value) in indexed.items()}
 
         def lookup(key):
-            return _color_value(mapping.get(key), na)
+            return _color_value(mapping.get(key), na, color_col.file, color_col.name)
 
         return lookup
 
     values = color_col.values
 
     def lookup_by_index(index):
-        return _color_value(values[index] if index < len(values) else None, na)
+        return _color_value(
+            values[index] if index < len(values) else None,
+            na,
+            color_col.file,
+            color_col.name,
+        )
 
     return lookup_by_index
 
 
-def _color_value(raw: str | None, na: frozenset[str]) -> float | None:
-    """Parse a colour cell to a float, or None if blank/NA.
+def _color_value(
+    raw: str | None, na: frozenset[str], path: Path, column: str
+) -> float | None:
+    """Parse a colour cell to a finite float, or None if blank/NA.
 
-    The whole column has already passed ``_require_numeric``, so ``float`` here
-    cannot raise on a non-null cell.
+    The colour channel is the one place that does not go through ``_parse``,
+    so it has to enforce the same finite-data rule itself: NaN is a null (no
+    reading), and an infinity is an error naming the file and column. Without
+    this, ``float("inf")`` passed ``_require_numeric`` and landed in
+    ``color_values`` -- and a colorscale handed an infinity is a plotly error
+    rather than a plot.
+
+    The line number is not available here (the join path is keyed by value, not
+    position), so the message names the file and column instead.
     """
     if raw is None:
         return None
     text = raw.strip()
     if text.lower() in na:
         return None
-    return float(text)
+    try:
+        value = float(text)
+    except ValueError:
+        raise DataError(
+            f"{path}: colour column {column!r} has non-numeric value {text!r}"
+        ) from None
+    if math.isnan(value):
+        return None
+    if math.isinf(value):
+        raise DataError(f"{path}: colour column {column!r} is infinite ({text!r})")
+    return value
 
 
 def hover_candidates(src, ref: str, test: str, join: str | None) -> list[str]:
@@ -286,7 +310,7 @@ def hover_candidates(src, ref: str, test: str, join: str | None) -> list[str]:
         for column in src.tables[path]:
             if column in excluded[path]:
                 continue
-            out.append(f"{path.name}:{column}")
+            out.append(src.ref(path, column))
     return out
 
 
@@ -447,18 +471,28 @@ def _agree(values: dict, point: str, column: str, na: frozenset[str]) -> str | N
 
 
 def _require_numeric(col, na: frozenset[str], role: str) -> None:
-    """ref and test are the axes -- every non-NA cell must be a number."""
+    """ref, test and color_column are axes or scales -- finite numbers only.
+
+    ``float("inf")`` parses, so parsing alone is not enough; the finite-data
+    convention is enforced here, which is also where the line number is still
+    known and can be reported.
+    """
     for index, raw in enumerate(col.values):
         text = (raw or "").strip()
         if text.lower() in na:
             continue
         try:
-            float(text)
+            number = float(text)
         except ValueError:
             raise DataError(
                 f"{col.file}:{index + 2}: {role} column {col.name!r} has "
                 f"non-numeric value {text!r}"
             ) from None
+        if not math.isfinite(number):
+            raise DataError(
+                f"{col.file}:{index + 2}: {role} column {col.name!r} is "
+                f"infinite ({text!r})"
+            )
 
 
 def _load_by_order(
@@ -664,6 +698,24 @@ class _Builder:
         )
 
 
+def csv_read_error(path: Path, exc: Exception) -> DataError:
+    """A CSV that is not valid UTF-8 or not well-formed, as a ``DataError``.
+
+    A decode failure is a property of the *file*, not a bug, so it must arrive
+    as the project's own error type. It is also a ``ValueError``, which means
+    every ``except DataError`` in the codebase silently misses it -- the CLI
+    printed a bare codec message, the designer's column picker caught nothing and
+    its background task died with no status shown, and a bad file could 500 the
+    page at build time.
+    """
+    if isinstance(exc, UnicodeDecodeError):
+        return DataError(
+            f"{path}: not UTF-8 text (byte 0x{exc.object[exc.start]:02x} at "
+            f"offset {exc.start}); re-save the file as UTF-8"
+        )
+    return DataError(f"{path}: malformed CSV ({exc})")
+
+
 def _read_rows(path: Path) -> list[tuple[int, dict[str, str]]]:
     """Return ``(line_number, row)`` pairs; line 1 is the header."""
     try:
@@ -676,6 +728,11 @@ def _read_rows(path: Path) -> list[tuple[int, dict[str, str]]]:
         raise DataError(f"input file not found: {path}") from None
     except OSError as exc:
         raise DataError(f"could not read {path}: {exc}") from None
+    except (UnicodeDecodeError, csv.Error) as exc:
+        # UnicodeDecodeError is a ValueError and csv.Error is neither OSError
+        # nor ValueError, so neither is caught above; both are ordinary bad
+        # input and belong in the same error channel as a missing column.
+        raise csv_read_error(path, exc) from None
 
 
 def _require_columns(path: Path, header: Iterable[str], needed: Iterable[str]) -> None:
@@ -719,9 +776,19 @@ def _parse(
 
 
 def _clean(value: float | None) -> float | None:
+    """Coerce an in-memory value to a finite float, or None for a null.
+
+    The sequence API is typed for numbers, but "iterable of numbers" is a claim
+    about the happy path: a caller passing strings should get the project's
+    DataError naming the value, not a raw ``ValueError``/``TypeError`` from
+    ``float`` with no indication of which element was wrong.
+    """
     if value is None:
         return None
-    number = float(value)
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise DataError(f"in-memory sequence value {value!r} is not a number") from exc
     if math.isnan(number):
         return None
     if math.isinf(number):

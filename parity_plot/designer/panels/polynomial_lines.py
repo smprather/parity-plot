@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 from ...polynomial_lines import LINE_STYLES, PolynomialLine, PolynomialLineError
 from ...themes import COLOR_TOKENS
@@ -13,7 +13,7 @@ COEFFICIENTS_INPUT_LABEL = "Coefficients: Highest Degree First (Comma-Separated)
 
 
 def build_polynomial_lines_panel(
-    state: DesignerState, on_change: Callable[[], None]
+    state: DesignerState, on_change: Callable[[], Any]
 ) -> None:
     """Render repeatable add/edit/delete controls for polynomial lines."""
     from nicegui import ui

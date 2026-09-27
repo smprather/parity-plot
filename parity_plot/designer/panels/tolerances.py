@@ -13,7 +13,7 @@ because those are presentation.
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 from ...themes import COLOR_TOKENS
 from ...tolerances import (
@@ -23,10 +23,11 @@ from ...tolerances import (
 )
 from .. import tolerance_ops as ops
 from ..state import DesignerState
+from ..widgets import as_float
 from .section import section
 
 
-def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
+def build_tolerances_panel(state: DesignerState, on_change: Callable[[], Any]) -> None:
     """Render the tolerance list and the controls that edit it."""
     from nicegui import ui
 
@@ -163,7 +164,7 @@ def build_tolerances_panel(state: DesignerState, on_change: Callable[[], None]) 
                     stand -- so editing a bound updates the preview live."""
                     reltol = _reltol_from_field(reltol_in.value, pct_in.value)
                     abstol = (
-                        float(abstol_in.value)
+                        as_float(abstol_in.value)
                         if abstol_in.value not in (None, "")
                         else None
                     )
@@ -246,10 +247,16 @@ def _reltol_display(tol: NamedTolerance, percent: bool) -> float | None:
 
 
 def _reltol_from_field(value: float | None, percent: bool) -> float | None:
-    """The stored ratio from what the field holds, given the % checkbox state."""
-    if value in (None, ""):
+    """The stored ratio from what the field holds, given the % checkbox state.
+
+    ``as_float`` rather than ``float``: the field is free-typed, so a blank or
+    half-typed value is a normal state, and raising here would abort the edit
+    handler with nothing shown.
+    """
+    number = as_float(value)
+    if number is None:
         return None
-    return float(value) / 100 if percent else float(value)
+    return number / 100 if percent else number
 
 
 def _color_value(tol: NamedTolerance) -> str:

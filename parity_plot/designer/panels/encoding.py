@@ -8,7 +8,7 @@ verdict and the group column.
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 from ...encoding import COLOR_CHANNELS, SYMBOL_CATALOG, SYMBOL_CHANNELS, Encoding
 from ...themes import COLOR_TOKENS
@@ -23,7 +23,7 @@ _CHANNEL_LABELS = {
 }
 
 
-def build_encoding_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
+def build_encoding_panel(state: DesignerState, on_change: Callable[[], Any]) -> None:
     """Colour and symbol channel selects, each with a contextual picker."""
     from nicegui import ui
 

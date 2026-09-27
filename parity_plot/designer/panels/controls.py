@@ -26,6 +26,7 @@ from ...config import (
 )
 from ...data import ParityData
 from ..state import DesignerState
+from ..widgets import as_float
 from .section import section
 
 
@@ -170,7 +171,7 @@ def _placeholder(spec: ControlSpec, data: ParityData | None) -> str:
     return ""
 
 
-def build_controls(state: DesignerState, on_change: Callable[[], None]) -> None:
+def build_controls(state: DesignerState, on_change: Callable[[], Any]) -> None:
     """Render every control, grouped, wired straight into ``state``."""
     for group in GROUPS:
         specs = [s for s in CONTROL_SPECS if s.group == group]
@@ -197,13 +198,28 @@ def current_viewport_origins(state: DesignerState) -> tuple[float, float]:
 
     Plotly stores logarithmic axis ranges as base-10 exponents. Designer inputs
     always use data units, matching the TOML config.
+
+    The range is read defensively: it is the rendered figure's own layout, and
+    this runs while the user is switching the origin method. An axis with no
+    explicit range would make a bare ``range[0]`` raise inside a sync event
+    handler, where the failure is invisible -- the field would just stop
+    updating.
     """
     figure = state.figure()
-    x = float(figure.layout.xaxis.range[0])
-    y = float(figure.layout.yaxis.range[0])
+    x = _axis_floor(figure, "xaxis")
+    y = _axis_floor(figure, "yaxis")
     if state.config.plot.log:
         return 10**x, 10**y
     return x, y
+
+
+def _axis_floor(figure, axis: str) -> float:
+    """The lower bound of one axis, or 0.0 when the figure does not state one."""
+    bounds = getattr(figure.layout, axis, None)
+    bounds = getattr(bounds, "range", None)
+    if not bounds:
+        return 0.0
+    return as_float(bounds[0], 0.0) or 0.0
 
 
 def apply_viewport_origin_method(
@@ -226,7 +242,7 @@ def apply_viewport_origin_method(
     raise ValueError(f"unknown viewport origin method {method!r}")
 
 
-def _build_viewport_origin(state: DesignerState, on_change: Callable[[], None]) -> None:
+def _build_viewport_origin(state: DesignerState, on_change: Callable[[], Any]) -> None:
     """Render method first, then one horizontal row of custom X/Y values."""
     from nicegui import ui
 
@@ -298,7 +314,7 @@ def _build_viewport_origin(state: DesignerState, on_change: Callable[[], None]) 
 
 
 def _build_one(
-    state: DesignerState, spec: ControlSpec, on_change: Callable[[], None]
+    state: DesignerState, spec: ControlSpec, on_change: Callable[[], Any]
 ) -> None:
     from nicegui import ui
 

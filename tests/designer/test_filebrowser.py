@@ -32,7 +32,7 @@ def test_non_csv_excluded_by_default_pattern(tmp_path: Path) -> None:
     assert [e.name for e in listing.entries] == ["data.csv"]
 
 
-def test_dotfiles_excluded(tmp_path: Path) -> None:
+def test_dot_directories_included_while_dotfiles_excluded(tmp_path: Path) -> None:
     (tmp_path / ".hidden.csv").write_text("a,b\n1,2\n")
     (tmp_path / ".gitkeep").write_text("")
     (tmp_path / "visible.csv").write_text("a,b\n1,2\n")
@@ -40,7 +40,7 @@ def test_dotfiles_excluded(tmp_path: Path) -> None:
 
     listing = list_dir(tmp_path)
 
-    assert [e.name for e in listing.entries] == ["visible.csv"]
+    assert [e.name for e in listing.entries] == [".dotdir", "visible.csv"]
 
 
 def test_parent_is_parent_dir(tmp_path: Path) -> None:

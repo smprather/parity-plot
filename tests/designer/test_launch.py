@@ -101,6 +101,30 @@ def test_design_starts_a_session_without_running_a_server(csv, monkeypatch):
     assert captured["data_paths"] == (csv,)
     assert captured["port"] == 9123
     assert captured["open_browser"] is False
+    assert captured["debug"] is False
+
+
+def test_design_debug_flag_reaches_run(csv, monkeypatch):
+    """`--debug` must reach `run` so the transcript can be switched on."""
+    captured = {}
+
+    def fake_run(**kwargs):
+        captured.update(kwargs)
+
+    monkeypatch.setattr("parity_plot.designer.launch.run", fake_run)
+
+    result = CliRunner().invoke(
+        cli, ["design", str(csv), "--debug", "--no-open-browser"]
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured["debug"] is True
+
+
+def test_design_debug_help_documents_the_transcript():
+    result = CliRunner().invoke(cli, ["design", "--help"])
+    assert result.exit_code == 0
+    assert "--debug" in result.output
 
 
 def test_design_reports_a_bad_csv_without_a_traceback(tmp_path):

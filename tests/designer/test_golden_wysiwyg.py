@@ -276,9 +276,11 @@ def test_autosave_output_round_trips_identically(csv, tmp_path: Path):
     session, config, data = Session.start((), out)  # bound to the file
     state = DesignerState(config=config, data=data)
     edited = state.config.merge(plot={"theme": "light"})
-    written = session.autosave(edited)  # writes to the bound file
+    problem = session.autosave(edited)  # writes to the bound file
+    # autosave returns an error message, not a path; None means it landed.
+    assert problem is None
 
-    from_disk = ParityConfig.from_toml(written)
+    from_disk = ParityConfig.from_toml(out)
     preview = build_figure(load(edited.data), edited.plot, edited.stats)
     rendered = build_figure(load(from_disk.data), from_disk.plot, from_disk.stats)
     assert rendered.to_dict() == preview.to_dict()

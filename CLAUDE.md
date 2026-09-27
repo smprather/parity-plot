@@ -311,6 +311,21 @@ that a config saved from the designer renders an identical figure through the
 CLI path — if that test fails, the designer is lying about what the CLI will do,
 and the designer is what needs fixing.
 
+**Every designer file read/write runs off the event loop.** NiceGUI handlers run
+on the asyncio loop that also answers the websocket heartbeat; a sync multi-second
+read (NFS is the reported case) blocks it past the ping deadline and the browser
+shows the reconnect overlay ("Searching for server...") while the server is fine.
+`designer/io.py::offload` pushes blocking I/O to NiceGUI's thread pool
+(`run.io_bound`), falling back to inline when no loop is running (tests). All
+data-panel handlers are async; `column_options`, `set_data_source`,
+`Session.start`, `list_dir`, `preview` and config saves go through `offload`.
+New blocking I/O in a handler must do the same. `parity-plot design --debug`
+prints a timestamped transcript (read durations, refresh cost, connect events)
+to stderr for slow-FS diagnosis. `app.refresh` is async and enters the client
+context itself because it also runs as a spawned background task (empty slot
+stack); a `_refresh_lock` serialises commits so rapid edits cannot interleave
+half-applied datasets.
+
 **The designer page has two independent scroll regions.** `app.py` anchors
 `.nicegui-content` inside Quasar's dynamically sized page, then applies
 `SETTINGS_COLUMN_CLASSES` and `RESULTS_COLUMN_CLASSES`. Do not return to one

@@ -44,6 +44,7 @@ def run(
     config_path: Path | None,
     port: int,
     open_browser: bool,
+    debug: bool = False,
 ) -> None:
     """Build the app and serve it. Imports NiceGUI lazily.
 
@@ -52,6 +53,11 @@ def run(
     after a server has already started listening.
     """
     require_nicegui()
+
+    from .io import setup_debug_logging
+
+    if debug:
+        setup_debug_logging()
 
     from .session import Session
 
@@ -73,4 +79,7 @@ def run(
         title="parity-plot designer",
         reload=False,
         favicon="📉",
+        # INFO keeps connect/disconnect and request lines in the transcript
+        # without the per-message firehose of full DEBUG.
+        uvicorn_logging_level="info" if debug else "warning",
     )

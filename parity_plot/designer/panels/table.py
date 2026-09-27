@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Any, Callable
 
 from ..filters import FilterSet
 from ..state import DesignerState
@@ -24,7 +24,7 @@ def summary_text(showing: int, total: int) -> str:
 def build_table(
     state: DesignerState,
     on_select: Callable[[str | None], None],
-    on_filter_change: Callable[[], None],
+    on_filter_change: Callable[[], Any],
 ) -> Callable[[], None]:
     """Render the filters and the table. Returns a function that refreshes them."""
     from nicegui import ui

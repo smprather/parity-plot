@@ -56,3 +56,8 @@ testpaths = ["tests"]
 # as "requested an async fixture with no plugin that handled it".
 asyncio_mode = "auto"
 markers = ["module_under_test: which module's ui.page routes the user fixture serves"]
+# A dropped coroutine ("coroutine 'refresh' was never awaited") is a silent
+# failure: the designer stops redrawing, the status bar freezes and auto-save
+# stops, with nothing but a log line to say so. That is exactly the 2026-09-26
+# P0 regression, so it is an error here rather than a warning nobody reads.
+filterwarnings = ["error::RuntimeWarning"]

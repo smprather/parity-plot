@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Callable
+from typing import Any, Callable
 
 from ...plot import delta_histogram_bin_count
 from ..state import DesignerState
+from ..widgets import as_int
 from .section import section
 
 HISTOGRAM_FIELDS = (
@@ -34,7 +35,7 @@ def _bucket_field_value(state: DesignerState) -> int | None:
     return state.config.plot.delta_histogram_bins
 
 
-def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -> None:
+def build_histogram_panel(state: DesignerState, on_change: Callable[[], Any]) -> None:
     """Histogram settings, with dependent controls disabled when inactive."""
     from nicegui import ui
 
@@ -76,9 +77,9 @@ def build_histogram_panel(state: DesignerState, on_change: Callable[[], None]) -
             log_y.set_enabled(active)
 
         def bucket_value() -> int | None:
-            if buckets.value in (None, ""):
-                return None
-            return int(buckets.value)
+            # as_int, not int(): the field is free-typed, so "" or "-" is a
+            # transient state rather than an error.
+            return as_int(buckets.value)
 
         def prefill_manual_buckets() -> None:
             if auto_bins.value:

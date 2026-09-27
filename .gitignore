@@ -25,6 +25,10 @@ out/
 !docs/images/
 !docs/images/*.png
 
+# local agent tooling state: a wiki SQLite database and per-session logs,
+# nothing of it part of the project
+.repowise/
+
 # throwaway designer configs made while experimenting (config1.toml, ...).
 # The committed sample config is parity.toml / EXAMPLE_TOML, never config*.toml.
 config*.toml

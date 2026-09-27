@@ -26,6 +26,7 @@ def csv(tmp_path: Path) -> Path:
 def test_start_loads_data_from_paths(csv):
     session, config, data = Session.start((csv,), None)
 
+    assert data is not None  # files given -> a dataset, not the empty state
     assert data.n_paired == 2
     assert len(data.missing_y) == 1
     assert config == ParityConfig().merge(
@@ -44,6 +45,7 @@ def test_start_loads_config_and_its_paths(csv, tmp_path: Path):
     session, config, data = Session.start((), cfg_path)
 
     assert config.plot.theme == "light"
+    assert data is not None
     assert data.n_paired == 2
 
 
@@ -144,9 +146,12 @@ def test_autosave_writes_when_bound(csv, tmp_path):
     session, config, _ = Session.start((), out)
 
     edited = config.merge(plot={"theme": "light"})
-    written = session.autosave(edited)
+    # autosave reports a problem by returning a message, and None means the
+    # write landed (or there was nothing to write) -- so None is the success
+    # assertion here, not the path.
+    problem = session.autosave(edited)
 
-    assert written == out
+    assert problem is None
     from parity_plot.config import ParityConfig
 
     assert ParityConfig.from_toml(out).plot.theme == "light"
