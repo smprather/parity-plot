@@ -19,13 +19,15 @@ in production: these tests assert on outcomes, never on "it did not raise".
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from parity_plot.designer import app as app_mod
-from parity_plot.designer.session import Session
+from parity_plot.designer.session import Debouncer, Session
 
 WIDE = "id,r,t\nA,1,2\nB,2,3\n"
 
@@ -72,9 +74,18 @@ class Page:
         return self.element("Config")
 
 
-async def settle(seconds: float = 0.3) -> None:
-    """Let spawned background tasks (and their offloaded reads) finish."""
-    await asyncio.sleep(seconds)
+async def eventually(predicate, timeout: float = 20.0) -> None:
+    """Poll until ``predicate()`` holds.
+
+    Never a fixed sleep: these tests once slept 0.3 s and passed on a local disk,
+    then failed under ./check-slow-nfs, where each read or write of the configs
+    costs hundreds of milliseconds.
+    """
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() > deadline:
+            raise AssertionError("condition not reached before the timeout")
+        await asyncio.sleep(0.02)
 
 
 @pytest.fixture
@@ -105,11 +116,13 @@ async def page(tmp_path: Path, monkeypatch):
         # handle_event enters the sender's own slot.
         with Client(page=real_page("/")) as client:
             captured["page"]()
-        await settle()
-        yield Page(client, state, tmp_path)
-        # Drain anything a test left running (a debounced save) before the
-        # loop goes away.
-        await settle(0.6)
+        page = Page(client, state, tmp_path)
+        # Ready once the background listing has filled the picker.
+        await eventually(lambda: len(page.picker.options) == 3)
+        yield page
+        # Give a debounced save a test left behind its 400 ms before the loop
+        # goes away.
+        await asyncio.sleep(0.6)
     finally:
         core.loop = None
 
@@ -121,8 +134,7 @@ async def test_the_picker_lists_every_config_on_page_load(page):
 
 async def test_picking_a_config_opens_it(page):
     page.picker.value = "b.toml"
-    await settle()
-    assert page.state.config.plot.title == "B"
+    await eventually(lambda: page.state.config.plot.title == "B")
     assert page.picker.value == "b.toml"
 
 
@@ -130,9 +142,9 @@ async def test_save_as_writes_the_file_and_binds_the_picker_to_it(page):
     page.click("Save As…")
     page.element("Path").value = str(page.directory / "c.toml")
     page.click("Save")
-    await settle()
-
     written = page.directory / "c.toml"
+    await eventually(lambda: page.picker.value == "c.toml")
+
     assert written.exists(), "Save As wrote nothing"
     assert 'title = "A"' in written.read_text(encoding="utf-8")
     # The new name is both the value and among the options -- a value missing
@@ -143,7 +155,7 @@ async def test_save_as_writes_the_file_and_binds_the_picker_to_it(page):
 
 async def test_new_design_unbinds_to_an_empty_design(page):
     page.click("New Design")
-    await settle()
+    await eventually(lambda: page.picker.value == app_mod.UNSAVED)
     assert page.state.config.data.files == ()
     assert page.picker.value == app_mod.UNSAVED
     assert app_mod.UNSAVED in page.picker.options
@@ -156,15 +168,15 @@ async def test_an_edit_pending_at_a_swap_is_saved_to_its_own_file(page):
     save looked the session up when it fired, so letting it run would have
     written the old design into the *new* file.
     """
-    page.element("Title").value = "A edited"  # commits, refreshes, schedules
-    await settle(0.05)  # the refresh ran; the 400 ms debounce has not fired
+    a_toml = page.directory / "a.toml"
+    page.element("Title").value = "A edited"  # commits, spawns the refresh
+    # The refresh runs before the open (tasks are FIFO), so the save is pending
+    # -- not yet fired: the debounce is 400 ms -- when the swap starts.
     page.picker.value = "b.toml"
-    await settle(0.8)
+    await eventually(lambda: page.state.config.plot.title == "B")
+    await eventually(lambda: 'title = "A edited"' in a_toml.read_text("utf-8"))
 
-    assert page.state.config.plot.title == "B"
-    a_text = (page.directory / "a.toml").read_text(encoding="utf-8")
     b_text = (page.directory / "b.toml").read_text(encoding="utf-8")
-    assert 'title = "A edited"' in a_text, "the last edit to a.toml was dropped"
     assert 'title = "B"' in b_text, "the old design was written into b.toml"
 
 
@@ -174,23 +186,37 @@ async def test_the_last_pick_wins_while_the_old_design_is_being_saved(
     """The swap flushes the old design's save first, and that awaits.
 
     A second pick made during the flush must win: the first open passed its
-    generation check before the flush, so it has to check again after it.
+    generation check before the flush, so it has to check again after it. The
+    save is held open with an event, so the second pick provably lands while
+    the first swap is inside its flush.
     """
-    import time
+    real_autosave = Session.autosave
+    real_flush = Debouncer.flush
+    saving, release = threading.Event(), threading.Event()
+    flushes: list[str] = []
 
-    real = Session.autosave
+    def held_autosave(self, config):
+        saving.set()
+        release.wait(timeout=20)
+        return real_autosave(self, config)
 
-    def slow_autosave(self, config):
-        time.sleep(0.3)  # an NFS write
-        return real(self, config)
+    async def observed_flush(self):
+        flushes.append("start")
+        await real_flush(self)
+        flushes.append("done")
 
-    monkeypatch.setattr(Session, "autosave", slow_autosave)
+    monkeypatch.setattr(Session, "autosave", held_autosave)
+    monkeypatch.setattr(Debouncer, "flush", observed_flush)
+
     page.element("Title").value = "A edited"
-    await settle(0.05)
-    page.picker.value = "b.toml"  # its swap is now flushing a.toml's edit
-    await settle(0.1)
-    page.picker.value = "z.toml"
-    await settle(1.0)
+    page.picker.value = "b.toml"
+    await eventually(lambda: saving.is_set() and "start" in flushes)
+    page.picker.value = "z.toml"  # b's swap is blocked inside its flush
+    await eventually(lambda: page.state.config.plot.title == "Z")
+    release.set()
+    # b's flush returning is the moment its swap re-checks the generation --
+    # and without that re-check, swaps to B.
+    await eventually(lambda: flushes.count("done") == 2)
 
     assert page.state.config.plot.title == "Z"
     assert page.picker.value == "z.toml"

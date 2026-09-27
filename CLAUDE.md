@@ -17,6 +17,7 @@ uv run parity-plot init          # write a documented parity.toml
 uv run parity-plot plot parity.toml --no-open-browser -o out.html   # CONFIG is positional
 uv run parity-plot design --config parity.toml --no-open-browser
 ./run-check                      # designer against data/parts.csv
+./check-slow-nfs                 # full suite with every tmp_path on a slow NFS mount (Docker)
 ```
 
 ### Shared demo server
@@ -86,6 +87,20 @@ actually goes missing — but kaleido's own error reports itself in terms of the
 other, which would send people to reinstall what they already have.
 `plot.py::_export_hint` untangles that; keep it accurate if the export path
 changes.
+
+### Slow-NFS harness
+
+`./check-slow-nfs` (`tools/slow-nfs/`, see its README) builds a Docker image and
+runs the suite with `--basetemp` on an NFS mount behind an emulated slow link:
+NFS-Ganesha serves a tmpfs, `tc netem` delays only port 2049 on the container's
+`lo`, and the kernel NFS client mounts it. Kernels without an NFS client or
+`sch_netem` fall back to `fuse-nfs` (NFSv3 — libnfs's v4 writes fail against
+Ganesha) and a userspace delay relay, and the container says which it used.
+Needs `--privileged`. Anything after the script name replaces the command
+(`./check-slow-nfs bash`). Designer tests must wait on conditions, never fixed
+sleeps: sleep-based waits passed locally and failed there.
+`tools/slow-nfs/loop_lag_probe.py` measures the designer's worst event-loop stall
+per phase against NiceGUI's 2 s heartbeat budget.
 
 ## Two-tier checks
 

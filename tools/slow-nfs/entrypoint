@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Stand up a slow NFS mount at /mnt/nfs, then run the given command.
+#
+#   server   NFS-Ganesha (userspace NFSv4) exporting a tmpfs at /srv/export
+#   latency  tc netem on the NFS port -- or, where the kernel has no sch_netem,
+#            a userspace relay that delays each direction (delay_proxy.py)
+#   client   the kernel NFS client (v4.1) -- or, where the kernel has none,
+#            fuse-nfs (v3, userspace over FUSE)
+#
+# Knobs (environment):
+#   NFS_RTT_MS      round-trip time added to NFS traffic (default 40)
+#   NFS_DELAY       auto | netem | proxy         (default auto: netem if it works)
+#   NFS_CLIENT      auto | kernel | fuse         (default auto: kernel if it works)
+#   NFS_MOUNT_OPTS  extra kernel mount options   (default: none, i.e. real
+#                   attribute caching -- the behaviour users actually get)
+set -euo pipefail
+
+: "${NFS_RTT_MS:=40}" "${NFS_DELAY:=auto}" "${NFS_CLIENT:=auto}" "${NFS_MOUNT_OPTS:=}"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export_dir=/srv/export
+mnt=/mnt/nfs
+relay_port=12049
+one_way_ms=$(python3 -c "print(${NFS_RTT_MS} / 2)")
+
+log() { printf '[slow-nfs] %s\n' "$*" >&2; }
+die() { log "error: $*"; exit 1; }
+
+mkdir -p "$export_dir" "$mnt" /var/run/ganesha /var/lib/nfs/ganesha
+chmod 1777 "$export_dir"
+
+# --- server -----------------------------------------------------------------
+rpcbind -w 2>/dev/null || rpcbind 2>/dev/null || true
+ganesha.nfsd -f /etc/ganesha/ganesha.conf -L /var/log/ganesha.log -N NIV_EVENT
+for _ in $(seq 1 100); do
+    ss -ltn | grep -q ':2049 ' && break
+    sleep 0.1
+done
+ss -ltn | grep -q ':2049 ' || { cat /var/log/ganesha.log >&2; die "ganesha did not start"; }
+
+# --- latency ----------------------------------------------------------------
+netem_on_nfs_port() {
+    # A prio qdisc on lo with netem hung off its third band; only packets to or
+    # from port 2049 are steered there, so every other loopback user (the
+    # designer's own HTTP server in the tests) keeps full speed. lo carries both
+    # directions, so a one-way delay here is paid twice per round trip.
+    tc qdisc add dev lo root handle 1: prio 2>/dev/null || return 1
+    if ! tc qdisc add dev lo parent 1:3 handle 30: netem delay "${one_way_ms}ms" 2>/dev/null; then
+        tc qdisc del dev lo root 2>/dev/null || true
+        return 1
+    fi
+    tc filter add dev lo parent 1: protocol ip prio 1 u32 match ip dport 2049 0xffff flowid 1:3
+    tc filter add dev lo parent 1: protocol ip prio 1 u32 match ip sport 2049 0xffff flowid 1:3
+}
+
+port=2049
+case "$NFS_DELAY" in
+    netem) netem_on_nfs_port || die "tc netem unavailable (kernel lacks sch_netem?); try NFS_DELAY=proxy"
+           delay=netem ;;
+    proxy) delay=proxy ;;
+    auto)  if netem_on_nfs_port; then delay=netem; else delay=proxy; fi ;;
+    *)     die "NFS_DELAY must be auto, netem or proxy" ;;
+esac
+if [[ $delay == proxy ]]; then
+    python3 "$here/delay_proxy.py" "$relay_port" 127.0.0.1:2049 "$one_way_ms" &
+    for _ in $(seq 1 50); do ss -ltn | grep -q ":$relay_port " && break; sleep 0.1; done
+    port=$relay_port
+fi
+
+# --- client -----------------------------------------------------------------
+kernel_mount() {
+    local opts="vers=4.1,proto=tcp,port=$port"
+    [[ -n $NFS_MOUNT_OPTS ]] && opts="$opts,$NFS_MOUNT_OPTS"
+    mount -t nfs4 -o "$opts" 127.0.0.1:/export "$mnt" 2>/dev/null
+}
+fuse_mount() {
+    command -v fuse-nfs >/dev/null || return 1
+    # NFSv3: libnfs's v4 writes fail against Ganesha (see ganesha.conf).
+    fuse-nfs -a -n "nfs://127.0.0.1/export?version=3&nfsport=$port&mountport=20048" \
+        -m "$mnt" || return 1
+    for _ in $(seq 1 50); do mountpoint -q "$mnt" && return 0; sleep 0.1; done
+    return 1
+}
+case "$NFS_CLIENT" in
+    kernel) kernel_mount || die "kernel NFS mount failed (no NFS client in this kernel?); try NFS_CLIENT=fuse"
+            client=kernel ;;
+    fuse)   fuse_mount || die "fuse-nfs mount failed"
+            client=fuse ;;
+    auto)   if kernel_mount; then client=kernel
+            elif fuse_mount; then client=fuse
+            else die "no NFS client worked (kernel or fuse-nfs)"; fi ;;
+    *)      die "NFS_CLIENT must be auto, kernel or fuse" ;;
+esac
+
+# --- report -----------------------------------------------------------------
+# Measured, not assumed: a create+write+close is several round trips on any
+# client, so this is the number that says how slow the mount really is.
+probe_ms=$(python3 - "$mnt" <<'PY'
+import os, sys, time
+root = os.path.join(sys.argv[1], ".probe")
+os.makedirs(root, exist_ok=True)
+n = 10
+start = time.monotonic()
+for i in range(n):
+    with open(os.path.join(root, f"f{i}"), "w") as f:
+        f.write("x")
+elapsed = (time.monotonic() - start) / n * 1000
+for i in range(n):
+    os.unlink(os.path.join(root, f"f{i}"))
+os.rmdir(root)
+print(f"{elapsed:.0f}")
+PY
+)
+log "server=ganesha latency=$delay (rtt ${NFS_RTT_MS} ms) client=$client mount=$mnt"
+log "measured: ${probe_ms} ms per small-file create+write+close"
+if [[ $client == fuse || $delay == proxy ]]; then
+    log "note: fallback path in use -- the host kernel lacks $( [[ $client == fuse ]] && printf 'an NFS client' )$( [[ $client == fuse && $delay == proxy ]] && printf ' and ' )$( [[ $delay == proxy ]] && printf 'sch_netem' )."
+    log "      Timings are indicative; the kernel client + netem path is the realistic one."
+fi
+
+exec "$@"
