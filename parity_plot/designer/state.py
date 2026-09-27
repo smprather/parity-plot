@@ -107,6 +107,16 @@ class DesignerState:
     # load from overwriting a newer choice, and a pre-swap load from
     # overwriting the config that replaced it.
     _generation: Generation = field(default_factory=Generation, repr=False)
+    # Bumped only when a whole config is swapped in. The data panel is rebuilt
+    # on a swap, but the old panel's handlers can still be mid-read; they check
+    # this before claiming a generation, because a claim made *after* the swap
+    # is current by construction and the generation alone cannot stop it.
+    _epoch: Generation = field(default_factory=Generation, repr=False)
+
+    @property
+    def config_epoch(self) -> int:
+        """Which opened config this is; a panel built for an older one is dead."""
+        return self._epoch.value
 
     @property
     def has_data(self) -> bool:
@@ -259,6 +269,8 @@ class DesignerState:
         # against the config being replaced, and committing it would put the old
         # design back -- and then auto-save it over the newly opened file.
         self._generation.bump()
+        # And retire the panels built for the old config: see _epoch.
+        self._epoch.bump()
 
     def selected_record(
         self, tolerances: Sequence[NamedTolerance] = ()

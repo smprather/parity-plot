@@ -118,24 +118,34 @@ class Session:
         target makes the swap a single filesystem operation, and the old
         content stays whole until the instant it is replaced.
         """
-        target = Path(path) if path is not None else self.config_path
-        if target is None:
-            raise ValueError("no config path to save to; choose one with Save As")
-
         # One process-wide lock: two saves (Save As vs auto-save, or two tabs)
         # would otherwise interleave their temp-file renames and the loser would
         # write a stale config over the winner's.
         with _SAVE_LOCK:
-            existing = target.read_text(encoding="utf-8") if target.exists() else None
-            text = config_to_toml(config, existing=existing)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            _write_atomic(target, text)
+            return self._save_locked(config, path)
 
-            self.config_path = target
-            self.disk_text = text
-            # Marked clean only after the swap succeeded: a failed save must
-            # stay dirty or it is never retried.
-            self.saved_config = config
+    def _save_locked(self, config: ParityConfig, path: Path | None) -> Path:
+        """The body of :meth:`save`; the caller holds ``_SAVE_LOCK``.
+
+        The bound path is read *here*, under the lock, not by the caller. Saves
+        run in worker threads now, so an auto-save that read ``config_path``
+        before waiting on the lock could land after a Save As rebound the
+        session -- and write the old config to the old file while re-binding the
+        session back to it.
+        """
+        target = Path(path) if path is not None else self.config_path
+        if target is None:
+            raise ValueError("no config path to save to; choose one with Save As")
+        existing = target.read_text(encoding="utf-8") if target.exists() else None
+        text = config_to_toml(config, existing=existing)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        _write_atomic(target, text)
+
+        self.config_path = target
+        self.disk_text = text
+        # Marked clean only after the swap succeeded: a failed save must
+        # stay dirty or it is never retried.
+        self.saved_config = config
         return target
 
     def autosave(self, config: ParityConfig) -> str | None:
@@ -154,12 +164,14 @@ class Session:
         the rest of the refresh and left the failure visible only in the server
         log. The caller puts the message in the status bar.
         """
-        if self.config_path is None:
-            return None
-        if not self.is_dirty(config):
-            return None
         try:
-            self.save(config, self.config_path)
+            with _SAVE_LOCK:
+                # Both checks under the lock, for the reason given in
+                # _save_locked: a concurrent Save As may rebind or clean the
+                # session while this call waits its turn.
+                if self.config_path is None or not self.is_dirty(config):
+                    return None
+                self._save_locked(config, None)
         except OSError as exc:
             return f"Auto-save failed: {exc}"
         return None
@@ -173,10 +185,19 @@ def _write_atomic(target: Path, text: str) -> None:
     ``tempfile.mkstemp`` because the point is that the name is ours and the
     cleanup is ours; it is removed on every failure path, so a failed save
     leaves nothing behind but the old file.
+
+    A symlinked config is written *through* the link, and an existing file
+    keeps its permission bits. A rename replaces whatever sits at the name, so
+    without both, a ``parity.toml`` linked into a shared project area would
+    become a private copy and the shared file would silently stop changing, and
+    a group-writable config would drop to the umask default.
     """
+    target = target.resolve()
     temp = target.with_name(f".{target.name}.{os.getpid()}.tmp")
     try:
         temp.write_text(text, encoding="utf-8")
+        with suppress(FileNotFoundError):
+            os.chmod(temp, target.stat().st_mode & 0o7777)
         os.replace(temp, target)
     except BaseException:
         # OSError and KeyboardInterrupt/SystemExit alike: a half-written temp
@@ -197,6 +218,10 @@ class Debouncer:
 
     ``on_error`` receives whatever the work returned when it was a message, so
     a failed save can be reported instead of disappearing.
+
+    A request that arrives while the work is *running* is not lost: the task
+    loops until nothing is pending. On NFS a save takes longer than the delay,
+    so an edit made during one is the ordinary case, not a corner.
     """
 
     def __init__(self, work: Callable[..., Any], delay: float = 0.4) -> None:
@@ -204,6 +229,7 @@ class Debouncer:
         self._delay = delay
         self._task: asyncio.Task | None = None
         self._pending: tuple[tuple, dict] | None = None
+        self._calling = False
         #: Called with the work's return value, if it returned one. Set by the
         #: app to push a failure into the status bar.
         self.on_error: Callable[[Any], None] | None = None
@@ -213,25 +239,50 @@ class Debouncer:
         self._pending = (args, kwargs)
         if self._task is not None and not self._task.done():
             return
-        self._task = asyncio.ensure_future(self._fire())
+        self._task = asyncio.ensure_future(self._run())
 
-    def cancel(self) -> None:
-        """Drop any pending request. Used when the config is swapped."""
-        self._pending = None
-        if self._task is not None:
-            self._task.cancel()
-            self._task = None
+    async def flush(self) -> None:
+        """Run a pending request now, after any call already in flight.
 
-    async def _fire(self) -> None:
-        await asyncio.sleep(self._delay)
+        Used when the config is swapped: the pending save belongs to the design
+        being replaced and must reach *its* file before the swap, not be dropped
+        (the user's last edit) or delayed until the new design's first edit
+        replaces it.
+        """
         pending, self._pending = self._pending, None
-        if pending is None:
-            return
+        task, self._task = self._task, None
+        if task is not None and not task.done():
+            if self._calling:
+                # Let the in-flight write finish; with nothing pending, its
+                # loop then exits.
+                await task
+            else:
+                task.cancel()
+        # Drain, not just one call: a request scheduled while this awaited is
+        # still the old design's, and must not be left for the next design's
+        # first edit to replace.
+        while pending is not None:
+            await self._call(pending)
+            pending, self._pending = self._pending, None
+
+    async def _run(self) -> None:
+        while self._pending is not None:
+            await asyncio.sleep(self._delay)
+            pending, self._pending = self._pending, None
+            if pending is None:
+                return
+            await self._call(pending)
+
+    async def _call(self, pending: tuple[tuple, dict]) -> None:
         args, kwargs = pending
-        result = self._work(*args, **kwargs)
-        # The work may be async -- auto-save is a file write and has to run off
-        # the event loop, so the debounced call is offloaded too.
-        if inspect.isawaitable(result):
-            result = await result
+        self._calling = True
+        try:
+            result = self._work(*args, **kwargs)
+            # The work may be async -- auto-save is a file write and has to run
+            # off the event loop, so the debounced call is offloaded too.
+            if inspect.isawaitable(result):
+                result = await result
+        finally:
+            self._calling = False
         if result is not None and self.on_error is not None:
             self.on_error(result)

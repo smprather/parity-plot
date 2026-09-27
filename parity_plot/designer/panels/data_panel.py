@@ -204,7 +204,35 @@ def column_options(
     color_column: str | None = None,
     hover_columns: Sequence[str] | None = (),
 ) -> dict[str, list[str]]:
-    """Dropdown options per role.
+    """Dropdown options per role. See :func:`read_column_options`."""
+    options, _ = read_column_options(
+        files,
+        ref,
+        test,
+        join,
+        group=group,
+        color_column=color_column,
+        hover_columns=hover_columns,
+    )
+    return options
+
+
+def read_column_options(
+    files: tuple[Path, ...],
+    ref: str | None = None,
+    test: str | None = None,
+    join: str | None = None,
+    *,
+    group: Sequence[str] = (),
+    color_column: str | None = None,
+    hover_columns: Sequence[str] | None = (),
+) -> tuple[dict[str, list[str]], bool]:
+    """Dropdown options per role, and whether the open files could be read.
+
+    The flag is for the panel's hover pruning: pins are dropped when the files
+    were read and no longer offer them, never because a read failed (NFS, a
+    file mid-rewrite) -- the fallback lists carry nothing derived, so pruning
+    against them would empty the selection, and the next edit would save that.
 
     ``ref``/``test`` are numeric ``file:column`` (they are the plotted axes);
     ``group`` is any ``file:column``; ``join`` is a bare column name present in
@@ -231,11 +259,11 @@ def column_options(
         )
     )
     if not files:
-        return fallback
+        return fallback, True
     try:
         src = open_sources(files)
     except DataError:
-        return fallback
+        return fallback, False
 
     # numeric_refs, not numeric_columns: a file whose basename repeats among the
     # open set must be named by its full path, because that is the only form
@@ -273,7 +301,7 @@ def column_options(
         "join": _offer(common, join),
         "color_column": _offer(numeric, color_column),
         "hover_columns": _offer(derived_hover, *(hover_columns or ())),
-    }
+    }, True
 
 
 def build_data_panel(
@@ -291,6 +319,10 @@ def build_data_panel(
 
     with section("Data"):
         files = list(state.config.data.files)
+        # The config this panel was built for. Opening another config rebuilds
+        # the panel, but this one's handlers may still be awaiting a read; once
+        # the epoch moves they must not commit (see ``apply``).
+        epoch = state.config_epoch
         # The selects are built with their current values as the only options,
         # and the real lists are derived in the background. Deriving them here
         # would read every open CSV on the event loop -- on every page load and
@@ -322,9 +354,12 @@ def build_data_panel(
                         ).props("flat dense round size=sm").tooltip(
                             "Peek at the first rows"
                         )
+                        # Gated like Add File: an ungated remove ran alongside a
+                        # gated commit, and the older of two option refreshes
+                        # could land last and re-offer the removed file's columns.
                         ui.button(
                             icon="close",
-                            on_click=lambda _, p=f: _remove(p),
+                            on_click=lambda _, p=f: gate.submit(partial(_remove, p)),
                         ).props("flat dense round size=sm")
 
         def _pick_file(path: Path) -> None:
@@ -407,52 +442,64 @@ def build_data_panel(
             hover_sel.set_enabled(not hover_auto.value)
             await apply()
 
-        async def refresh_options() -> None:
-            """Re-derive every option list, then guess ref/test if still unset.
+        async def refresh_options(*, guess: bool) -> None:
+            """Re-derive every option list; with ``guess``, fill an unset ref/test.
 
             Every value assignment and every ``update()`` below is wrapped in the
             gate's suspension. That includes the ``update()`` calls: a select
             whose current value is no longer among its options resets to None,
             which is itself an emission -- and one that used to fire a fresh
             full read of every open file.
+
+            ``guess`` only where a commit follows (adding or removing a file):
+            the guessed values are set under suspension, so without that commit
+            the selects would show an axis pair the state never received -- a
+            chosen-looking ref and test over an empty plot.
             """
-            opts = await _options()
+            opts, readable = await _options()
             ref_sel.options, test_sel.options = opts["ref"], opts["test"]
             join_sel.options = [_NONE, *opts["join"]]
             group_sel.options = opts["group"]
             color_sel.options = [_NONE, *opts["color_column"]]
-            _refresh_hover(opts["hover_columns"])
+            _refresh_hover(opts["hover_columns"], prune=readable)
             with gate.suspend():
                 # Guess ref/test if unset and enough numeric columns are offered.
-                if not ref_sel.value and len(opts["ref"]) >= 1:
+                if guess and not ref_sel.value and len(opts["ref"]) >= 1:
                     ref_sel.value = opts["ref"][0]
-                if not test_sel.value and len(opts["test"]) >= 2:
+                if guess and not test_sel.value and len(opts["test"]) >= 2:
                     test_sel.value = opts["test"][1]
                 for s in (ref_sel, test_sel, join_sel, group_sel, color_sel):
                     s.update()
 
         async def refresh_dependent() -> None:
             """Re-derive the options that depend on the ref/test/join choice."""
-            opts = await _options()
+            opts, readable = await _options()
             group_sel.options = opts["group"]
             with gate.suspend():
                 group_sel.update()
-            _refresh_hover(opts["hover_columns"])
+            _refresh_hover(opts["hover_columns"], prune=readable)
 
-        async def _options() -> dict[str, list[str]]:
-            """column_options over the open files, off the event loop.
+        async def _options() -> tuple[dict[str, list[str]], bool]:
+            """read_column_options over the open files, off the event loop.
 
             Timing goes to the transcript in --debug so a slow-filesystem
             read is visible in the terminal instead of only as UI lag.
             """
             files_tuple = tuple(files)
             started = time.monotonic()
-            opts = await offload(
-                column_options,
+            # Every current value goes in, so every list keeps offering it. The
+            # colour select is single-valued: left out, a configured colour the
+            # derivation cannot produce (a path-form ref, a briefly unreadable
+            # file) was reset to None on every page load. Hover is the
+            # exception -- _refresh_hover decides which pins survive.
+            opts, readable = await offload(
+                read_column_options,
                 files_tuple,
                 ref_sel.value,
                 test_sel.value,
                 _join_value(),
+                group=tuple(group_sel.value or ()),
+                color_column=_color_value(),
             )
             debug_log(
                 "column_options(%d file%s) %.0fms",
@@ -460,21 +507,31 @@ def build_data_panel(
                 "s" if len(files_tuple) != 1 else "",
                 (time.monotonic() - started) * 1000,
             )
-            return opts
+            return opts, readable
 
         def _join_value() -> str | None:
             return None if join_sel.value == _NONE else join_sel.value
 
-        def _refresh_hover(candidates: list[str]) -> None:
+        def _color_value() -> str | None:
+            # `or None`: a select whose value fell out of its options holds None.
+            return None if color_sel.value == _NONE else (color_sel.value or None)
+
+        def _refresh_hover(candidates: list[str], *, prune: bool) -> None:
             """Re-derive hover options and drop pinned refs no longer offered.
 
-            A pinned ref left pointing at a removed file would make every later
-            ``apply()`` raise a ``DataError`` the user could not see the cause
-            of, so stale selections are pruned here rather than left to fail.
+            A pinned ref left pointing at a removed file -- or at a file that no
+            longer backs ref or test, which ``load`` also refuses -- would make
+            every later ``apply()`` raise a ``DataError`` the user could not see
+            the cause of, so stale selections are pruned here rather than left
+            to fail.
+
+            Only when ``prune``: that is, when the files were actually read. A
+            failed read offers no candidates at all, and pruning against that
+            emptied the selection -- which the next data edit then saved.
             """
-            hover_sel.options = candidates
             current = list(hover_sel.value or ())
-            kept = [v for v in current if v in candidates]
+            kept = [v for v in current if v in candidates] if prune else current
+            hover_sel.options = _offer(candidates, *kept)
             if kept != current:
                 # Suspending is re-entrant, so this nests safely inside
                 # refresh_options' own suspension rather than clobbering it.
@@ -496,7 +553,7 @@ def build_data_panel(
                 names.append("ref")
             if not test_sel.value:
                 names.append("test")
-            if color_sel.value == _NONE:
+            if _color_value() is None:
                 names.append("color_column")
             if hover_auto.value:
                 # Auto is hover_columns=None, and merge drops None overrides.
@@ -505,6 +562,14 @@ def build_data_panel(
 
         async def apply() -> None:
             if gate.is_suspended:
+                return
+            if state.config_epoch != epoch:
+                # Another config was opened while this panel's handler awaited
+                # a read (the option refresh before a commit). The generation
+                # below cannot catch it: claimed now, after the swap, it would
+                # be current, and this panel's [data] would overwrite the newly
+                # opened config's -- then be auto-saved into its file.
+                debug_log("data panel of a replaced config: commit dropped")
                 return
             # Annotated because it is splatted into a signature with a typed
             # keyword-only `clear`: without it the checker cannot tell that
@@ -515,7 +580,7 @@ def build_data_panel(
                 test=test_sel.value or None,
                 join=_join_value(),
                 group=tuple(group_sel.value or ()),
-                color_column=None if color_sel.value == _NONE else color_sel.value,
+                color_column=_color_value(),
             )
             if not hover_auto.value:
                 # An empty selection is a real value meaning "no extra rows",
@@ -550,12 +615,16 @@ def build_data_panel(
                 return
             # On failure last_error is set; the status bar (painted by
             # on_change -> refresh) shows it persistently -- no toast.
-            await on_change()
+            # Awaited only if it is awaitable: a sync on_change is legal.
+            result = on_change()
+            if inspect.isawaitable(result):
+                await result
 
         async def _remove(path: Path) -> None:
-            files.remove(path)
+            if path in files:
+                files.remove(path)
             render_files()
-            await refresh_options()
+            await refresh_options(guess=True)
             await apply()
 
         async def _add(path: Path) -> None:
@@ -563,7 +632,7 @@ def build_data_panel(
             if path not in files:
                 files.append(path)
             render_files()
-            await refresh_options()
+            await refresh_options(guess=True)
             await apply()
 
         render_files()
@@ -578,7 +647,9 @@ def build_data_panel(
         # loop (tests, script mode), where create would raise.
         from nicegui import background_tasks
 
-        background_tasks.create_or_defer(refresh_options(), name="data panel options")
+        background_tasks.create_or_defer(
+            refresh_options(guess=False), name="data panel options"
+        )
 
         def mark_problems(problems) -> None:
             """Redden the join select while a `data.join` problem stands."""

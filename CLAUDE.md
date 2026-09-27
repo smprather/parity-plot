@@ -323,8 +323,22 @@ New blocking I/O in a handler must do the same. `parity-plot design --debug`
 prints a timestamped transcript (read durations, refresh cost, connect events)
 to stderr for slow-FS diagnosis. `app.refresh` is async and enters the client
 context itself because it also runs as a spawned background task (empty slot
-stack); a `_refresh_lock` serialises commits so rapid edits cannot interleave
-half-applied datasets.
+stack). Its body has no `await`, so the app-level `_refresh_lock` guards nothing
+today; it matters only if an await is ever added inside a refresh.
+
+**A data-source change is begin → prepare → commit.** `prepare_data_source` runs
+in a worker thread and touches no state; `commit_data_source` runs on the loop,
+merges only `[data]` into the config *as it now stands*, and drops a result whose
+generation moved. The generation is claimed in `apply()` — *after* the option
+read that `_add`/`_remove`/`_reapply` await first — so it cannot see a config
+swap during that read; `state.config_epoch` (bumped only by
+`load_session_config`) is what retires a panel built for the old config, and
+`apply()` checks it before claiming. `refresh_options(guess=True)` only where a
+commit follows: a guessed ref/test set under suspension with no commit is an
+axis pair the state never received. The panel reads options through
+`read_column_options`, whose `readable` flag gates hover pruning — pins are
+pruned against candidates only after a successful read, never against the empty
+fallback of a failed one.
 
 **The designer page has two independent scroll regions.** `app.py` anchors
 `.nicegui-content` inside Quasar's dynamically sized page, then applies
@@ -353,8 +367,15 @@ change, rebuilds the figure, computes `validation.problems(config)`, paints the
 status bar, enables/disables **Save As**, marks the offending field, and — when
 nothing is wrong and a file is **bound** — writes via `Session.autosave`. So a
 *bound* config's file on disk always equals the **most recent valid** config; a
-hard-invalid edit is withheld (disk keeps the last good one) until fixed. There is
-no plain Save button. Persistence is a **top toolbar**: a config dropdown
+hard-invalid edit is withheld (disk keeps the last good one) until fixed. The
+write is debounced (`session.Debouncer`, 400 ms) and **bound to its session when
+scheduled**, not looked up when it fires; the debouncer loops until nothing is
+pending (on NFS an edit during an in-flight save is the normal case), and a config
+swap `flush()`es it so the old design's last edit reaches the old file. Saves run
+in worker threads under one `_SAVE_LOCK`, and `autosave` reads the bound path
+*inside* it — read before waiting, a queued auto-save undid a concurrent Save As.
+`_write_atomic` writes through a symlinked config and keeps the file's mode. There
+is no plain Save button. Persistence is a **top toolbar**: a config dropdown
 (`session.config_choices(dir)` lists parity `.toml`s in the launch dir — touchstone:
 parses + non-empty `data.files`), **Save As**, **New Design**. `<unsaved>` in the
 dropdown means *unbound* — a New Design or data-only launch with no file yet; Save
@@ -478,6 +499,14 @@ fixture also expects a module-level app (`nicegui_main_file`), which `build_app`
 is not. `tests/designer/test_app.py` instead boots `parity-plot design` as a
 subprocess and fetches the page — strip `PYTEST*` from that subprocess's env or
 NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
+To *drive* the page, `tests/designer/test_app_toolbar.py` captures `build_app`'s
+page function by standing in for `ui.page`, builds it inside a `Client` with
+`core.loop` set, and clicks through NiceGUI's own `handle_event`
+(`test_data_panel_races.py` does the same for the data panel alone). Handler
+exceptions are swallowed there exactly as in production, so assert on outcomes.
+Build inside `with Client(...)` but do not hold that context across a fixture's
+`yield`: the slot stack is per task. This harness exists because a toolbar that
+raised on every click passed the whole suite — nothing drove the assembled page.
 
 ## Conventions
 

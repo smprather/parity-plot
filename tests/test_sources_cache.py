@@ -104,3 +104,30 @@ def test_clear_cache_empties_it(tmp_path):
     open_sources((f,))
     clear_cache()
     assert sources_mod._CACHE == {}
+
+
+def test_a_file_rewritten_during_its_read_is_not_cached_as_current(
+    tmp_path, monkeypatch
+):
+    """Stamp before reading, or a concurrent rewrite pins the old contents.
+
+    Stamped *after* the read, the old rows were filed under the new file's
+    ``(mtime, size)``, and every later lookup served them until the file
+    changed yet again. A writer regenerating a CSV while the designer reads it
+    is the ordinary way to hit this on a shared filesystem.
+    """
+    f = write(tmp_path, "d.csv", "id,v\nA,1\n")
+    clear_cache()
+    real = sources_mod._read_rows
+    rewritten = {"done": False}
+
+    def read_then_rewrite(path):
+        rows = real(path)
+        if not rewritten["done"]:
+            rewritten["done"] = True
+            path.write_text("id,v\nA,1\nB,2\n", encoding="utf-8")
+        return rows
+
+    monkeypatch.setattr(sources_mod, "_read_rows", read_then_rewrite)
+    assert open_sources((f,)).tables[f]["id"] == ["A"]  # the racing read
+    assert open_sources((f,)).tables[f]["id"] == ["A", "B"]

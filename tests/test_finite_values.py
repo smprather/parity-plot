@@ -123,3 +123,29 @@ def test_in_memory_text_is_reported_not_raised_raw():
 
     with pytest.raises(DataError):
         from_sequences(cast(Any, ["a", "b"]), [1.0, 2.0])
+
+
+def test_a_literal_nan_is_a_null_even_when_na_values_omits_it(tmp_path):
+    """NaN means missing by convention, not by the na_values list.
+
+    ``_require_numeric`` screened with ``isfinite``, so a NaN cell -- which
+    ``_parse`` has always read as a null -- became "ref column 'ref' is
+    infinite ('NaN')" as soon as a config trimmed its na_values.
+    """
+    f = write(tmp_path, "d.csv", "id,reference,test,temp\nA1,NaN,11,1\nA2,20,22,nan\n")
+    data = load(
+        ParityConfig()
+        .merge(
+            data={
+                "files": (f,),
+                "ref": "d.csv:reference",
+                "test": "d.csv:test",
+                "color_column": "d.csv:temp",
+                "na_values": ("", "NA"),
+            }
+        )
+        .data
+    )
+    assert len(data.x) == 1  # A1 has no reference: unpaired, not an error
+    assert len(data.missing_x) == 1
+    assert data.color_values is None  # all-null colour channel

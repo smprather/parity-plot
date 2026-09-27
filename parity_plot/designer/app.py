@@ -11,9 +11,10 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from plotly.graph_objects import Figure
 
@@ -277,11 +278,24 @@ def build_app(
             s = sess["session"]
             return s.config_path.name if s.config_path is not None else UNSAVED
 
-        def choice_options() -> list[str]:
+        def picker_options(listed: list[str]) -> list[str]:
+            """The dropdown's options: ``listed`` configs plus the current one.
+
+            Built on the loop from the session as it stands *now*. The listing
+            itself is slow and runs in a thread; a session swapped while it ran
+            must still find its own name among the options, or setting the
+            value resets the select to None -- which NiceGUI reports as a change.
+            """
             s = sess["session"]
-            names = config_choice_names(launch_dir, s.config_path)
+            names = [n for n in listed if n != UNSAVED]
+            if s.config_path is not None and s.config_path.name not in names:
+                names.insert(0, s.config_path.name)
             # The unbound sentinel is offered only while unbound.
             return ([UNSAVED] if s.config_path is None else []) + names
+
+        def show_picker(listed: list[str]) -> None:
+            """Options first, value second, in one call: never a value it lacks."""
+            config_pick.set_options(picker_options(listed), value=current_choice())
 
         async def refresh_picker() -> None:
             """Re-list the configs in the launch directory, off the event loop.
@@ -291,9 +305,8 @@ def build_app(
             that is a round trip per file -- on page load, and again after every
             open, Save As and failed open.
             """
-            options = await offload(choice_options)
-            config_pick.options = options
-            config_pick.update()
+            listed = await offload(config_choice_names, launch_dir, None)
+            show_picker(listed)
 
         # Two quick config picks race, so each claims a generation before its
         # (slow) read. Only the newest is allowed to swap the session in.
@@ -363,8 +376,13 @@ def build_app(
                     # keystroke in a text control, and each write is several NFS
                     # round trips. Deferring it also keeps a slow write from
                     # queueing every subsequent refresh behind it.
+                    #
+                    # The session is bound now, not looked up when the timer
+                    # fires: a pending save belongs to the design being edited,
+                    # and must reach that design's file even if another config
+                    # has been opened by then.
                     if not blocking:
-                        autosave.schedule(state.config)
+                        autosave.schedule(sess["session"], state.config)
 
                     debug_log(
                         "refresh() %.0fms%s",
@@ -372,9 +390,9 @@ def build_app(
                         f" -- {blocking}" if blocking else "",
                     )
 
-        async def _autosave_now(config) -> str | None:
+        async def _autosave_now(session: Session, config) -> str | None:
             """Write the config, off the event loop. Returns a message on failure."""
-            return await offload(sess["session"].autosave, config)
+            return await offload(session.autosave, config)
 
         # A debounced auto-save: a burst of edits is one write, carrying the
         # newest config. `on_error` exists because `autosave` reports rather
@@ -494,18 +512,27 @@ def build_app(
             options or NiceGUI rejects the select and returns HTTP 500. The
             options themselves are re-derived off the loop.
             """
-            config_pick.value = current_choice()
-            config_pick.update()
+            show_picker(list(config_pick.options))
             _spawn(refresh_picker())
 
         def _has_unsaved_unbound_edits() -> bool:
             s = sess["session"]
             return s.config_path is None and s.is_dirty(state.config)
 
-        async def _swap(new_session: Session, cfg: ParityConfig, new_data) -> None:
-            # A pending auto-save belongs to the config being replaced; letting
-            # it land would write the old design over the newly opened file.
-            autosave.cancel()
+        async def _swap(
+            new_session: Session, cfg: ParityConfig, new_data, generation: int
+        ) -> None:
+            # A pending auto-save holds the user's last edit to the config being
+            # replaced, bound to that config's own session: write it to its own
+            # file now. Dropping it lost the edit; deferring it would let the new
+            # design's first edit replace it in the debouncer.
+            await autosave.flush()
+            # The flush awaited, so a newer open may have claimed a generation
+            # meanwhile. Checked again here, with no await between this check
+            # and the swap, or two quick picks could land in either order.
+            if generation != _open_generation.value:
+                debug_log("discarded an open superseded during the save")
+                return
             sess["session"] = new_session
             state.load_session_config(cfg, new_data)
             settings_column.refresh()
@@ -534,10 +561,12 @@ def build_app(
                 debug_log("discarded superseded open of %s", name)
                 return
             debug_log("opened config %s", name)
-            await _swap(new_session, cfg, new_data)
+            await _swap(new_session, cfg, new_data, generation)
 
-        def open_named(name: str) -> None:
-            if name == UNSAVED or name == current_choice():
+        def open_named(name: str | None) -> None:
+            # None is what a select reports when its value falls out of its
+            # options; it names no config.
+            if not name or name == UNSAVED or name == current_choice():
                 return
 
             if _has_unsaved_unbound_edits():
@@ -553,15 +582,20 @@ def build_app(
                 new_session, cfg, new_data = Session.start((), None)
                 if generation != _open_generation.value:
                     return
-                await _swap(new_session, cfg, new_data)
+                await _swap(new_session, cfg, new_data, generation)
 
             if _has_unsaved_unbound_edits():
                 confirm_discard(lambda: _spawn(do_new()))
             else:
                 _spawn(do_new())
 
-        def _spawn(corofn) -> None:
+        def _spawn(awaitable: Coroutine[Any, Any, Any]) -> None:
             """Start an async continuation as a background task.
+
+            Takes the coroutine, not the function: every caller writes
+            ``_spawn(work())``. (It once called its argument, so every one of
+            those calls raised inside a click handler and Save As, New Design and
+            opening a config all silently did nothing.)
 
             ``confirm_discard`` calls its ``proceed`` from a sync button
             handler, so the async half needs a task to run in. The task starts
@@ -570,7 +604,7 @@ def build_app(
             already does; dialog-building code runs inside ``with client:``
             blocks at its call sites or inside slot-aware refreshables.
             """
-            background_tasks.create(corofn(), name="designer continuation")
+            background_tasks.create(awaitable, name="designer continuation")
 
         def confirm_discard(proceed, on_cancel=None) -> None:
             with ui.dialog() as dialog, ui.card():
@@ -630,6 +664,9 @@ def build_app(
 
         # The initial paint: async refresh as a background task so the page
         # builder stays synchronous (the page function itself is not awaited).
-        _spawn(refresh)
+        _spawn(refresh())
+        # The picker was built holding only the current config; list the rest
+        # now, off the loop. Without this nothing else could ever be opened.
+        _spawn(refresh_picker())
 
     return state
