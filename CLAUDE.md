@@ -589,20 +589,38 @@ NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
 
 ## Releases
 
-Versioning is manual in `pyproject.toml`; releases are cut with git tags **and**
-GitHub Releases. Current released line: **0.10.0** (`main`). History: 0.1.0 → multi-file
-data model & encoding (0.3.0) → file-independent group + persistent designer
-status bar + visual README (0.4.0) → `symbol_sequence` & symbol-by-group named by
-value (0.5.0) → composite group, colorscale channel, TOML-only CLI, designer
-auto-save/config picker, hover-text columns (0.6.0) → offline-by-default HTML,
-output-format inference, embeddable fragments (0.7.0) → embedding guide and tabbed
-report consumer (0.8.0) → delta histogram (0.9.0) → polynomial reference lines,
-viewport-origin controls, and alignment/validation hardening (0.10.0). Tags
-`v0.1.0`–`v0.3.0` predate the GitHub Releases; `v0.4.0` onward have them.
+**The version is a calendar date: `YYYY.M.N`** — year, month, release-within-that-
+month. `2026.9.1` is the first release of September 2026. Unpadded, so
+`2026.9.1` not `2026.09.01`; PEP 440 reads both identically and the padded
+form only looks more like something a date parser would grab. PEP 440 parses
+this as year=2026, month=9, micro=1, so it needs no epoch and sorts correctly:
+`2026.10.1 > 2026.9.1` and `2027.1.1 > 2026.12.9`.
+
+**Bump policy: the calendar decides, not the diff.** Within a month, increment
+`N`. In a new month, set `M` to it and reset `N` to 1. That is the whole rule,
+and the reason is worth stating: CalVer deliberately decouples the number from
+compatibility, so "is this additive or breaking?" stops being a version
+question and becomes a release-note question. A breaking config change ships as
+`2026.10.1` and says *breaking* in the notes — under the old scheme it would
+have needed a number that meant "breaking", which is what made minor/patch
+reasoning load-bearing here. Write the compatibility note; the date carries the
+rest. (The pre-CalVer line was `v0.1.0`–`v0.10.0`, additive-feature-is-minor,
+with even a breaking change shipped as minor while pre-1.0.)
+
+The version lives in **two** places that must agree — `pyproject.toml` and
+`parity_plot.__version__` — and `tests/test_version.py` fails the build if they
+drift, if the number stops being a real month, or if PEP 440 stops round-
+tripping it. `uv.lock` records the version too, so a bump must run `uv lock`;
+CI's `uv sync --locked` fails otherwise. Retired-key error messages name the
+*old* version that made the change ("moved into a tolerance list in 0.2.0") —
+those are historical facts, not the current version, and rewriting them to
+CalVer would make them lie.
 
 The ship flow (only when the user asks): run `./check-tier-2`, branch off `main`, commit, bump the
-version on the branch, `git checkout main && git merge --no-ff`, `git tag -a`,
+version on the branch, `uv lock`, `git checkout main && git merge --no-ff`, `git tag -a`,
 `git push origin main && git push origin <tag>`, then `gh release create <tag>
---verify-tag --title … --notes …`. Bump policy in use: an additive feature is a
-**minor** bump, and even a breaking config change (the 0.4.0 group-syntax change)
-has been treated as **minor** while pre-1.0.
+--verify-tag --title … --notes …`. Tags are `vYYYY.M.N`; the CI tag filter is
+`v*`, so it needs no change. A `YYYY.M.N` tag is *not* a match for
+`v0.x.y` anywhere, so nothing that pins the old line resolves to a CalVer
+release by accident — but anything pinned `==0.10.0` will stop matching, which
+is inherent to the switch rather than a packaging fault.

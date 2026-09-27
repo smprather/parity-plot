@@ -9,7 +9,7 @@ fig.show()
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Sequence, cast
 
 import plotly.graph_objects as go
 
@@ -32,7 +32,7 @@ from .themes import THEMES as THEME_NAMES
 from .themes import Theme
 from .tolerance import Tolerance
 
-__version__ = "0.10.0"
+__version__ = "2026.9.1"
 
 __all__ = [
     "parity_plot",
@@ -112,7 +112,17 @@ def parity_plot(
             raise TypeError(
                 "group must be a sequence of labels when ref/test are sequences"
             )
-        data = from_sequences(ref, test, keys=keys, group=group)  # ty: ignore[invalid-argument-type]
+        # `ref_is_column` is a plain bool, so no checker can follow it into this
+        # branch: by here both are known to be sequences, but the declared type
+        # is still `str | Iterable | None`. The cast states the invariant the
+        # guard above has already enforced, which is better than suppressing the
+        # call -- a suppression hides a second, genuine mistake at the same spot.
+        data = from_sequences(
+            cast("Iterable[float | None]", ref),
+            cast("Iterable[float | None]", test),
+            keys=keys,
+            group=group,
+        )
     else:
         data_overrides = {
             "ref": ref,

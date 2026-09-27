@@ -620,7 +620,7 @@ wheels = [
 
 [[package]]
 name = "parity-plot"
-version = "0.10.0"
+version = "2026.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "kaleido" },
