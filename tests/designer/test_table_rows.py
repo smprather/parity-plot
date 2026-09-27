@@ -71,3 +71,59 @@ def test_status_is_carried_through(views):
 
 def test_empty_input_gives_no_rows():
     assert to_rows([]) == []
+
+
+# --- server-side sort and paging -------------------------------------------
+
+from parity_plot.designer.table_rows import last_page, page_of, sort_rows  # noqa: E402
+
+ROWS = [
+    {"key": "a", "error": 0.5, "status": "paired"},
+    {"key": "b", "error": None, "status": "missing y"},
+    {"key": "c", "error": -2.0, "status": "paired"},
+    {"key": "d", "error": 3.0, "status": "paired"},
+    {"key": "e", "error": 0.5, "status": "paired"},
+]
+
+
+def keys(rows):
+    return [row["key"] for row in rows]
+
+
+def test_sorting_by_a_numeric_column_is_numeric_not_lexical():
+    assert keys(sort_rows(ROWS, "error", False)) == ["c", "a", "e", "d", "b"]
+
+
+def test_empty_cells_sort_last_in_either_direction():
+    """An unpaired record has no error to rank; it must not top a descending sort."""
+    assert keys(sort_rows(ROWS, "error", True)) == ["d", "a", "e", "c", "b"]
+
+
+def test_ties_keep_record_order_both_ways():
+    assert keys(sort_rows(ROWS, "error", False)).index("a") < keys(
+        sort_rows(ROWS, "error", False)
+    ).index("e")
+    assert keys(sort_rows(ROWS, "error", True)).index("a") < keys(
+        sort_rows(ROWS, "error", True)
+    ).index("e")
+
+
+def test_no_sort_column_is_record_order_and_a_copy():
+    out = sort_rows(ROWS, None, True)
+    assert out == ROWS and out is not ROWS
+
+
+def test_pages_are_one_based_and_bounded():
+    assert keys(page_of(ROWS, 1, 2)) == ["a", "b"]
+    assert keys(page_of(ROWS, 3, 2)) == ["e"]
+    assert page_of(ROWS, 4, 2) == []
+    assert keys(page_of(ROWS, 0, 2)) == ["a", "b"]  # clamps to the first page
+
+
+def test_zero_per_page_is_every_row():
+    assert page_of(ROWS, 3, 0) == ROWS
+
+
+def test_last_page():
+    assert [last_page(n, 15) for n in (0, 1, 15, 16, 45)] == [1, 1, 1, 2, 3]
+    assert last_page(100, 0) == 1

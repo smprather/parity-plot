@@ -31,7 +31,7 @@ emulated slow NFS mount now (`./check-slow-nfs`, see the last section).
 | 14 | A sync `on_change` is documented as legal but `await None` raises | P3 | fixed |
 | 15 | "App-level refresh lock" guards nothing | note | documented |
 | 16 | A cancelled `offload` returns None instead of cancelling (found on NFS) | P2 | fixed |
-| 17 | Every refresh stalls the event loop ~30–35 ms per 1k rows | **P1** (pre-existing) | measured, not fixed |
+| 17 | Every refresh stalls the event loop ~30–35 ms per 1k rows | **P1** (pre-existing) | fixed (follow-up) |
 
 ## The P0s
 
@@ -228,10 +228,45 @@ figure to JSON 0.9, `table_rows.to_rows` over every record 0.9 (for a table that
 shows 15), `visible_records` 0.4, table JSON 0.25. On this machine the 2 s
 budget is crossed around 60k rows.
 
-This is the remaining half of the scan's "GIL-bound parsing" item, and the
-likelier cause of the reconnect overlay on big files. Not fixed here -- it is a
-design change, not a patch. The obvious levers, roughly in order of payoff:
-build the figure (and records) in a worker thread and hand the result to the
-loop -- still GIL-bound, but the interpreter switches threads every 5 ms, so the
-loop keeps answering the heartbeat while it waits; page the table server-side instead of shipping every row; skip rebuilding
-what an edit cannot have changed (a title edit does not need new records).
+This was the remaining half of the scan's "GIL-bound parsing" item, and the
+likelier cause of the reconnect overlay on big files.
+
+### Fixed in a follow-up
+
+Measured the same way after the change -- with the probe now also emulating the
+outbox (NiceGUI's `_to_dict` and JSON encoding, which run on the loop in
+production but not for a socketless test client), and ending each phase only
+once the new figure has actually been sent:
+
+| Rows | Page load | Change test column | Edit title |
+| --- | --- | --- | --- |
+| 50,000 | 1.59 s → **0.11 s** | 1.53 s → **0.11 s** | 1.60 s → **0.10 s** |
+| 200,000 | 7.76 s → **0.26 s** | 7.67 s → **0.29 s** | 8.77 s → **0.31 s** |
+
+Time until the new figure is on screen also fell (200k: 9-10 s → 6.3-7.5 s), since
+the loop no longer competes with the work. What changed:
+
+- **The work moved to a worker thread.** A refresh takes a snapshot on the loop
+  (`DesignerState.view_inputs`), `view.compute_view` builds the figure, its
+  plotly JSON, the table rows and the counts off the loop, and the loop only
+  assigns the result (1-6 ms). `io.Coalescer` runs one compute per page at a
+  time and folds a burst of edits into one rerun.
+- **The figure is handed to NiceGUI as tuples.** Assigning to element props wraps
+  every nested list in an observable collection, on the loop; the per-point
+  `customdata` lists made that 200k wraps and 1.3 s per paint -- the stall that
+  remained after the move. Frozen to tuples in the worker, it is 0.00 s.
+- **The table is paged and sorted on the server.** Only the visible page is sent;
+  a header click sorts off the loop.
+- **Nothing else builds the whole figure or every record on the loop.** The
+  viewport-origin control read two axis bounds by building a full figure (2.9 s
+  at 200k, on every settings rebuild) -- it now uses `plot.axis_ranges`, the
+  ranges `build_figure` lays out; the inspector's record lookup no longer builds
+  every record's view.
+- **The page loads with an empty figure** and the first refresh fills it,
+  instead of building it synchronously inside the page handler.
+
+Moving the save decision after an await exposed a race of its own: a refresh
+that finished after the user opened another config scheduled its auto-save from
+state as it was *then*, pairing the old session with the new design. The save
+is now built from the refresh's snapshot and keyed per session in the debouncer;
+a test holds the compute open across a swap to pin it.

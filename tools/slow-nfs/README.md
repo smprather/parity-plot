@@ -47,6 +47,11 @@ puts every file operation behind real NFSv4 RPCs over a slow link, but it is not
 the kernel client: its caching and its request pipelining differ. Timings from it
 are indicative; conclusions about attribute caching need the kernel path.
 
+One visible difference: `fuse-nfs` does not retry a stale file handle, so a read
+that races a rename-over (the designer's atomic config save) can fail with ENOENT
+where the kernel client would quietly retry. Tests that poll a file read an
+`OSError` as "not yet" for that reason.
+
 Force a path with `NFS_CLIENT=kernel|fuse` and `NFS_DELAY=netem|proxy`; a forced
 path that is unavailable fails loudly instead of falling back.
 

@@ -9,25 +9,20 @@ nothing, and a picked config never opened. Separately the picker was built with
 only the current config and never re-listed on page load, so there was nothing
 else to pick.
 
-The page function is captured by standing in for ``ui.page`` and then built
-inside a ``Client``, with ``core.loop`` set so background tasks really run --
-the same way a served page runs, minus the browser. Clicks go through NiceGUI's
-own event dispatch, so an exception in a handler is swallowed exactly as it is
-in production: these tests assert on outcomes, never on "it did not raise".
+The page is built by ``page_harness.open_page``, which says how.
 """
 
 from __future__ import annotations
 
-import asyncio
 import threading
-import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 from parity_plot.designer import app as app_mod
 from parity_plot.designer.session import Debouncer, Session
+
+from .page_harness import eventually, open_page
 
 WIDE = "id,r,t\nA,1,2\nB,2,3\n"
 
@@ -39,92 +34,16 @@ def toml(title: str) -> str:
     )
 
 
-class Page:
-    """A built designer page and the few ways a test pokes at it."""
-
-    def __init__(self, client: Any, state: Any, directory: Path) -> None:
-        self.client = client
-        self.state = state
-        self.directory = directory
-
-    def element(self, text: str) -> Any:
-        """The element whose text or label is ``text``."""
-        for el in list(self.client.elements.values()):
-            if getattr(el, "text", None) == text or el.props.get("label") == text:
-                return el
-        raise LookupError(text)
-
-    def click(self, text: str) -> None:
-        from nicegui import events
-
-        el = self.element(text)
-        for listener in list(el._event_listeners.values()):
-            if listener.type == "click":
-                events.handle_event(
-                    listener.handler,
-                    events.GenericEventArguments(
-                        sender=el, client=self.client, args={}
-                    ),
-                )
-                return
-        raise LookupError(f"{text!r} has no click handler")
-
-    @property
-    def picker(self) -> Any:
-        return self.element("Config")
-
-
-async def eventually(predicate, timeout: float = 20.0) -> None:
-    """Poll until ``predicate()`` holds.
-
-    Never a fixed sleep: these tests once slept 0.3 s and passed on a local disk,
-    then failed under ./check-slow-nfs, where each read or write of the configs
-    costs hundreds of milliseconds.
-    """
-    deadline = time.monotonic() + timeout
-    while not predicate():
-        if time.monotonic() > deadline:
-            raise AssertionError("condition not reached before the timeout")
-        await asyncio.sleep(0.02)
-
-
 @pytest.fixture
 async def page(tmp_path: Path, monkeypatch):
     """A designer page for ``a.toml``, with ``b.toml`` and ``z.toml`` alongside."""
-    from nicegui import Client, core, ui
-
     (tmp_path / "w.csv").write_text(WIDE, encoding="utf-8")
-    (tmp_path / "a.toml").write_text(toml("A"), encoding="utf-8")
-    (tmp_path / "b.toml").write_text(toml("B"), encoding="utf-8")
-    (tmp_path / "z.toml").write_text(toml("Z"), encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
-
-    session, config, data = Session.start((), tmp_path / "a.toml")
-    captured: dict[str, Any] = {}
-    real_page = ui.page
-    monkeypatch.setattr(
-        ui, "page", lambda *a, **k: lambda func: captured.setdefault("page", func)
-    )
-    state = app_mod.build_app(session, config, data)
-    monkeypatch.setattr(ui, "page", real_page)
-
-    core.loop = asyncio.get_running_loop()
-    try:
-        # The client context is needed only to build the page. It must not be
-        # held across the yield: setup and teardown can run in different tasks,
-        # and NiceGUI's slot stack is per task. Events do not need it either --
-        # handle_event enters the sender's own slot.
-        with Client(page=real_page("/")) as client:
-            captured["page"]()
-        page = Page(client, state, tmp_path)
-        # Ready once the background listing has filled the picker.
+    for name in "abz":
+        (tmp_path / f"{name}.toml").write_text(toml(name.upper()), encoding="utf-8")
+    async with open_page(tmp_path, "a.toml", monkeypatch) as page:
+        # Ready once the background listing has filled the picker, too.
         await eventually(lambda: len(page.picker.options) == 3)
         yield page
-        # Give a debounced save a test left behind its 400 ms before the loop
-        # goes away.
-        await asyncio.sleep(0.6)
-    finally:
-        core.loop = None
 
 
 async def test_the_picker_lists_every_config_on_page_load(page):
@@ -209,6 +128,9 @@ async def test_the_last_pick_wins_while_the_old_design_is_being_saved(
     monkeypatch.setattr(Debouncer, "flush", observed_flush)
 
     page.element("Title").value = "A edited"
+    # The save is scheduled when the refresh's view lands -- wait for that, so
+    # it is pending when b's swap flushes.
+    await eventually(lambda: "A edited" in page.plot_title())
     page.picker.value = "b.toml"
     await eventually(lambda: saving.is_set() and "start" in flushes)
     page.picker.value = "z.toml"  # b's swap is blocked inside its flush
@@ -223,3 +145,39 @@ async def test_the_last_pick_wins_while_the_old_design_is_being_saved(
     assert 'title = "A edited"' in (page.directory / "a.toml").read_text(
         encoding="utf-8"
     )
+
+
+async def test_a_refresh_that_lands_after_a_swap_saves_to_its_own_file(
+    page, monkeypatch
+):
+    """The refresh computes off the loop, so it can finish after a config swap.
+
+    Its save must still go to the design it was computed from. Scheduled from
+    the state as it stood when it landed, it paired the old session with the
+    *new* design, writing b.toml's content into a.toml. The compute is held
+    open so the swap provably happens in between.
+    """
+    real_compute = app_mod.compute_view
+    hold = threading.Event()
+    held: list[str] = []
+
+    def held_compute(inputs):
+        if inputs.config.plot.title == "A edited" and not held:
+            held.append("held")
+            hold.wait(timeout=20)
+        return real_compute(inputs)
+
+    monkeypatch.setattr(app_mod, "compute_view", held_compute)
+    a_toml, b_toml = page.directory / "a.toml", page.directory / "b.toml"
+    b_before = b_toml.read_text(encoding="utf-8")
+
+    page.element("Title").value = "A edited"
+    await eventually(lambda: bool(held))  # A's refresh is inside its compute
+    page.picker.value = "b.toml"
+    await eventually(lambda: page.state.config.plot.title == "B")
+    hold.set()
+    await eventually(lambda: 'title = "A edited"' in a_toml.read_text("utf-8"))
+
+    assert page.state.config.plot.title == "B"
+    await eventually(lambda: page.plot_title() == "B")  # the stale view is not shown
+    assert b_toml.read_text(encoding="utf-8") == b_before

@@ -336,10 +336,34 @@ data-panel handlers are async; `column_options`, `set_data_source`,
 `Session.start`, `list_dir`, `preview` and config saves go through `offload`.
 New blocking I/O in a handler must do the same. `parity-plot design --debug`
 prints a timestamped transcript (read durations, refresh cost, connect events)
-to stderr for slow-FS diagnosis. `app.refresh` is async and enters the client
-context itself because it also runs as a spawned background task (empty slot
-stack). Its body has no `await`, so the app-level `_refresh_lock` guards nothing
-today; it matters only if an await is ever added inside a refresh.
+to stderr for slow-FS diagnosis.
+
+**A refresh does no per-record work on the event loop.** It used to build the
+figure, convert it and build a table row per record on the loop — ~30-35 ms per
+thousand rows on *every* edit, so past ~60k rows the 2 s websocket heartbeat
+failed and the reconnect overlay appeared with no NFS involved. Now
+`app.refresh` takes a snapshot on the loop (`DesignerState.view_inputs`: config,
+data, filters, table sort — immutable references), `view.compute_view` does all
+the work in a worker thread, and the loop only assigns the resulting `View` to
+widgets (1-6 ms). Refreshes go through `io.Coalescer`: one compute per page at a
+time, a burst folds into one rerun with the newest state, and `await refresh()`
+returns after a run that started later has painted. Rules that keep it that way:
+- `compute_view` must mirror `DesignerState.figure`/`visible_records`/`counts`
+  (the golden tests hold those to the CLI); `test_view.py` pins the equivalence.
+- **Hand NiceGUI tuples, not lists.** Assigning a value to element props wraps
+  every nested `list`/`dict` in an observable collection, on the loop; a
+  figure's per-point `customdata` made that 200k wraps and >1 s per paint.
+  `view._frozen` turns lists into tuples in the worker (same JSON).
+- A view whose `config_epoch` moved while it computed is not painted, and its
+  auto-save is built from the snapshot, never from state at paint time.
+- Don't call `state.figure()` or build every record from a panel on the loop:
+  `current_viewport_origins` reads `plot.axis_ranges` (the ranges
+  `build_figure` lays out), the inspector uses `records.record_for_key`.
+- `tools/slow-nfs/loop_lag_probe.py` measures the worst stall per phase: 200k
+  rows went from ~7.7-8.8 s to ~0.3 s.
+
+`app.refresh` enters the client context in its paint because it runs as a
+spawned background task (empty slot stack).
 
 **A data-source change is begin → prepare → commit.** `prepare_data_source` runs
 in a worker thread and touches no state; `commit_data_source` runs on the loop,
@@ -383,10 +407,14 @@ status bar, enables/disables **Save As**, marks the offending field, and — whe
 nothing is wrong and a file is **bound** — writes via `Session.autosave`. So a
 *bound* config's file on disk always equals the **most recent valid** config; a
 hard-invalid edit is withheld (disk keeps the last good one) until fixed. The
-write is debounced (`session.Debouncer`, 400 ms) and **bound to its session when
-scheduled**, not looked up when it fires; the debouncer loops until nothing is
-pending (on NFS an edit during an in-flight save is the normal case), and a config
-swap `flush()`es it so the old design's last edit reaches the old file. Saves run
+save is scheduled when a refresh's view lands, **from that refresh's snapshot**
+(session, config, standing error) — the view computes off the loop, so the user
+may have opened another config by then, and state read at paint time paired the
+old session with the new design. It is debounced (`session.Debouncer`, 400 ms),
+**keyed per session** so a late save for a replaced design is not overwritten by
+the new one's first; the debouncer loops until nothing is pending (on NFS an edit
+during an in-flight save is the normal case), and a config swap `flush()`es it so
+the old design's last edit reaches the old file. Saves run
 in worker threads under one `_SAVE_LOCK`, and `autosave` reads the bound path
 *inside* it — read before waiting, a queued auto-save undid a concurrent Save As.
 `_write_atomic` writes through a symlinked config and keeps the file's mode. There
@@ -483,6 +511,16 @@ out a pinned record does not blank the inspector on what you clicked.
 `table_rows.to_rows` keeps values numeric and rounds them rather than formatting
 to strings: the table exists to sort by error magnitude, and strings sort
 lexically so "9" lands above "100".
+
+**The table is paged and sorted on the server** (`panels/table.py::TablePanel`).
+Only the visible page crosses to the browser: `rowsNumber` in the pagination puts
+Quasar in server-side mode, so a header click or page change arrives as a
+`request` event, and `table_rows.sort_rows` runs off the loop (empty cells sort
+last either way). A refresh builds rows already in the current sort; a sort that
+finishes after newer rows arrived is dropped by a generation check. The initial
+pagination must be complete (`page`, `sortBy`, `descending`): Quasar reports a
+normalized one back on mount, and NiceGUI stores it, stale `rowsNumber` included —
+`on_pagination_change` re-asserts the server's.
 
 **Selection has exactly one owner.** Both the plot click and the table row route
 through `app.select_record`; two writers would drift and leave the views

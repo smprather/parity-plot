@@ -7,7 +7,7 @@ import asyncio
 import inspect
 import os
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -222,34 +222,40 @@ class Debouncer:
     A request that arrives while the work is *running* is not lost: the task
     loops until nothing is pending. On NFS a save takes longer than the delay,
     so an edit made during one is the ordinary case, not a corner.
+
+    Requests are collapsed per ``key``: the latest one for each key is kept.
+    Auto-save keys by session, because a refresh computes off the loop and can
+    paint -- and schedule its save -- after another config has been opened;
+    with one shared slot the new design's first save would replace, and so
+    lose, the old design's last edit.
     """
 
     def __init__(self, work: Callable[..., Any], delay: float = 0.4) -> None:
         self._work = work
         self._delay = delay
         self._task: asyncio.Task | None = None
-        self._pending: tuple[tuple, dict] | None = None
+        self._pending: dict[Hashable, tuple[tuple, dict]] = {}
         self._calling = False
         #: Called with the work's return value, if it returned one. Set by the
         #: app to push a failure into the status bar.
         self.on_error: Callable[[Any], None] | None = None
 
-    def schedule(self, *args: Any, **kwargs: Any) -> None:
-        """Request a call after the delay, replacing any pending request."""
-        self._pending = (args, kwargs)
+    def schedule(self, *args: Any, key: Hashable = None, **kwargs: Any) -> None:
+        """Request a call after the delay, replacing any pending one for ``key``."""
+        self._pending[key] = (args, kwargs)
         if self._task is not None and not self._task.done():
             return
         self._task = asyncio.ensure_future(self._run())
 
     async def flush(self) -> None:
-        """Run a pending request now, after any call already in flight.
+        """Run every pending request now, after any call already in flight.
 
         Used when the config is swapped: the pending save belongs to the design
         being replaced and must reach *its* file before the swap, not be dropped
         (the user's last edit) or delayed until the new design's first edit
         replaces it.
         """
-        pending, self._pending = self._pending, None
+        batch, self._pending = self._pending, {}
         task, self._task = self._task, None
         if task is not None and not task.done():
             if self._calling:
@@ -258,20 +264,20 @@ class Debouncer:
                 await task
             else:
                 task.cancel()
-        # Drain, not just one call: a request scheduled while this awaited is
+        # Drain, not just one pass: a request scheduled while this awaited is
         # still the old design's, and must not be left for the next design's
         # first edit to replace.
-        while pending is not None:
-            await self._call(pending)
-            pending, self._pending = self._pending, None
+        while batch:
+            for pending in batch.values():
+                await self._call(pending)
+            batch, self._pending = self._pending, {}
 
     async def _run(self) -> None:
-        while self._pending is not None:
+        while self._pending:
             await asyncio.sleep(self._delay)
-            pending, self._pending = self._pending, None
-            if pending is None:
-                return
-            await self._call(pending)
+            batch, self._pending = self._pending, {}
+            for pending in batch.values():
+                await self._call(pending)
 
     async def _call(self, pending: tuple[tuple, dict]) -> None:
         args, kwargs = pending

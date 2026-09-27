@@ -25,8 +25,8 @@ from ...config import (
     StatsConfig,
 )
 from ...data import ParityData
+from ...plot import axis_ranges
 from ..state import DesignerState
-from ..widgets import as_float
 from .section import section
 
 
@@ -194,32 +194,20 @@ def viewport_origin_method(plot: PlotConfig) -> str:
 
 
 def current_viewport_origins(state: DesignerState) -> tuple[float, float]:
-    """Return the lower axis bounds currently used by the rendered plot.
+    """Return the lower axis bounds the rendered plot uses, in data units.
 
     Plotly stores logarithmic axis ranges as base-10 exponents. Designer inputs
     always use data units, matching the TOML config.
 
-    The range is read defensively: it is the rendered figure's own layout, and
-    this runs while the user is switching the origin method. An axis with no
-    explicit range would make a bare ``range[0]`` raise inside a sync event
-    handler, where the failure is invisible -- the field would just stop
-    updating.
+    From ``plot.axis_ranges`` -- the ranges ``build_figure`` itself lays out --
+    not from a built figure: building one for two numbers took seconds on a
+    large file, on the event loop, every time the settings column was built.
     """
-    figure = state.figure()
-    x = _axis_floor(figure, "xaxis")
-    y = _axis_floor(figure, "yaxis")
+    x_range, y_range = axis_ranges(state.visible_data(), state.config.plot)
+    x, y = x_range[0], y_range[0]
     if state.config.plot.log:
         return 10**x, 10**y
     return x, y
-
-
-def _axis_floor(figure, axis: str) -> float:
-    """The lower bound of one axis, or 0.0 when the figure does not state one."""
-    bounds = getattr(figure.layout, axis, None)
-    bounds = getattr(bounds, "range", None)
-    if not bounds:
-        return 0.0
-    return as_float(bounds[0], 0.0) or 0.0
 
 
 def apply_viewport_origin_method(

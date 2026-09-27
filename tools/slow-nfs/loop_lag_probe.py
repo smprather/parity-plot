@@ -64,6 +64,58 @@ def write_csv(path: Path, rows: int) -> None:
             )
 
 
+class Outbox:
+    """Serialize every pending element update on the loop, as NiceGUI's does.
+
+    The probe's client has no socket, so NiceGUI's own outbox never sends and
+    never pays for ``element._to_dict()`` and the JSON encoding -- which in
+    production run on the event loop too. This drains the queue the same way
+    and records when each element went out, so a phase can end on "the new
+    figure was sent" rather than on a guess.
+    """
+
+    def __init__(self, client: Any) -> None:
+        self.client = client
+        self.sent: list[tuple[float, str]] = []
+
+    async def run(self) -> None:
+        from nicegui import json as ngjson
+        from nicegui.outbox import Deleted
+
+        while True:
+            await asyncio.sleep(0.05)
+            updates = dict(self.client.outbox.updates)
+            self.client.outbox.updates.clear()
+            if not updates:
+                continue
+            ngjson.dumps(
+                {
+                    element_id: None
+                    if isinstance(element, Deleted)
+                    else element._to_dict()
+                    for element_id, element in updates.items()
+                }
+            )
+            now = time.monotonic()
+            self.sent.extend((now, _kind(element)) for element in updates.values())
+
+    def plot_sent_after(self, moment: float) -> bool:
+        """Whether a figure with traces went out at or after ``moment``.
+
+        Traces, because the page is built with an empty placeholder figure and
+        the real one arrives with the first refresh.
+        """
+        return any(t >= moment and name == "Plotly" for t, name in self.sent)
+
+
+def _kind(element: Any) -> str:
+    """The element's class name; an empty (placeholder) figure does not count."""
+    name = type(element).__name__
+    if name == "Plotly" and not (getattr(element, "figure", None) or {}).get("data"):
+        return "Plotly placeholder"
+    return name
+
+
 async def settle_until(predicate, timeout: float) -> float:
     start = time.monotonic()
     while not predicate():
@@ -115,7 +167,11 @@ async def main(rows: int, directory: Path) -> None:
     start = time.monotonic()
     with Client(page=real_page("/")) as client:
         captured["page"]()
-    await asyncio.sleep(1.0)  # initial refresh + background option read
+    outbox = Outbox(client)
+    outbox_task = asyncio.create_task(outbox.run())
+    # The page's first real figure has been sent, and the option read is done.
+    await settle_until(lambda: outbox.plot_sent_after(start + 1e-6), 600)
+    await asyncio.sleep(1.0)
     results.append(
         ("page load", time.monotonic() - start, ticker.worst(start, time.monotonic()))
     )
@@ -129,6 +185,8 @@ async def main(rows: int, directory: Path) -> None:
     start = time.monotonic()
     element("Test").value = "big.csv:alt"
     await settle_until(lambda: state.config.data.test == "big.csv:alt", 600)
+    committed = time.monotonic()
+    await settle_until(lambda: outbox.plot_sent_after(committed), 600)
     await asyncio.sleep(0.2)
     results.append(
         ("change test", time.monotonic() - start, ticker.worst(start, time.monotonic()))
@@ -136,13 +194,14 @@ async def main(rows: int, directory: Path) -> None:
 
     start = time.monotonic()
     element("Title").value = "probe"
-    await settle_until(lambda: state.config.plot.title == "probe", 60)
+    await settle_until(lambda: outbox.plot_sent_after(start), 600)
     await asyncio.sleep(0.5)
     results.append(
         ("edit title", time.monotonic() - start, ticker.worst(start, time.monotonic()))
     )
 
     tick_task.cancel()
+    outbox_task.cancel()
     core.loop = None
 
     print(f"\n{rows:,} rows, {size_mb:.1f} MB at {csv}")

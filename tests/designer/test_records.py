@@ -103,3 +103,14 @@ def test_key_from_customdata_handles_both_trace_shapes(customdata, expected):
     """The paired trace carries (key, diff, verdict); the rug traces carry a
     bare key."""
     assert key_from_customdata(customdata) == expected
+
+
+def test_record_for_key_is_what_a_full_scan_finds(data):
+    """The inspector's lookup must not drift from the table's full view."""
+    from parity_plot.designer.records import record_for_key
+
+    for tolerances in ((), PASS_TOL, INFO_TOL):
+        views = record_views(data, tolerances)
+        for key in ("a", "b", "c", "d"):
+            assert record_for_key(data, key, tolerances) == find_record(views, key)
+    assert record_for_key(data, "nope") is None

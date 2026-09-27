@@ -13,7 +13,9 @@ from ..data import DataError, ParityData, load
 from ..plot import build_figure
 from ..tolerances import NamedTolerance
 from .filters import FilterSet
-from .records import RecordView, find_record, record_views
+from .records import RecordView, record_for_key, record_views
+from .table_rows import UNSORTED, TableSort
+from .view import ViewInputs
 
 
 def _with_defaults(section: Any, keys: Sequence[str]) -> Any:
@@ -219,7 +221,7 @@ class DesignerState:
             self.selection = None
         elif (
             self.selection is not None
-            and find_record(record_views(prepared.data), self.selection) is None
+            and record_for_key(prepared.data, self.selection) is None
         ):
             # The pinned record does not exist in the new dataset.
             self.selection = None
@@ -278,7 +280,7 @@ class DesignerState:
         """The pinned record, judged against ``tolerances`` if any are given."""
         if self.selection is None or self.data is None:
             return None
-        return find_record(record_views(self.data, tolerances), self.selection)
+        return record_for_key(self.data, self.selection, tolerances)
 
     def tolerances(self) -> tuple[NamedTolerance, ...]:
         """The tolerance list the current config specifies."""
@@ -307,6 +309,15 @@ class DesignerState:
         showing = visible.n_paired + visible.n_unpaired
         total = self.data.n_paired + self.data.n_unpaired
         return showing, total
+
+    def view_inputs(self, sort: TableSort = UNSORTED) -> ViewInputs:
+        """A snapshot for :func:`.view.compute_view`. Cheap: taken on the loop.
+
+        References only -- the config, dataset and filters are immutable -- so
+        the worker computing the view reads exactly this state even as the loop
+        moves on to newer edits.
+        """
+        return ViewInputs(self.config, self.data, self.filters, sort)
 
     def figure(self) -> go.Figure:
         """Build the preview, keeping the last good one if this build fails.

@@ -23,6 +23,7 @@ import inspect
 import logging
 import sys
 import time
+from collections.abc import Awaitable
 from typing import Any, Callable, TypeVar, cast
 
 _T = TypeVar("_T")
@@ -129,3 +130,41 @@ def sync_refresher(
             background_tasks.create(result, name=name)
 
     return call
+
+
+class Coalescer:
+    """Run an async job at most once at a time, folding requests into reruns.
+
+    The designer's refresh now computes off the loop and takes a while on a big
+    file. Edits keep arriving meanwhile -- a keystroke each -- and starting a
+    compute per edit would pile them onto the thread pool and paint them in
+    whatever order they finished. Instead a request made while a run is in
+    flight marks the job dirty, and the run repeats once when it finishes, with
+    whatever the state is by then: the newest edit always ends up painted, and
+    at most one compute runs per page.
+
+    ``await request()`` returns once a run that *started after* the request has
+    finished, so a caller that awaits its refresh really sees its change drawn.
+    A caller cancelled while waiting does not cancel the run.
+    """
+
+    def __init__(self, job: Callable[[], Awaitable[None]]) -> None:
+        self._job = job
+        self._dirty = False
+        self._task: asyncio.Task[None] | None = None
+
+    @property
+    def pending(self) -> bool:
+        """Whether a newer request is waiting for the run in flight to finish."""
+        return self._dirty
+
+    async def request(self) -> None:
+        self._dirty = True
+        if self._task is None or self._task.done():
+            self._task = asyncio.ensure_future(self._drain())
+        await asyncio.shield(self._task)
+
+    async def _drain(self) -> None:
+        while self._dirty:
+            self._dirty = False
+            await self._job()
