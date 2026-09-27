@@ -8,7 +8,8 @@ on port 8085), in-process (the real panel inside a NiceGUI `Client`), or with a
 script against the library. Each fix landed with a test that fails on `e4eab91`
 and passes after.
 
-Suite: **896 → 917 passed**; `./check-tier-1` clean.
+Suite: **896 → 918 passed**; `./check-tier-1` clean. The suite also runs on an
+emulated slow NFS mount now (`./check-slow-nfs`, see the last section).
 
 ## Summary
 
@@ -29,6 +30,8 @@ Suite: **896 → 917 passed**; `./check-tier-1` clean.
 | 13 | File remove bypasses the `CommitGate` | P3 | fixed |
 | 14 | A sync `on_change` is documented as legal but `await None` raises | P3 | fixed |
 | 15 | "App-level refresh lock" guards nothing | note | documented |
+| 16 | A cancelled `offload` returns None instead of cancelling (found on NFS) | P2 | fixed |
+| 17 | Every refresh stalls the event loop ~30–35 ms per 1k rows | **P1** (pre-existing) | measured, not fixed |
 
 ## The P0s
 
@@ -168,3 +171,66 @@ served until it changed again. Fix: stamp before the read.
 - The follow-up's other claims held up: the prepare/commit split, `CommitGate`,
   atomic writes, decode-error handling, symlinks in the file browser, and the
   finite colour channel all behave as described.
+
+## Running the suite on slow NFS
+
+`./check-slow-nfs` (new; `tools/slow-nfs/README.md`) builds a Docker image and
+runs the suite with every `tmp_path` on an NFS mount behind a slow link:
+NFS-Ganesha serving a tmpfs, `tc netem` delaying port 2049 on the container's
+loopback, the kernel NFS client mounting it. Where the kernel has no NFS client
+or no `sch_netem` it falls back to `fuse-nfs` plus a userspace delay relay, and
+says so.
+
+**What was verified here, and what was not.** This sandbox's kernel (a
+Firecracker microVM) has neither an NFS client nor `sch_netem`, so every run
+below used the fallback path: real NFSv3 RPCs through Ganesha over a 40 ms-RTT
+relay, but `fuse-nfs` rather than the kernel client. The kernel-client + netem
+path is written and reviewed but has **not** been executed; its first run on a
+normal Linux or Docker Desktop host is the one to watch.
+
+At 40 ms RTT the fallback mount costs ~0.5 s per small-file create+write+close
+(`fuse-nfs` does not pipeline), and a full suite takes ~40 minutes.
+
+**Run 1** (the tests as first committed): 910 passed, 7 failed. Six were new
+tests from this review that waited with fixed sleeps (0.3 s) -- enough on a
+local disk, not on NFS -- and one was the harness's own `entrypoint.sh` failing
+the repo's kebab-case executable rule. All seven are fixed: the designer tests
+now wait on the condition they assert, or on an instrumented signal where they
+assert that something did *not* happen.
+
+**16.** The same run's log showed handlers dying with "cannot unpack
+non-iterable NoneType object" at teardown. `run.io_bound` swallows a
+cancellation of the awaiting task and returns None; `e4eab91` changed `offload`
+to treat None as cancellation only while the app is stopping, so a cancelled
+handler now carried on with None as the call's result. Fix: `offload` re-raises
+when the current task has a pending cancellation (`Task.cancelling()`).
+
+**Run 2** (all fixes in): see the commit that adds this line for the result.
+
+## The event loop stalls on every refresh (not NFS)
+
+`tools/slow-nfs/loop_lag_probe.py` builds the real page in-process and records
+the worst gap in a 10 ms ticker on the event loop, per phase. NiceGUI pings every
+4 s and allows 2 s for the answer, so a stall near 2 s is the reconnect overlay.
+
+| Rows | Where | Page load | Change test column | Edit title |
+| --- | --- | --- | --- | --- |
+| 10,000 | local disk | 0.24 s | 0.31 s | 0.33 s |
+| 50,000 | local disk | 1.64 s | 1.60 s | 1.50 s |
+| 50,000 | NFS, 40 ms RTT | 1.45 s | 1.39 s | 1.38 s |
+| 200,000 | local disk | 7.52 s | 7.25 s | 7.56 s |
+
+NFS adds nothing: the offloaded reads and the parse cache do their job. The
+stall is the refresh itself, on the loop, for *any* edit -- a title change costs
+the same as a data change. At 200k rows, in seconds: `state.figure()` 2.8,
+figure to JSON 0.9, `table_rows.to_rows` over every record 0.9 (for a table that
+shows 15), `visible_records` 0.4, table JSON 0.25. On this machine the 2 s
+budget is crossed around 60k rows.
+
+This is the remaining half of the scan's "GIL-bound parsing" item, and the
+likelier cause of the reconnect overlay on big files. Not fixed here -- it is a
+design change, not a patch. The obvious levers, roughly in order of payoff:
+build the figure (and records) in a worker thread and hand the result to the
+loop -- still GIL-bound, but the interpreter switches threads every 5 ms, so the
+loop keeps answering the heartbeat while it waits; page the table server-side instead of shipping every row; skip rebuilding
+what an edit cannot have changed (a title edit does not need new records).

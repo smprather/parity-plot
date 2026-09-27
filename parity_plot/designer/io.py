@@ -18,6 +18,7 @@ call whether or not debug mode was enabled.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import sys
@@ -76,10 +77,12 @@ async def offload(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
         running loop -- tests, script mode -- the callable runs inline, so the
         pure functions keep their synchronous behaviour under test.
 
-    ``io_bound`` documents None-on-shutdown as an interim shape; that can only
-    happen while the app is stopping, so it is detected via ``app.is_stopping``
-    rather than by inspecting the result -- a callable that legitimately returns
-    None (``Session.autosave`` on an unbound config) must not look cancelled.
+    ``io_bound`` returns None, as an interim shape, in two cases: the app is
+    stopping, or the awaiting task was cancelled (it swallows the
+    ``CancelledError``). Neither is detected from the result -- a callable that
+    legitimately returns None (``Session.autosave`` on an unbound config) must
+    not look cancelled -- but from ``app.is_stopping`` and the task's own
+    pending cancellation, which is re-raised.
     """
     try:
         from nicegui import core, run
@@ -88,6 +91,12 @@ async def offload(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
     if not core.is_loop_running():
         return func(*args, **kwargs)
     result = await run.io_bound(func, *args, **kwargs)
+    # io_bound also *swallows* a cancellation of the awaiting task and returns
+    # None. The task still records the request, so re-raise it: a cancelled
+    # handler must stop, not carry on with a None it then fails to unpack.
+    task = asyncio.current_task()
+    if task is not None and task.cancelling():
+        raise asyncio.CancelledError
     if result is None and core.app.is_stopping:  # pragma: no cover -- shutdown
         raise RuntimeError("offloaded call was cancelled during shutdown")
     # `io_bound` is typed `R | None` because None doubles as its cancellation

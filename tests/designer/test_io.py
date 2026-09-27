@@ -6,6 +6,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import pytest
+
 from parity_plot.designer import io as designer_io
 
 
@@ -47,3 +49,36 @@ def test_debug_log_is_a_no_op_when_disabled(caplog):
     with caplog.at_level(logging.WARNING, logger="parity.designer"):
         designer_io.debug_log("nothing %s", "here")
         assert "nothing" not in caplog.text
+
+
+async def test_a_cancelled_offload_is_cancelled_not_none():
+    """``run.io_bound`` swallows a cancellation and returns None.
+
+    ``offload`` used to pass that None on as the call's result whenever the app
+    was not stopping, so a cancelled handler carried on with it -- and crashed
+    unpacking it ("cannot unpack non-iterable NoneType object"), which is how it
+    showed up under ./check-slow-nfs at test teardown. A cancelled await must
+    stay a cancellation.
+    """
+    import time
+
+    from nicegui import core
+
+    from parity_plot.designer.io import offload
+
+    continued: list[str] = []
+
+    async def caller() -> None:
+        await offload(lambda: time.sleep(0.3) or ("result", True))
+        continued.append("carried on after the cancel")
+
+    core.loop = asyncio.get_running_loop()
+    try:
+        task = asyncio.ensure_future(caller())
+        await asyncio.sleep(0.05)  # the call is in the thread pool
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        core.loop = None
+    assert continued == []
