@@ -205,7 +205,8 @@ to treat None as cancellation only while the app is stopping, so a cancelled
 handler now carried on with None as the call's result. Fix: `offload` re-raises
 when the current task has a pending cancellation (`Task.cancelling()`).
 
-**Run 2** (all fixes in): see the commit that adds this line for the result.
+**Run 2** (all fixes in): **918 passed, 0 failed** in 39.5 minutes, and none of
+run 1's teardown errors in the log.
 
 ## The event loop stalls on every refresh (not NFS)
 
