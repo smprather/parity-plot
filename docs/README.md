@@ -6,6 +6,9 @@
   Python API, designer, polynomial reference lines, and development commands.
 - [Embedding parity plots](embedding.md) — static fragments, dynamic JSON,
   Plotly library ownership, resizing, determinism, and WebGL limits.
+- [Development environment](development.md) — what a dev box needs: the core
+  toolchain, headless Chrome, the Docker/buildx slow-NFS harness, `gh` for
+  releases, sandboxed `uv` caches, and how to test the designer GUI.
 - [Tabbed report example](../examples/tabbed-report/README.md) — complete offline
   multi-plot consumer with one shared Plotly library.
 - [Contributor architecture](../CLAUDE.md) — module boundaries, invariants,

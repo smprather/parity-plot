@@ -37,9 +37,17 @@ create, e.g.
 
 ## Requirements and fallbacks
 
-`--privileged` (to mount and to run `tc`). The realistic path needs two things
-from the **host kernel**: the NFS client (`nfs`/`nfsv4` modules) and
-`sch_netem`. Mainstream distribution kernels and Docker Desktop have both.
+`--privileged` (to mount and to run `tc`), and the **buildx** plugin so the
+image is built with BuildKit. The Dockerfile has a `RUN --mount=type=secret`
+for the optional proxy CA, which the *legacy* builder rejects with
+`the --mount option requires BuildKit`. Docker Desktop bundles buildx; a
+CLI-only Docker install may not — `docker buildx version` then says
+`unknown command` and the build aborts. Install the plugin (the exact steps are
+in `docs/development.md`) and run `DOCKER_BUILDKIT=1 ./check-slow-nfs`.
+
+The realistic path needs two things from the **host kernel**: the NFS client
+(`nfs`/`nfsv4` modules) and `sch_netem`. Mainstream distribution kernels and
+Docker Desktop have both.
 
 Minimal kernels (microVMs, some CI runners) may have neither. Then the container
 falls back to `fuse-nfs` and/or the delay relay and says so. The fallback still
@@ -68,3 +76,19 @@ SLOW_NFS_BUILD_ARGS="--network host --build-arg HTTPS_PROXY=$HTTPS_PROXY" \
 The run itself needs no network. Do not add `--network host` to
 `SLOW_NFS_RUN_ARGS`: the container shapes *its own* loopback with `tc`, and in the
 host's network namespace that would be the host's loopback.
+
+## Recorded runs
+
+Both runs below used the fallback path (`client=fuse`, `latency=proxy`): the
+recording host was a Firecracker microVM whose kernel has neither an NFS client
+nor `sch_netem`, and the container reported that. Timings are therefore
+indicative; the kernel-client + netem path is written and reviewed but has not
+been executed there.
+
+| Date | Command | Result | Mount cost |
+| --- | --- | --- | --- |
+| 2026-09-28 | `./check-slow-nfs` (full suite) | 950 passed in 38m 32s | 441 ms per small-file create+write+close |
+| 2026-09-28 | `./check-slow-nfs uv run pytest tests/designer/test_add_file_flow.py -q` | 5 passed in 26.6s | same |
+
+The earlier runs (910 passed / 7 failed, then 918 passed) are recorded in
+`docs/bug-scan-review-2026-09-27.md`.

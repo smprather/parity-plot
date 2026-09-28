@@ -8,6 +8,10 @@ browser to drop the connection (the "Searching for server..." overlay) while
 the server was in fact alive. The fix runs every file read through
 ``io.offload`` (NiceGUI's thread pool) from async handlers; these tests pin
 that shape so it cannot silently regress to sync.
+
+The last test drives the whole thing through the assembled page -- the Add
+File button, the browser dialog's listing, the file pick and the commit --
+so a break anywhere in that wiring is caught, not just in the read shape.
 """
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ from parity_plot.config import ParityConfig
 from parity_plot.data import load
 from parity_plot.designer.io import offload
 from parity_plot.designer.state import DesignerState
+
+from .page_harness import eventually, open_page
 
 
 async def test_offload_does_not_stall_the_loop(tmp_path):
@@ -124,3 +130,54 @@ def test_build_data_panel_accepts_a_sync_callback(tmp_path):
     with Client(page=ui.page("/")) as client:
         build_data_panel(state, on_change)
         assert len(client.elements) > 1  # the panel actually built
+
+
+async def test_add_file_through_the_browser_dialog(tmp_path, monkeypatch):
+    """Add File, from the button to the committed config, on the real page.
+
+    Nothing else drives ``_browse``: the dialog's listing, the ``📄 name``
+    button and the gated ``_add`` commit were all unexercised. This opens
+    the assembled page, clicks ``Add File``, waits for the browser to list
+    the directory, clicks the second CSV and asserts it reached the config
+    *and* the bound file on disk. Every wait is on a condition, so it holds
+    under the slow link of ``./check-slow-nfs``.
+    """
+    (tmp_path / "a.csv").write_text("id,r,t\nA,1,2\nB,2,3\n", encoding="utf-8")
+    (tmp_path / "b.csv").write_text("id,x,y\nA,5,6\nB,6,7\n", encoding="utf-8")
+    (tmp_path / "a.toml").write_text(
+        '[data]\nfiles = ["a.csv"]\nref = "a.csv:r"\ntest = "a.csv:t"\n'
+        '\n[plot]\ntitle = "A"\n',
+        encoding="utf-8",
+    )
+
+    async with open_page(tmp_path, "a.toml", monkeypatch) as page:
+        assert [p.name for p in page.state.config.data.files] == ["a.csv"]
+
+        page.click("Add File")
+
+        def listed(name: str) -> bool:
+            """Whether the browser dialog has rendered a button for ``name``."""
+            try:
+                page.element(f"📄 {name}")
+                return True
+            except LookupError:
+                return False
+
+        await eventually(lambda: listed("b.csv"))  # the listing is async
+        page.click("📄 b.csv")
+
+        def picked_up() -> bool:
+            return {p.name for p in page.state.config.data.files} == {
+                "a.csv",
+                "b.csv",
+            }
+
+        await eventually(picked_up)
+        assert page.state.has_data
+        assert page.state.last_error is None
+
+        # The GUI commit also reached the bound config through the auto-save.
+        def on_disk() -> str:
+            return (tmp_path / "a.toml").read_text(encoding="utf-8")
+
+        await eventually(lambda: "b.csv" in on_disk())

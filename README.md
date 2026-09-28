@@ -586,6 +586,9 @@ still works; pass explicit counts to override.
 
 - [Embedding guide](docs/embedding.md) — static fragments, dynamic JSON, sizing,
   resize handling, and WebGL limits.
+- [Development environment](docs/development.md) — what a dev box needs:
+  the core toolchain, headless Chrome, the Docker/buildx slow-NFS harness,
+  `gh` for releases, and how the designer GUI is tested.
 - [Tabbed report example](examples/tabbed-report/) — a complete offline page with
   three plots and one shared Plotly library.
 - [Documentation index](docs/README.md) — current guides versus historical design
