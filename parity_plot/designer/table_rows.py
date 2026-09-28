@@ -70,3 +70,48 @@ def _round(value: float | None) -> float | None:
     if value is None:
         return None
     return float(f"{value:.{_DIGITS}g}")
+
+
+# How a table is ordered: the column name it sorts by (None for record order)
+# and whether descending. Quasar's own pagination object carries the same pair.
+TableSort = tuple[str | None, bool]
+UNSORTED: TableSort = (None, False)
+
+
+def sort_rows(
+    rows: Sequence[dict[str, Any]], sort_by: str | None, descending: bool
+) -> list[dict[str, Any]]:
+    """``rows`` ordered by one column, the way the table's header click asks.
+
+    The table is paged server-side -- shipping every row to the browser on every
+    refresh was most of a refresh's cost on a large file -- so sorting happens
+    here, not in Quasar. Empty cells always sort last, whichever direction: the
+    column exists to bring the largest errors to the top, and an unpaired record
+    has no error to rank. Stable, so ties keep record order.
+    """
+    if not sort_by:
+        return list(rows)
+    present = [row for row in rows if row.get(sort_by) is not None]
+    empty = [row for row in rows if row.get(sort_by) is None]
+    present.sort(key=lambda row: row[sort_by], reverse=descending)
+    return present + empty
+
+
+def page_of(
+    rows: Sequence[dict[str, Any]], page: int, per_page: int
+) -> list[dict[str, Any]]:
+    """One page of ``rows``, 1-based as Quasar numbers them.
+
+    ``per_page`` 0 is Quasar's "all rows"; a page past the end is empty.
+    """
+    if per_page <= 0:
+        return list(rows)
+    start = (max(page, 1) - 1) * per_page
+    return list(rows[start : start + per_page])
+
+
+def last_page(total: int, per_page: int) -> int:
+    """The highest valid 1-based page for ``total`` rows (1 when empty)."""
+    if per_page <= 0 or total <= 0:
+        return 1
+    return (total + per_page - 1) // per_page

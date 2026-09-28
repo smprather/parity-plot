@@ -13,7 +13,9 @@ from ..data import DataError, ParityData, load
 from ..plot import build_figure
 from ..tolerances import NamedTolerance
 from .filters import FilterSet
-from .records import RecordView, find_record, record_views
+from .records import RecordView, record_for_key, record_views
+from .table_rows import UNSORTED, TableSort
+from .view import ViewInputs
 
 
 def _with_defaults(section: Any, keys: Sequence[str]) -> Any:
@@ -107,6 +109,16 @@ class DesignerState:
     # load from overwriting a newer choice, and a pre-swap load from
     # overwriting the config that replaced it.
     _generation: Generation = field(default_factory=Generation, repr=False)
+    # Bumped only when a whole config is swapped in. The data panel is rebuilt
+    # on a swap, but the old panel's handlers can still be mid-read; they check
+    # this before claiming a generation, because a claim made *after* the swap
+    # is current by construction and the generation alone cannot stop it.
+    _epoch: Generation = field(default_factory=Generation, repr=False)
+
+    @property
+    def config_epoch(self) -> int:
+        """Which opened config this is; a panel built for an older one is dead."""
+        return self._epoch.value
 
     @property
     def has_data(self) -> bool:
@@ -209,7 +221,7 @@ class DesignerState:
             self.selection = None
         elif (
             self.selection is not None
-            and find_record(record_views(prepared.data), self.selection) is None
+            and record_for_key(prepared.data, self.selection) is None
         ):
             # The pinned record does not exist in the new dataset.
             self.selection = None
@@ -259,6 +271,8 @@ class DesignerState:
         # against the config being replaced, and committing it would put the old
         # design back -- and then auto-save it over the newly opened file.
         self._generation.bump()
+        # And retire the panels built for the old config: see _epoch.
+        self._epoch.bump()
 
     def selected_record(
         self, tolerances: Sequence[NamedTolerance] = ()
@@ -266,7 +280,7 @@ class DesignerState:
         """The pinned record, judged against ``tolerances`` if any are given."""
         if self.selection is None or self.data is None:
             return None
-        return find_record(record_views(self.data, tolerances), self.selection)
+        return record_for_key(self.data, self.selection, tolerances)
 
     def tolerances(self) -> tuple[NamedTolerance, ...]:
         """The tolerance list the current config specifies."""
@@ -295,6 +309,15 @@ class DesignerState:
         showing = visible.n_paired + visible.n_unpaired
         total = self.data.n_paired + self.data.n_unpaired
         return showing, total
+
+    def view_inputs(self, sort: TableSort = UNSORTED) -> ViewInputs:
+        """A snapshot for :func:`.view.compute_view`. Cheap: taken on the loop.
+
+        References only -- the config, dataset and filters are immutable -- so
+        the worker computing the view reads exactly this state even as the loop
+        moves on to newer edits.
+        """
+        return ViewInputs(self.config, self.data, self.filters, sort)
 
     def figure(self) -> go.Figure:
         """Build the preview, keeping the last good one if this build fails.

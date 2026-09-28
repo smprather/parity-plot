@@ -18,10 +18,12 @@ call whether or not debug mode was enabled.
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import sys
 import time
+from collections.abc import Awaitable
 from typing import Any, Callable, TypeVar, cast
 
 _T = TypeVar("_T")
@@ -76,10 +78,12 @@ async def offload(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
         running loop -- tests, script mode -- the callable runs inline, so the
         pure functions keep their synchronous behaviour under test.
 
-    ``io_bound`` documents None-on-shutdown as an interim shape; that can only
-    happen while the app is stopping, so it is detected via ``app.is_stopping``
-    rather than by inspecting the result -- a callable that legitimately returns
-    None (``Session.autosave`` on an unbound config) must not look cancelled.
+    ``io_bound`` returns None, as an interim shape, in two cases: the app is
+    stopping, or the awaiting task was cancelled (it swallows the
+    ``CancelledError``). Neither is detected from the result -- a callable that
+    legitimately returns None (``Session.autosave`` on an unbound config) must
+    not look cancelled -- but from ``app.is_stopping`` and the task's own
+    pending cancellation, which is re-raised.
     """
     try:
         from nicegui import core, run
@@ -88,6 +92,12 @@ async def offload(func: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
     if not core.is_loop_running():
         return func(*args, **kwargs)
     result = await run.io_bound(func, *args, **kwargs)
+    # io_bound also *swallows* a cancellation of the awaiting task and returns
+    # None. The task still records the request, so re-raise it: a cancelled
+    # handler must stop, not carry on with a None it then fails to unpack.
+    task = asyncio.current_task()
+    if task is not None and task.cancelling():
+        raise asyncio.CancelledError
     if result is None and core.app.is_stopping:  # pragma: no cover -- shutdown
         raise RuntimeError("offloaded call was cancelled during shutdown")
     # `io_bound` is typed `R | None` because None doubles as its cancellation
@@ -120,3 +130,41 @@ def sync_refresher(
             background_tasks.create(result, name=name)
 
     return call
+
+
+class Coalescer:
+    """Run an async job at most once at a time, folding requests into reruns.
+
+    The designer's refresh now computes off the loop and takes a while on a big
+    file. Edits keep arriving meanwhile -- a keystroke each -- and starting a
+    compute per edit would pile them onto the thread pool and paint them in
+    whatever order they finished. Instead a request made while a run is in
+    flight marks the job dirty, and the run repeats once when it finishes, with
+    whatever the state is by then: the newest edit always ends up painted, and
+    at most one compute runs per page.
+
+    ``await request()`` returns once a run that *started after* the request has
+    finished, so a caller that awaits its refresh really sees its change drawn.
+    A caller cancelled while waiting does not cancel the run.
+    """
+
+    def __init__(self, job: Callable[[], Awaitable[None]]) -> None:
+        self._job = job
+        self._dirty = False
+        self._task: asyncio.Task[None] | None = None
+
+    @property
+    def pending(self) -> bool:
+        """Whether a newer request is waiting for the run in flight to finish."""
+        return self._dirty
+
+    async def request(self) -> None:
+        self._dirty = True
+        if self._task is None or self._task.done():
+            self._task = asyncio.ensure_future(self._drain())
+        await asyncio.shield(self._task)
+
+    async def _drain(self) -> None:
+        while self._dirty:
+            self._dirty = False
+            await self._job()

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Run the test suite with every temp file on an emulated slow NFS mount.
+#
+# Builds tools/slow-nfs/Dockerfile and runs it privileged (it mounts NFS and
+# shapes loopback traffic with tc). Anything after the script name replaces the
+# default command, e.g.
+#
+#   ./check-slow-nfs                                   # full suite on NFS
+#   NFS_RTT_MS=200 ./check-slow-nfs                    # a slower link
+#   ./check-slow-nfs uv run pytest tests/designer -x --basetemp=/mnt/nfs/t
+#   ./check-slow-nfs bash                              # poke around /mnt/nfs
+#
+# Knobs, passed through to the container: NFS_RTT_MS (default 40),
+# NFS_DELAY (auto|netem|proxy), NFS_CLIENT (auto|kernel|fuse), NFS_MOUNT_OPTS.
+# Build/run tweaks for unusual environments: EXTRA_CA_CERT (a CA file for a
+# TLS-intercepting proxy), SLOW_NFS_BUILD_ARGS, SLOW_NFS_RUN_ARGS.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+image="${SLOW_NFS_IMAGE:-parity-plot-slow-nfs}"
+
+build=(docker build -f tools/slow-nfs/Dockerfile -t "$image")
+if [[ -n ${EXTRA_CA_CERT:-} ]]; then
+    build+=(--secret "id=extra_ca,src=$EXTRA_CA_CERT")
+fi
+# shellcheck disable=SC2206  # word splitting is the point of these two
+build+=(${SLOW_NFS_BUILD_ARGS:-} .)
+"${build[@]}"
+
+tty=()
+[[ -t 0 && -t 1 ]] && tty=(-it)
+# shellcheck disable=SC2206
+exec docker run --rm "${tty[@]}" --privileged \
+    --mount type=tmpfs,dst=/srv/export \
+    -e NFS_RTT_MS -e NFS_DELAY -e NFS_CLIENT -e NFS_MOUNT_OPTS \
+    ${SLOW_NFS_RUN_ARGS:-} \
+    "$image" "$@"

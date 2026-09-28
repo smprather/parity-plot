@@ -1,0 +1,13 @@
+# The slow-NFS image (tools/slow-nfs) copies the repo; keep the host's venv,
+# caches and generated output out of it -- the image builds its own.
+.git
+.venv
+**/__pycache__
+.pytest_cache
+.ruff_cache
+data
+out
+dist
+build
+*.html
+.repowise

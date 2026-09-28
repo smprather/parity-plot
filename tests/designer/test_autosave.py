@@ -196,17 +196,117 @@ async def test_the_latest_value_wins_within_one_burst():
     assert writes == ["second"]
 
 
-async def test_cancelling_stops_a_pending_save():
-    """A config swap must not have the old design written after it."""
+async def test_an_edit_made_while_a_save_is_in_flight_is_written():
+    """On NFS a save outlasts the debounce; the edit made during it must land.
+
+    The task used to fire once and exit: a request arriving while the work ran
+    found a live task, parked itself in ``_pending``, and was never picked up --
+    the bound file silently stayed one edit behind until the next keystroke.
+    """
+    writes: list[str] = []
+
+    async def slow_save(config) -> None:
+        await asyncio.sleep(0.05)  # the write takes longer than the delay
+        writes.append(config.plot.title or "")
+
+    debouncer = Debouncer(slow_save, delay=0.01)
+    debouncer.schedule(config_with("A"))
+    await asyncio.sleep(0.03)  # the save of A is now in flight
+    debouncer.schedule(config_with("B"))
+    await asyncio.sleep(0.2)
+    assert writes == ["A", "B"]
+
+
+async def test_flush_writes_a_pending_request_now():
+    """A config swap flushes: the old design's last edit reaches its own file."""
     writes: list[str] = []
     debouncer = Debouncer(
-        lambda config: writes.append(config.plot.title or ""), delay=0.05
+        lambda config: writes.append(config.plot.title or ""), delay=10
     )
 
-    debouncer.schedule(config_with("doomed"))
-    debouncer.cancel()
-    await asyncio.sleep(0.1)
-    assert writes == []
+    debouncer.schedule(config_with("last edit"))
+    await debouncer.flush()
+    assert writes == ["last edit"]
+    await asyncio.sleep(0.02)
+    assert writes == ["last edit"], "the flushed request fired a second time"
+
+
+async def test_flush_waits_for_a_save_in_flight_then_writes_the_pending_one():
+    writes: list[str] = []
+
+    async def slow_save(config) -> None:
+        await asyncio.sleep(0.05)
+        writes.append(config.plot.title or "")
+
+    debouncer = Debouncer(slow_save, delay=0.01)
+    debouncer.schedule(config_with("A"))
+    await asyncio.sleep(0.03)  # A in flight
+    debouncer.schedule(config_with("B"))
+    await debouncer.flush()
+    assert writes == ["A", "B"]
+
+
+async def test_flush_with_nothing_pending_is_a_no_op():
+    debouncer = Debouncer(lambda config: None, delay=0.01)
+    await debouncer.flush()
+
+
+def test_an_autosave_waiting_on_the_lock_writes_where_the_session_now_points(
+    tmp_path,
+):
+    """Saves run in worker threads, so an auto-save can queue behind Save As.
+
+    It must read the bound path once it holds the lock. Read before waiting, it
+    wrote the old file and re-bound the session to it, undoing the Save As.
+    """
+    import threading
+    import time
+
+    from parity_plot.designer import session as session_mod
+
+    session = bound(tmp_path)
+    old = session.config_path
+    new = tmp_path / "renamed.toml"
+
+    with session_mod._SAVE_LOCK:
+        worker = threading.Thread(
+            target=session.autosave, args=(config_with("queued"),)
+        )
+        worker.start()
+        time.sleep(0.05)  # the worker is now blocked on the lock
+        session.config_path = new  # what a Save As does under the lock
+    worker.join(timeout=5)
+
+    assert session.config_path == new
+    assert new.exists() and "queued" in new.read_text(encoding="utf-8")
+    assert old is not None and old.read_text(encoding="utf-8") == ""
+
+
+def test_a_symlinked_config_is_written_through_the_link(tmp_path):
+    """A rename replaces the link itself; the shared target must be updated."""
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    real = shared / "parity.toml"
+    real.write_text("", encoding="utf-8")
+    link = tmp_path / "parity.toml"
+    link.symlink_to(real)
+
+    session = Session(config_path=link)
+    session.saved_config = config_with("first")
+    assert session.autosave(config_with("second")) is None
+
+    assert link.is_symlink(), "the save replaced the link with a private copy"
+    assert "second" in real.read_text(encoding="utf-8")
+    assert not list(shared.glob(".*.tmp")) and not list(tmp_path.glob(".*.tmp"))
+
+
+def test_a_save_keeps_the_files_permissions(tmp_path):
+    session = bound(tmp_path)
+    path = session.config_path
+    assert path is not None
+    path.chmod(0o664)
+    session.autosave(config_with("second"))
+    assert path.stat().st_mode & 0o777 == 0o664
 
 
 async def test_the_debouncer_can_run_async_work():
@@ -262,3 +362,20 @@ def test_a_debounced_save_reports_its_failure(tmp_path, monkeypatch):
     assert seen
     assert seen[0] is not None
     assert "boom" in seen[0]
+
+
+async def test_flush_drains_a_request_scheduled_while_it_ran():
+    """A swap flushes, then swaps with no await between: nothing may be left."""
+    writes: list[str] = []
+    debouncer: Debouncer
+
+    async def slow_save(config) -> None:
+        await asyncio.sleep(0.03)
+        writes.append(config.plot.title or "")
+        if config.plot.title == "A":
+            debouncer.schedule(config_with("B"))  # an edit during the flush
+
+    debouncer = Debouncer(slow_save, delay=10)
+    debouncer.schedule(config_with("A"))
+    await debouncer.flush()
+    assert writes == ["A", "B"]

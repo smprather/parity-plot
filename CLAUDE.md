@@ -17,6 +17,7 @@ uv run parity-plot init          # write a documented parity.toml
 uv run parity-plot plot parity.toml --no-open-browser -o out.html   # CONFIG is positional
 uv run parity-plot design --config parity.toml --no-open-browser
 ./run-check                      # designer against data/parts.csv
+./check-slow-nfs                 # full suite with every tmp_path on a slow NFS mount (Docker)
 ```
 
 ### Shared demo server
@@ -86,6 +87,20 @@ actually goes missing — but kaleido's own error reports itself in terms of the
 other, which would send people to reinstall what they already have.
 `plot.py::_export_hint` untangles that; keep it accurate if the export path
 changes.
+
+### Slow-NFS harness
+
+`./check-slow-nfs` (`tools/slow-nfs/`, see its README) builds a Docker image and
+runs the suite with `--basetemp` on an NFS mount behind an emulated slow link:
+NFS-Ganesha serves a tmpfs, `tc netem` delays only port 2049 on the container's
+`lo`, and the kernel NFS client mounts it. Kernels without an NFS client or
+`sch_netem` fall back to `fuse-nfs` (NFSv3 — libnfs's v4 writes fail against
+Ganesha) and a userspace delay relay, and the container says which it used.
+Needs `--privileged`. Anything after the script name replaces the command
+(`./check-slow-nfs bash`). Designer tests must wait on conditions, never fixed
+sleeps: sleep-based waits passed locally and failed there.
+`tools/slow-nfs/loop_lag_probe.py` measures the designer's worst event-loop stall
+per phase against NiceGUI's 2 s heartbeat budget.
 
 ## Two-tier checks
 
@@ -321,10 +336,48 @@ data-panel handlers are async; `column_options`, `set_data_source`,
 `Session.start`, `list_dir`, `preview` and config saves go through `offload`.
 New blocking I/O in a handler must do the same. `parity-plot design --debug`
 prints a timestamped transcript (read durations, refresh cost, connect events)
-to stderr for slow-FS diagnosis. `app.refresh` is async and enters the client
-context itself because it also runs as a spawned background task (empty slot
-stack); a `_refresh_lock` serialises commits so rapid edits cannot interleave
-half-applied datasets.
+to stderr for slow-FS diagnosis.
+
+**A refresh does no per-record work on the event loop.** It used to build the
+figure, convert it and build a table row per record on the loop — ~30-35 ms per
+thousand rows on *every* edit, so past ~60k rows the 2 s websocket heartbeat
+failed and the reconnect overlay appeared with no NFS involved. Now
+`app.refresh` takes a snapshot on the loop (`DesignerState.view_inputs`: config,
+data, filters, table sort — immutable references), `view.compute_view` does all
+the work in a worker thread, and the loop only assigns the resulting `View` to
+widgets (1-6 ms). Refreshes go through `io.Coalescer`: one compute per page at a
+time, a burst folds into one rerun with the newest state, and `await refresh()`
+returns after a run that started later has painted. Rules that keep it that way:
+- `compute_view` must mirror `DesignerState.figure`/`visible_records`/`counts`
+  (the golden tests hold those to the CLI); `test_view.py` pins the equivalence.
+- **Hand NiceGUI tuples, not lists.** Assigning a value to element props wraps
+  every nested `list`/`dict` in an observable collection, on the loop; a
+  figure's per-point `customdata` made that 200k wraps and >1 s per paint.
+  `view._frozen` turns lists into tuples in the worker (same JSON).
+- A view whose `config_epoch` moved while it computed is not painted, and its
+  auto-save is built from the snapshot, never from state at paint time.
+- Don't call `state.figure()` or build every record from a panel on the loop:
+  `current_viewport_origins` reads `plot.axis_ranges` (the ranges
+  `build_figure` lays out), the inspector uses `records.record_for_key`.
+- `tools/slow-nfs/loop_lag_probe.py` measures the worst stall per phase: 200k
+  rows went from ~7.7-8.8 s to ~0.3 s.
+
+`app.refresh` enters the client context in its paint because it runs as a
+spawned background task (empty slot stack).
+
+**A data-source change is begin → prepare → commit.** `prepare_data_source` runs
+in a worker thread and touches no state; `commit_data_source` runs on the loop,
+merges only `[data]` into the config *as it now stands*, and drops a result whose
+generation moved. The generation is claimed in `apply()` — *after* the option
+read that `_add`/`_remove`/`_reapply` await first — so it cannot see a config
+swap during that read; `state.config_epoch` (bumped only by
+`load_session_config`) is what retires a panel built for the old config, and
+`apply()` checks it before claiming. `refresh_options(guess=True)` only where a
+commit follows: a guessed ref/test set under suspension with no commit is an
+axis pair the state never received. The panel reads options through
+`read_column_options`, whose `readable` flag gates hover pruning — pins are
+pruned against candidates only after a successful read, never against the empty
+fallback of a failed one.
 
 **The designer page has two independent scroll regions.** `app.py` anchors
 `.nicegui-content` inside Quasar's dynamically sized page, then applies
@@ -353,8 +406,19 @@ change, rebuilds the figure, computes `validation.problems(config)`, paints the
 status bar, enables/disables **Save As**, marks the offending field, and — when
 nothing is wrong and a file is **bound** — writes via `Session.autosave`. So a
 *bound* config's file on disk always equals the **most recent valid** config; a
-hard-invalid edit is withheld (disk keeps the last good one) until fixed. There is
-no plain Save button. Persistence is a **top toolbar**: a config dropdown
+hard-invalid edit is withheld (disk keeps the last good one) until fixed. The
+save is scheduled when a refresh's view lands, **from that refresh's snapshot**
+(session, config, standing error) — the view computes off the loop, so the user
+may have opened another config by then, and state read at paint time paired the
+old session with the new design. It is debounced (`session.Debouncer`, 400 ms),
+**keyed per session** so a late save for a replaced design is not overwritten by
+the new one's first; the debouncer loops until nothing is pending (on NFS an edit
+during an in-flight save is the normal case), and a config swap `flush()`es it so
+the old design's last edit reaches the old file. Saves run
+in worker threads under one `_SAVE_LOCK`, and `autosave` reads the bound path
+*inside* it — read before waiting, a queued auto-save undid a concurrent Save As.
+`_write_atomic` writes through a symlinked config and keeps the file's mode. There
+is no plain Save button. Persistence is a **top toolbar**: a config dropdown
 (`session.config_choices(dir)` lists parity `.toml`s in the launch dir — touchstone:
 parses + non-empty `data.files`), **Save As**, **New Design**. `<unsaved>` in the
 dropdown means *unbound* — a New Design or data-only launch with no file yet; Save
@@ -448,6 +512,16 @@ out a pinned record does not blank the inspector on what you clicked.
 to strings: the table exists to sort by error magnitude, and strings sort
 lexically so "9" lands above "100".
 
+**The table is paged and sorted on the server** (`panels/table.py::TablePanel`).
+Only the visible page crosses to the browser: `rowsNumber` in the pagination puts
+Quasar in server-side mode, so a header click or page change arrives as a
+`request` event, and `table_rows.sort_rows` runs off the loop (empty cells sort
+last either way). A refresh builds rows already in the current sort; a sort that
+finishes after newer rows arrived is dropped by a generation check. The initial
+pagination must be complete (`page`, `sortBy`, `descending`): Quasar reports a
+normalized one back on mount, and NiceGUI stores it, stale `rowsNumber` included —
+`on_pagination_change` re-asserts the server's.
+
 **Selection has exactly one owner.** Both the plot click and the table row route
 through `app.select_record`; two writers would drift and leave the views
 highlighting different records.
@@ -478,6 +552,14 @@ fixture also expects a module-level app (`nicegui_main_file`), which `build_app`
 is not. `tests/designer/test_app.py` instead boots `parity-plot design` as a
 subprocess and fetches the page — strip `PYTEST*` from that subprocess's env or
 NiceGUI switches into screen-test mode and demands `NICEGUI_SCREEN_TEST_PORT`.
+To *drive* the page, `tests/designer/test_app_toolbar.py` captures `build_app`'s
+page function by standing in for `ui.page`, builds it inside a `Client` with
+`core.loop` set, and clicks through NiceGUI's own `handle_event`
+(`test_data_panel_races.py` does the same for the data panel alone). Handler
+exceptions are swallowed there exactly as in production, so assert on outcomes.
+Build inside `with Client(...)` but do not hold that context across a fixture's
+`yield`: the slot stack is per task. This harness exists because a toolbar that
+raised on every click passed the whole suite — nothing drove the assembled page.
 
 ## Conventions
 

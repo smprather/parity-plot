@@ -8,18 +8,18 @@ browser.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from plotly.graph_objects import Figure
 
 from ..config import ConfigError, ParityConfig
 from ..data import DataError, ParityData
-from .io import debug_log, offload, sync_refresher
+from .io import Coalescer, debug_log, offload, sync_refresher
 from .panels.controls import build_controls
 from .panels.data_panel import build_data_panel
 from .panels.encoding import build_encoding_panel
@@ -32,7 +32,9 @@ from .records import key_from_customdata
 from .selection import range_from_selection
 from .session import Debouncer, Session, config_choice_names
 from .state import DesignerState, Generation
+from .table_rows import TableSort
 from .validation import problems as config_problems
+from .view import View, compute_view, placeholder_figure
 from .widgets import as_float
 
 # The dropdown entry standing in for a working config not yet bound to a file
@@ -166,16 +168,29 @@ RESPONSIVE_PLOT_SCRIPT = """
 """
 
 
-def axis_range_relayout(figure: Figure) -> dict[str, list[float]]:
+def axis_range_relayout(figure: Figure | dict[str, Any]) -> dict[str, list[float]]:
     """Exact requested ranges to reapply after NiceGUI calls Plotly.react.
+
+    Takes the figure or its plotly-JSON dict -- the refresh hands the plot the
+    dict, built off the loop (see ``view.py``).
 
     Only axes that actually state a range: a figure built without explicit
     bounds leaves ``range`` as None, and indexing it would raise inside the
     refresh -- aborting the repaint with nothing shown.
     """
+    if isinstance(figure, dict):
+        layout = figure.get("layout")
+        axes: dict[str, Any] = {}
+        for axis in ("xaxis", "yaxis"):
+            settings = layout.get(axis) if isinstance(layout, dict) else None
+            axes[axis] = settings.get("range") if isinstance(settings, dict) else None
+    else:
+        axes = {
+            axis: getattr(getattr(figure.layout, axis, None), "range", None)
+            for axis in ("xaxis", "yaxis")
+        }
     ranges: dict[str, list[float]] = {}
-    for axis in ("xaxis", "yaxis"):
-        bound = getattr(getattr(figure.layout, axis, None), "range", None)
+    for axis, bound in axes.items():
         if not bound:
             continue
         # as_float, not float(): a bound that is None or a non-number is
@@ -187,7 +202,7 @@ def axis_range_relayout(figure: Figure) -> dict[str, list[float]]:
     return ranges
 
 
-def axis_range_relayout_script(plot_id: int, figure: Figure) -> str:
+def axis_range_relayout_script(plot_id: int, figure: Figure | dict[str, Any]) -> str:
     """Build a bounded client retry for plots not mounted during early events."""
     ranges = json.dumps(axis_range_relayout(figure), allow_nan=False)
     return f"""
@@ -254,14 +269,6 @@ def build_app(
     # The directory the config picker scans -- where `parity-plot design` ran.
     launch_dir = Path.cwd()
 
-    # One in-flight refresh at a time, for the whole app rather than per client:
-    # a refresh rebuilds the figure and the table off a dataset that an earlier
-    # refresh may still be reading, and two browser tabs share one
-    # DesignerState, so a per-tab lock would let them interleave half-applied
-    # states. Held across awaits, so commits serialise without blocking the
-    # loop for anyone.
-    _refresh_lock = asyncio.Lock()
-
     @ui.page("/")
     def page() -> None:
         ui.dark_mode(True)
@@ -277,11 +284,24 @@ def build_app(
             s = sess["session"]
             return s.config_path.name if s.config_path is not None else UNSAVED
 
-        def choice_options() -> list[str]:
+        def picker_options(listed: list[str]) -> list[str]:
+            """The dropdown's options: ``listed`` configs plus the current one.
+
+            Built on the loop from the session as it stands *now*. The listing
+            itself is slow and runs in a thread; a session swapped while it ran
+            must still find its own name among the options, or setting the
+            value resets the select to None -- which NiceGUI reports as a change.
+            """
             s = sess["session"]
-            names = config_choice_names(launch_dir, s.config_path)
+            names = [n for n in listed if n != UNSAVED]
+            if s.config_path is not None and s.config_path.name not in names:
+                names.insert(0, s.config_path.name)
             # The unbound sentinel is offered only while unbound.
             return ([UNSAVED] if s.config_path is None else []) + names
+
+        def show_picker(listed: list[str]) -> None:
+            """Options first, value second, in one call: never a value it lacks."""
+            config_pick.set_options(picker_options(listed), value=current_choice())
 
         async def refresh_picker() -> None:
             """Re-list the configs in the launch directory, off the event loop.
@@ -291,9 +311,8 @@ def build_app(
             that is a round trip per file -- on page load, and again after every
             open, Save As and failed open.
             """
-            options = await offload(choice_options)
-            config_pick.options = options
-            config_pick.update()
+            listed = await offload(config_choice_names, launch_dir, None)
+            show_picker(listed)
 
         # Two quick config picks race, so each claims a generation before its
         # (slow) read. Only the newest is allowed to swap the session in.
@@ -304,77 +323,127 @@ def build_app(
         marks: dict[str, Callable[[list], None]] = {"join": lambda _problems: None}
 
         async def refresh() -> None:
-            """Rebuild the figure and every dependent view after a change.
+            """Recompute the view off the loop, then repaint every widget.
 
-            Async because the data panel's commit (and so the dataset it
-            commits) can be an off-the-loop file read; the figure is only
-            rebuilt once the read has actually landed.
+            The per-record work -- the figure, its conversion to plotly JSON,
+            a row per record -- runs in a worker thread (``view.compute_view``)
+            on a snapshot taken here. On a big file that work is seconds, and on
+            the loop it stalled the websocket heartbeat into the reconnect
+            overlay on every edit, a title change included.
+
+            Coalesced: one compute per page at a time, and edits made while it
+            runs fold into one more run with the newest state, so a burst of
+            keystrokes is not a queue of stale figures. Awaiting this returns
+            once a run that started after the call has been painted.
 
             Runs as a background task when spawned by the page builder or a
             sync refresher slot; a background task starts with an empty slot
-            stack, so the client context is entered here rather than assumed
-            -- ``ui.run_javascript`` and ``ui.notify`` need it.
+            stack, so the client context is entered in the paint rather than
+            assumed -- ``ui.run_javascript`` and ``ui.notify`` need it.
             """
-            client = plot_view.client
-            async with _refresh_lock:
-                with client:
-                    started = time.monotonic()
-                    figure = state.figure()
-                    plot_view.update_figure(figure)
-                    # Plotly.react can retain the previous constrained ranges even
-                    # though the new figure contains explicit ones. Reapply them after
-                    # react so viewport-origin edits take effect immediately.
-                    ui.run_javascript(axis_range_relayout_script(plot_view.id, figure))
+            await refresher.request()
 
-                    probs = config_problems(state.config)
-                    errors = [p for p in probs if p.severity == "error"]
-                    warnings = [p for p in probs if p.severity == "warning"]
-                    # Only an error (or a load/build failure) blocks; a warning is
-                    # advisory -- shown amber, but it neither disables Save As nor
-                    # withholds the auto-save.
-                    blocking = state.last_error or (
-                        errors[0].message if errors else None
-                    )
+        async def _refresh_once() -> None:
+            started = time.monotonic()
+            # Everything the save decision needs is captured with the view's
+            # inputs, before the await: by the time the view is computed the
+            # user may have opened another config, and a save built from the
+            # state as it is *then* would pair the old session with the new
+            # design -- writing one config's content into the other's file.
+            session, epoch, last_error = (
+                sess["session"],
+                state.config_epoch,
+                state.last_error,
+            )
+            sort = table_panel.sort
+            inputs = state.view_inputs(sort)
+            view = await offload(compute_view, inputs)
+            computed = time.monotonic()
+            blocking = None
+            with plot_view.client:
+                # A view of a config that has since been replaced is not
+                # painted; the swap's own refresh is already queued behind it.
+                if state.config_epoch == epoch:
+                    blocking = await _paint(view, sort)
+            _autosave_view(session, inputs.config, view, last_error)
+            debug_log(
+                "refresh() %.0fms computing off the loop, %.0fms painting%s",
+                (computed - started) * 1000,
+                (time.monotonic() - computed) * 1000,
+                f" -- {blocking}" if blocking else "",
+            )
 
-                    if blocking:
-                        set_status(f"⛔  {blocking}", "error")
-                    elif warnings:
-                        set_status(f"⚠️  {warnings[0].message}", "warn")
-                    else:
-                        set_status("Ready", "info")
+        def _autosave_view(
+            session: Session, config: ParityConfig, view: View, last_error: str | None
+        ) -> None:
+            """Auto-save the config a view was computed from, if it was clean.
 
-                    marks["join"](errors)  # only errors redden a field
-                    save_as_btn.set_enabled(not blocking)
+            Only a clean config reaches the bound file: no build failure, no
+            error-severity problem, no standing error when the snapshot was
+            taken. The bound file thus always holds the last valid config -- a
+            broken edit is withheld until it is fixed. A warning does not
+            withhold the write. ``autosave`` itself no-ops when unbound and
+            skips an unchanged config.
 
-                    # The views first, the write second. An auto-save failure on
-                    # NFS used to escape `refresh()` *after* the status bar was
-                    # painted "Ready", so the inspector and table never updated
-                    # and the only evidence was a line in the server log.
-                    refresh_inspector()
-                    refresh_table()
+            Debounced: this runs on every keystroke in a text control, and each
+            write is several NFS round trips. Keyed by session, so a late save
+            for a replaced design is not overwritten by the new design's first.
+            """
+            problems = config_problems(config)
+            if (
+                view.error is None
+                and last_error is None
+                and not any(p.severity == "error" for p in problems)
+            ):
+                autosave.schedule(session, config, key=id(session))
 
-                    # Auto-save: only a clean (no error), bound config is written;
-                    # autosave no-ops when unbound and skips an unchanged config.
-                    # The bound file thus always holds the last valid config -- a
-                    # broken edit is withheld until it is fixed. A warning does
-                    # not withhold the write.
-                    #
-                    # Debounced and off the refresh lock: this runs on every
-                    # keystroke in a text control, and each write is several NFS
-                    # round trips. Deferring it also keeps a slow write from
-                    # queueing every subsequent refresh behind it.
-                    if not blocking:
-                        autosave.schedule(state.config)
+        async def _paint(view: View, sort: TableSort) -> str | None:
+            """Hand a computed view to the widgets. Returns the blocking problem."""
+            # A failed build keeps the previous figure on screen and says why --
+            # what DesignerState.figure() does for its synchronous callers. Not
+            # when a newer refresh is already queued: that failure may be one
+            # the user has fixed since, and putting it back would leave a stale
+            # error in the status bar (success deliberately never clears it).
+            if view.error is not None and not refresher.pending:
+                state.last_error = view.error
+            if view.figure is not None:
+                plot_view.update_figure(view.figure)
+                # Plotly.react can retain the previous constrained ranges even
+                # though the new figure contains explicit ones. Reapply them
+                # after react so viewport-origin edits take effect immediately.
+                ui.run_javascript(axis_range_relayout_script(plot_view.id, view.figure))
 
-                    debug_log(
-                        "refresh() %.0fms%s",
-                        (time.monotonic() - started) * 1000,
-                        f" -- {blocking}" if blocking else "",
-                    )
+            probs = config_problems(state.config)
+            errors = [p for p in probs if p.severity == "error"]
+            warnings = [p for p in probs if p.severity == "warning"]
+            # Only an error (or a load/build failure) blocks; a warning is
+            # advisory -- shown amber, but it neither disables Save As nor
+            # withholds the auto-save.
+            blocking = state.last_error or (errors[0].message if errors else None)
 
-        async def _autosave_now(config) -> str | None:
+            if blocking:
+                set_status(f"⛔  {blocking}", "error")
+            elif warnings:
+                set_status(f"⚠️  {warnings[0].message}", "warn")
+            else:
+                set_status("Ready", "info")
+
+            marks["join"](errors)  # only errors redden a field
+            save_as_btn.set_enabled(not blocking)
+
+            # The views before the write. An auto-save failure on NFS used to
+            # escape the refresh *after* the status bar was painted "Ready", so
+            # the inspector and table never updated and the only evidence was a
+            # line in the server log.
+            refresh_inspector()
+            await table_panel.show(view, sort)
+            return blocking
+
+        refresher = Coalescer(_refresh_once)
+
+        async def _autosave_now(session: Session, config) -> str | None:
             """Write the config, off the event loop. Returns a message on failure."""
-            return await offload(sess["session"].autosave, config)
+            return await offload(session.autosave, config)
 
         # A debounced auto-save: a burst of edits is one write, carrying the
         # newest config. `on_error` exists because `autosave` reports rather
@@ -434,7 +503,10 @@ def build_app(
                 # A parity plot is square; render the preview square and centred
                 # rather than stretched across a wide column, so the legend hugs
                 # the plot and the (paper-centred) title lines up with it.
-                plot_view = ui.plotly(state.figure()).classes(PLOT_CLASSES)
+                # Built empty: the real figure comes from the first refresh,
+                # computed off the loop. Building it here ran the whole figure
+                # synchronously inside the page handler, on every page load.
+                plot_view = ui.plotly(placeholder_figure()).classes(PLOT_CLASSES)
                 # A persistent, colour-coded status bar -- no toasts. Errors (a
                 # validation problem, a bad column) stay here until the next
                 # action clears them, rather than popping and vanishing.
@@ -443,7 +515,7 @@ def build_app(
                 )
                 refresh_inspector = build_inspector(state, state.tolerances)
 
-                refresh_table = build_table(
+                table_panel = build_table(
                     state,
                     on_select=lambda key: select_record(state, key, refresh_inspector),
                     # The table's filter switches commit synchronously too.
@@ -457,7 +529,9 @@ def build_app(
                     if not points:
                         return
                     key = key_from_customdata(points[0].get("customdata"))
-                    select_record(state, key, refresh_inspector, refresh_table)
+                    select_record(
+                        state, key, refresh_inspector, table_panel.show_selection
+                    )
 
                 plot_view.on("plotly_click", on_point_click)
 
@@ -494,18 +568,27 @@ def build_app(
             options or NiceGUI rejects the select and returns HTTP 500. The
             options themselves are re-derived off the loop.
             """
-            config_pick.value = current_choice()
-            config_pick.update()
+            show_picker(list(config_pick.options))
             _spawn(refresh_picker())
 
         def _has_unsaved_unbound_edits() -> bool:
             s = sess["session"]
             return s.config_path is None and s.is_dirty(state.config)
 
-        async def _swap(new_session: Session, cfg: ParityConfig, new_data) -> None:
-            # A pending auto-save belongs to the config being replaced; letting
-            # it land would write the old design over the newly opened file.
-            autosave.cancel()
+        async def _swap(
+            new_session: Session, cfg: ParityConfig, new_data, generation: int
+        ) -> None:
+            # A pending auto-save holds the user's last edit to the config being
+            # replaced, bound to that config's own session: write it to its own
+            # file now. Dropping it lost the edit; deferring it would let the new
+            # design's first edit replace it in the debouncer.
+            await autosave.flush()
+            # The flush awaited, so a newer open may have claimed a generation
+            # meanwhile. Checked again here, with no await between this check
+            # and the swap, or two quick picks could land in either order.
+            if generation != _open_generation.value:
+                debug_log("discarded an open superseded during the save")
+                return
             sess["session"] = new_session
             state.load_session_config(cfg, new_data)
             settings_column.refresh()
@@ -534,10 +617,12 @@ def build_app(
                 debug_log("discarded superseded open of %s", name)
                 return
             debug_log("opened config %s", name)
-            await _swap(new_session, cfg, new_data)
+            await _swap(new_session, cfg, new_data, generation)
 
-        def open_named(name: str) -> None:
-            if name == UNSAVED or name == current_choice():
+        def open_named(name: str | None) -> None:
+            # None is what a select reports when its value falls out of its
+            # options; it names no config.
+            if not name or name == UNSAVED or name == current_choice():
                 return
 
             if _has_unsaved_unbound_edits():
@@ -553,15 +638,20 @@ def build_app(
                 new_session, cfg, new_data = Session.start((), None)
                 if generation != _open_generation.value:
                     return
-                await _swap(new_session, cfg, new_data)
+                await _swap(new_session, cfg, new_data, generation)
 
             if _has_unsaved_unbound_edits():
                 confirm_discard(lambda: _spawn(do_new()))
             else:
                 _spawn(do_new())
 
-        def _spawn(corofn) -> None:
+        def _spawn(awaitable: Coroutine[Any, Any, Any]) -> None:
             """Start an async continuation as a background task.
+
+            Takes the coroutine, not the function: every caller writes
+            ``_spawn(work())``. (It once called its argument, so every one of
+            those calls raised inside a click handler and Save As, New Design and
+            opening a config all silently did nothing.)
 
             ``confirm_discard`` calls its ``proceed`` from a sync button
             handler, so the async half needs a task to run in. The task starts
@@ -570,7 +660,7 @@ def build_app(
             already does; dialog-building code runs inside ``with client:``
             blocks at its call sites or inside slot-aware refreshables.
             """
-            background_tasks.create(corofn(), name="designer continuation")
+            background_tasks.create(awaitable, name="designer continuation")
 
         def confirm_discard(proceed, on_cancel=None) -> None:
             with ui.dialog() as dialog, ui.card():
@@ -630,6 +720,9 @@ def build_app(
 
         # The initial paint: async refresh as a background task so the page
         # builder stays synchronous (the page function itself is not awaited).
-        _spawn(refresh)
+        _spawn(refresh())
+        # The picker was built holding only the current config; list the rest
+        # now, off the loop. Without this nothing else could ever be opened.
+        _spawn(refresh_picker())
 
     return state

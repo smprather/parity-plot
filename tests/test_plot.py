@@ -885,3 +885,26 @@ def test_log_mode_keeps_hover_aligned_after_dropping_non_positive():
     # b dropped; a and c remain, in order.
     assert list(paired.x) == [1.0, 10.0]
     assert [row[3] for row in paired.customdata] == ["first", "third"]
+
+
+@pytest.mark.filterwarnings("ignore:log scale. dropped")
+@pytest.mark.parametrize(
+    "plot",
+    [
+        PlotConfig(),
+        PlotConfig(log=True),
+        PlotConfig(x_origin=0.0, y_origin=-5.0),
+        PlotConfig(log=True, x_origin=0.5, y_origin=2.0),
+        PlotConfig(equal_axes=False, x_origin=1.0),
+    ],
+    ids=["linear", "log", "origins", "log-origins", "unequal"],
+)
+def test_axis_ranges_are_the_ranges_the_figure_lays_out(plot):
+    """The designer reads the axes from here instead of building a figure."""
+    from parity_plot.plot import axis_ranges
+
+    data = from_sequences(x=[0.5, 2.0, 30.0, -1.0, 7.0], y=[0.6, 1.5, 33.0, 2.0, None])
+    layout = build_figure(data, plot).layout
+    x_range, y_range = axis_ranges(data, plot)
+    assert list(x_range) == pytest.approx(list(layout.xaxis.range))
+    assert list(y_range) == pytest.approx(list(layout.yaxis.range))

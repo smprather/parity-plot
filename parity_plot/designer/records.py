@@ -51,23 +51,10 @@ def record_views(
 ) -> list[RecordView]:
     """Every record: paired first, then those missing y, then missing x."""
     views: list[RecordView] = []
-    criteria = pass_fail(tolerances)
+    judged = bool(pass_fail(tolerances))
 
     for key, x, y in zip(data.keys, data.x, data.y):
-        error = y - x
-        views.append(
-            RecordView(
-                key=key,
-                x=x,
-                y=y,
-                error=error,
-                rel_error=(error / x) if x else None,
-                status=PAIRED,
-                # None when there is nothing to judge against; an empty tuple
-                # would read as "judged and passed", which is a different fact.
-                failed=failures(tolerances, x, y) if criteria else None,
-            )
-        )
+        views.append(_paired(key, x, y, tolerances, judged))
 
     for key, value in zip(data.missing_y.keys, data.missing_y.values):
         views.append(RecordView(key, value, None, None, None, MISSING_Y, None))
@@ -76,6 +63,60 @@ def record_views(
         views.append(RecordView(key, None, value, None, None, MISSING_X, None))
 
     return views
+
+
+def record_for_key(
+    data: ParityData,
+    key: str,
+    tolerances: Sequence[NamedTolerance] = (),
+) -> RecordView | None:
+    """The one record with ``key`` -- what ``find_record(record_views(...))`` finds.
+
+    Without building every other record's view first. That was a full pass over
+    the dataset on the event loop on every click and every refresh, just to show
+    one record in the inspector; ``list.index`` is a C-speed scan instead. Same
+    search order as :func:`record_views`: paired, then missing y, then missing x.
+    """
+    try:
+        i = data.keys.index(key)
+    except ValueError:
+        pass
+    else:
+        return _paired(
+            key, data.x[i], data.y[i], tolerances, bool(pass_fail(tolerances))
+        )
+    for keys, values, status in (
+        (data.missing_y.keys, data.missing_y.values, MISSING_Y),
+        (data.missing_x.keys, data.missing_x.values, MISSING_X),
+    ):
+        try:
+            i = keys.index(key)
+        except ValueError:
+            continue
+        x, y = (values[i], None) if status == MISSING_Y else (None, values[i])
+        return RecordView(key, x, y, None, None, status, None)
+    return None
+
+
+def _paired(
+    key: str,
+    x: float,
+    y: float,
+    tolerances: Sequence[NamedTolerance],
+    judged: bool,
+) -> RecordView:
+    error = y - x
+    return RecordView(
+        key=key,
+        x=x,
+        y=y,
+        error=error,
+        rel_error=(error / x) if x else None,
+        status=PAIRED,
+        # None when there is nothing to judge against; an empty tuple would
+        # read as "judged and passed", which is a different fact.
+        failed=failures(tolerances, x, y) if judged else None,
+    )
 
 
 def find_record(views: Sequence[RecordView], key: str) -> RecordView | None:

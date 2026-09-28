@@ -85,11 +85,7 @@ def build_figure(
         data = _drop_non_positive(data)
 
     summary = stats_mod.compute(data, plot.tolerances)
-    auto_range = _axis_range(data, log=plot.log)
-    x_range = _viewport_range(auto_range, plot.x_origin, log=plot.log)
-    y_range = _viewport_range(auto_range, plot.y_origin, log=plot.log)
-    if plot.equal_axes:
-        x_range, y_range = _equalize_range_spans(x_range, y_range)
+    x_range, y_range = _layout_ranges(data, plot)
 
     fig = go.Figure()
     _add_tolerances(fig, plot.tolerances, *x_range, plot.log, theme)
@@ -142,6 +138,33 @@ def _drop_non_positive(data: ParityData) -> ParityData:
 def _filter_unpaired(unpaired: Unpaired) -> Unpaired:
     kept = [(k, v) for k, v in zip(unpaired.keys, unpaired.values) if v > 0]
     return Unpaired([k for k, _ in kept], [v for _, v in kept])
+
+
+def axis_ranges(
+    data: ParityData, plot: PlotConfig
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """The x and y ranges :func:`build_figure` lays out, without building it.
+
+    In base-10 exponents on a log axis, as Plotly stores them. For callers that
+    need only the axes: the designer's viewport-origin control used to build an
+    entire figure -- seconds on a large file, on the event loop -- to read two
+    lower bounds.
+    """
+    if plot.log:
+        data = _drop_non_positive(data)
+    return _layout_ranges(data, plot)
+
+
+def _layout_ranges(
+    data: ParityData, plot: PlotConfig
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """The shared axis ranges for ``data``, already stripped for log mode."""
+    auto_range = _axis_range(data, log=plot.log)
+    x_range = _viewport_range(auto_range, plot.x_origin, log=plot.log)
+    y_range = _viewport_range(auto_range, plot.y_origin, log=plot.log)
+    if plot.equal_axes:
+        x_range, y_range = _equalize_range_spans(x_range, y_range)
+    return x_range, y_range
 
 
 def _axis_range(data: ParityData, log: bool) -> tuple[float, float]:

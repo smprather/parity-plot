@@ -488,7 +488,10 @@ def _require_numeric(col, na: frozenset[str], role: str) -> None:
                 f"{col.file}:{index + 2}: {role} column {col.name!r} has "
                 f"non-numeric value {text!r}"
             ) from None
-        if not math.isfinite(number):
+        # isinf, not isfinite: NaN is a null (a missing reading) whatever the
+        # na_values list says -- the same rule _parse applies -- and only an
+        # infinity is an error.
+        if math.isinf(number):
             raise DataError(
                 f"{col.file}:{index + 2}: {role} column {col.name!r} is "
                 f"infinite ({text!r})"

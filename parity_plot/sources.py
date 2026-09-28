@@ -162,6 +162,11 @@ def open_sources(paths: Sequence[Path]) -> Sources:
 
     tables: dict[Path, dict[str, list[str]]] = {}
     for path in order:
+        # Stamped *before* the read. A file rewritten while it is being read
+        # then caches its old contents under its old stamp, which the next
+        # lookup sees has moved; stamped after, the old contents would be filed
+        # under the new stamp and served until the file changed again.
+        stamp = _try_stamp(path)
         rows = _read_rows(path)  # raises DataError for missing/unreadable
         if not rows:
             raise DataError(f"{path}: file is empty")
@@ -171,7 +176,8 @@ def open_sources(paths: Sequence[Path]) -> Sources:
             for col in header:
                 table[col].append((row.get(col) or ""))
         tables[path] = table
-        _store(path, table)
+        if stamp is not None:
+            _store(path, stamp, table)
     return Sources(order=order, tables=tables)
 
 
@@ -201,12 +207,19 @@ def _lookup(order: tuple[Path, ...]) -> Sources | None:
     return Sources(order=order, tables=tables)
 
 
-def _store(path: Path, table: dict[str, list[str]]) -> None:
-    """Record one file's parse, evicting the least recently used if full."""
+def _try_stamp(path: Path) -> tuple[int, int] | None:
+    """:func:`_stamp`, or None when the file cannot be stat'ed (the read names it)."""
     try:
-        stamp = _stamp(path)
-    except OSError:  # pragma: no cover -- the read just succeeded
-        return
+        return _stamp(path)
+    except OSError:
+        return None
+
+
+def _store(path: Path, stamp: tuple[int, int], table: dict[str, list[str]]) -> None:
+    """Record one file's parse, evicting the least recently used if full.
+
+    ``stamp`` is the one taken before the read -- see :func:`open_sources`.
+    """
     key = (path, *stamp)
     part = Sources(order=(path,), tables={path: table})
     with _CACHE_LOCK:
